@@ -1,5 +1,12 @@
 import React, { useState, type ChangeEvent, type FormEvent } from "react";
-import type { Token, TokenAttributes, TokenStatus, TokenTeam } from "../../types/token";
+import type {
+  Token,
+  TokenAttributes,
+  TokenProficiencies,
+  TokenInventory,
+  TokenStatus,
+  TokenTeam,
+} from "../../types/token";
 
 interface TokenFormProps {
   onSave: (token: Token) => void;
@@ -20,51 +27,71 @@ const initialAttributes: TokenAttributes = {
   xp: 0,
 };
 
+const initialProficiencies: TokenProficiencies = {
+  forca: false,
+  destreza: false,
+  consistencia: false,
+  inteligencia: false,
+  sabedoria: false,
+  carisma: false,
+};
+
+const initialInventory: TokenInventory = {
+  economy: 0,
+};
+
 const generateId = (): string => Math.random().toString(36).slice(2, 11);
 
 export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose }) => {
   const [name, setName] = useState("");
-  const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [attributes, setAttributes] = useState<TokenAttributes>(initialAttributes);
+  const [proficiencies, setProficiencies] = useState<TokenProficiencies>(initialProficiencies);
+  const [inventory, setInventory] = useState<TokenInventory>(initialInventory);
   const [status, setStatus] = useState<TokenStatus>("Vivo");
   const [team, setTeam] = useState<TokenTeam>("Red");
 
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.[0]) {
+    const file = e.target.files?.[0];
+    if (!file) {
       setImagePreview(null);
-      setImageFile(null);
       return;
     }
-    const file = e.target.files[0];
-    setImageFile(file);
     const reader = new FileReader();
-    reader.onload = () => {
-      setImagePreview(reader.result as string);
-    };
+    reader.onload = () => setImagePreview(reader.result as string);
     reader.readAsDataURL(file);
   };
 
-  const handleAttributeChange = (key: keyof TokenAttributes, value: number) => {
-    setAttributes((prev) => ({ ...prev, [key]: value }));
+  const handleAttrChange = (key: keyof TokenAttributes, val: number) => {
+    setAttributes((a) => ({ ...a, [key]: val }));
+  };
+
+  const handleProfChange = (key: keyof TokenProficiencies, checked: boolean) => {
+    setProficiencies((p) => ({ ...p, [key]: checked }));
+  };
+
+  const handleInvChange = (key: keyof TokenInventory, val: string | number) => {
+    setInventory((inv) => ({ ...inv, [key]: val }));
   };
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (!imagePreview || !name.trim()) {
-      alert("Por favor, preencha o nome e selecione a imagem do token.");
+    if (!name.trim() || !imagePreview) {
+      alert("Nome e imagem são obrigatórios.");
       return;
     }
-    const newToken: Token = {
+    const token: Token = {
       id: generateId(),
       name: name.trim(),
       imageUrl: imagePreview,
       attributes,
+      proficiencies,
+      inventory,
       status,
       team,
-      position: { col: 1, row: 1 }, // posição inicial padrão
+      position: { col: 1, row: 1 },
     };
-    onSave(newToken);
+    onSave(token);
     onClose();
   };
 
@@ -74,24 +101,24 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose }) => {
         onSubmit={handleSubmit}
         className="bg-gray-800 rounded p-6 w-96 max-h-[90vh] overflow-auto flex flex-col gap-4 text-white"
       >
-        <h2 className="text-xl font-bold mb-2">Criar Novo Token</h2>
+        <h2 className="text-xl font-bold">Criar Novo Token</h2>
 
-        <label className="flex flex-col" htmlFor="token-name">
+        {/* Nome */}
+        <label className="flex flex-col">
           Nome:
           <input
-            id="token-name"
             type="text"
-            className="mt-1 p-1 rounded bg-gray-700 text-white"
+            className="mt-1 p-1 rounded bg-gray-700"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
           />
         </label>
 
-        <label className="flex flex-col" htmlFor="token-image">
+        {/* Imagem */}
+        <label className="flex flex-col">
           Imagem:
           <input
-            id="token-image"
             type="file"
             accept="image/*"
             onChange={handleImageChange}
@@ -101,64 +128,132 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose }) => {
           {imagePreview && (
             <img
               src={imagePreview}
-              alt="Preview do token"
+              alt="Preview"
               className="mt-2 w-24 h-24 object-cover rounded"
             />
           )}
         </label>
 
+        {/* Atributos */}
         <fieldset className="border border-gray-600 p-2 rounded">
-          <legend className="font-semibold mb-2">Atributos</legend>
-          {(
-            Object.keys(attributes) as (keyof TokenAttributes)[]
-          ).map((attr) => (
-            <label key={attr} className="flex items-center gap-2 mb-1">
-              <span className="capitalize w-28">{attr}</span>
+          <legend className="font-semibold">Atributos</legend>
+          {(Object.keys(attributes) as (keyof TokenAttributes)[]).map((key) => (
+            <label key={key} className="flex items-center gap-2 my-1">
+              <span className="capitalize w-24">{key}</span>
               <input
                 type="number"
                 min={0}
-                className="p-1 rounded bg-gray-700 text-white w-20"
-                value={attributes[attr]}
-                onChange={(e) =>
-                  handleAttributeChange(attr, Number(e.target.value))
-                }
+                className="p-1 rounded bg-gray-700 w-20"
+                value={attributes[key]}
+                onChange={(e) => handleAttrChange(key, Number(e.target.value))}
               />
             </label>
           ))}
         </fieldset>
 
-        <label className="flex flex-col" htmlFor="token-status">
+        {/* Proficiências */}
+        <fieldset className="border border-gray-600 p-2 rounded">
+          <legend className="font-semibold">Proficiências</legend>
+          {(Object.keys(proficiencies) as (keyof TokenProficiencies)[]).map((key) => (
+            <label key={key} className="flex items-center gap-2 my-1">
+              <input
+                type="checkbox"
+                checked={proficiencies[key]}
+                onChange={(e) => handleProfChange(key, e.target.checked)}
+                className="accent-green-400"
+              />
+              <span className="capitalize">{key}</span>
+            </label>
+          ))}
+        </fieldset>
+
+        {/* Inventário */}
+        <fieldset className="border border-gray-600 p-2 rounded">
+          <legend className="font-semibold">Inventário</legend>
+          <label className="flex flex-col my-1">
+            Mão Primária:
+            <input
+              type="text"
+              className="mt-1 p-1 rounded bg-gray-700"
+              value={inventory.primaryHand || ""}
+              onChange={(e) => handleInvChange("primaryHand", e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col my-1">
+            Mão Secundária:
+            <input
+              type="text"
+              className="mt-1 p-1 rounded bg-gray-700"
+              value={inventory.offHand || ""}
+              onChange={(e) => handleInvChange("offHand", e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col my-1">
+            Colar:
+            <input
+              type="text"
+              className="mt-1 p-1 rounded bg-gray-700"
+              value={inventory.neck || ""}
+              onChange={(e) => handleInvChange("neck", e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col my-1">
+            Anel:
+            <input
+              type="text"
+              className="mt-1 p-1 rounded bg-gray-700"
+              value={inventory.ring || ""}
+              onChange={(e) => handleInvChange("ring", e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col my-1">
+            Armadura:
+            <input
+              type="text"
+              className="mt-1 p-1 rounded bg-gray-700"
+              value={inventory.armor || ""}
+              onChange={(e) => handleInvChange("armor", e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col my-1">
+            Economia:
+            <input
+              type="number"
+              min={0}
+              className="mt-1 p-1 rounded bg-gray-700"
+              value={inventory.economy}
+              onChange={(e) => handleInvChange("economy", Number(e.target.value))}
+            />
+          </label>
+        </fieldset>
+
+        {/* Status e Time */}
+        <label className="flex flex-col">
           Status:
           <select
-            id="token-status"
             value={status}
             onChange={(e) => setStatus(e.target.value as TokenStatus)}
-            className="mt-1 p-1 rounded bg-gray-700 text-white"
+            className="mt-1 p-1 rounded bg-gray-700"
           >
             {statuses.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
+              <option key={s} value={s}>{s}</option>
             ))}
           </select>
         </label>
-
-        <label className="flex flex-col" htmlFor="token-team">
+        <label className="flex flex-col">
           Time:
           <select
-            id="token-team"
             value={team}
             onChange={(e) => setTeam(e.target.value as TokenTeam)}
-            className="mt-1 p-1 rounded bg-gray-700 text-white"
+            className="mt-1 p-1 rounded bg-gray-700"
           >
             {teams.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
+              <option key={t} value={t}>{t}</option>
             ))}
           </select>
         </label>
 
+        {/* Ações */}
         <div className="flex justify-end gap-4 mt-4">
           <button
             type="button"
