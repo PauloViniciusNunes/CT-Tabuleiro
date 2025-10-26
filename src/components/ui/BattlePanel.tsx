@@ -17,6 +17,11 @@ export const BattlePanel: React.FC<BattlePanelProps> = ({
   onEndBattle,
   onNextTurn,
 }) => {
+
+  console.log('BattlePanel received round:', battleState.round);
+  console.log('BattlePanel received currentTurnIndex:', battleState.currentTurnIndex);
+  console.log('BattlePanel received turnOrder length:', battleState.turnOrder.length);
+
   const canStartBattle = () => {
     const teams = new Set(tokens.map((t) => t.team));
     return teams.size >= 2 && tokens.length >= 2;

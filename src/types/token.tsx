@@ -45,6 +45,10 @@ export interface Token {
   status: TokenStatus;
   team: TokenTeam;
   position: TokenPosition;
+
+  bodytobodyRange: number;      // Alcance de ataque físico (padrão: 1)
+  magicalRange: number;          // Alcance de ataque mágico (padrão: 6)
+
   currentLife?: number;
   maxLife?: number;
   currentMana?: number;

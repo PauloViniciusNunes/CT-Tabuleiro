@@ -12,41 +12,58 @@ export function rollD20(times: number): number[] {
 
 /**
  * Calcula o resultado de uma ação com base na fórmula:
- * Resultado = (Qd20 + CEIL(Q * P * ((A - 10)/2 + O + CEIL(N * (((L - 10)/4 + 4 + ((M - 1)*((L - 10)/4 + 4)))/2))))) * CRI
+ * Resultado = (Qd20 + CEIL(Q * P * ((A - 10)/2 + PF + O + CEIL(N * (((L - 10)/4 + 4 + ((M - 1)*((L - 10)/4 + 4)))/2))))) * CRI
+ * 
+ * CRI é automaticamente definido:
+ * - Se o primeiro d20 for 20, CRI será um valor aleatório entre 2 e 4.
+ * - Caso contrário, CRI é 1.
  *
- * @param params Parâmetros da jogada.
- * @returns Objeto com rolls, total e mana usada.
+ * @param params Parâmetros da jogada (sem CRI).
+ * @returns Objeto com rolls, total, mana usada e CRI aplicado.
  */
 export function calculateActionRoll(
-  params: ActionRollParams
+  params: Omit<ActionRollParams, "CRI">
 ): RollResult {
-  const { Q, P, A, O, N, L, M, CRI } = params;
+  const { Q, P, A, PF, O, N: paramN, L, M } = params;
 
   // Rolar Q d20
   const rawRolls = rollD20(Q);
   const sumD20 = rawRolls.reduce((sum, r) => sum + r, 0);
 
+  // CRI automático: se primeiro roll == 20, multiplica por crítico 2-4
+  let CRI = 1;
+  if (rawRolls[0] === 20) {
+    CRI = Math.floor(Math.random() * 3) + 2; // Gera 2, 3 ou 4
+  }
+
   // Cálculo do modificador de atributo
   const attrMod = (A - 10) / 2;
 
-  // Cálculo interno N * (((L-10)/4+4) + (M-1)*((L-10)/4+4)) / 2, arredondado para cima
-  const base = (L - 10) / 4 + 4;
-  const inner = Math.ceil((N * (base + (M - 1) * base)) / 2);
+  // N verificador: se M > 0, então N = 1; se M = 0, então N = 0
+  const N = M > 0 ? 1 : paramN;
 
-  // Subtotal de Q * P * (attrMod + O + inner)
-  const subtotal = Q * P * (attrMod + O + inner);
+  // Cálculo do bônus de mana: (M - 1) * ((L - 10)/4 + 4) quando M > 0
+  const base = (L - 10) / 4 + 4;
+  const manaBonus = M > 0 ? (M - 1) * base : 0;
+
+  // Cálculo interno N * (((L-10)/4+4) + (M-1)*((L-10)/4+4)) / 2, arredondado para cima
+  const inner = Math.ceil((N * (base + manaBonus)) / 2);
+
+  // Subtotal de Q * P * (attrMod + PF + O + inner)
+  const subtotal = Q * P * (attrMod + PF + O + inner);
 
   // Total com d20 e subtotal arredondado, multiplicado por CRI
   const total = (sumD20 + Math.ceil(subtotal)) * CRI;
 
-  // Mana gasta: N * M se M>0
-  const usedMana = M > 0 ? N * M : 0;
+  // Mana gasta: M (a mana que foi passada)
+  const usedMana = M;
 
-  return { rawRolls, total, usedMana };
+  return { rawRolls, total, usedMana, CRI };
 }
 
 /**
- * Rola iniciativa para um token: 1d20 + modificador de destreza + proficiência se aplicável.
+ * Rola iniciativa para um token usando a função calculateActionRoll.
+ * Fórmula: 1d20 + (Destreza - 10)/2 + Proficiência
  * @param destreza Valor de Destreza.
  * @param profDestreza Se possui proficiência em Destreza.
  * @param level Level do token.
@@ -57,12 +74,21 @@ export function rollInitiative(
   profDestreza: boolean,
   level: number
 ): number {
-  const roll = Math.ceil(Math.random() * 20);
-  const dexMod = Math.floor((destreza - 10) / 2);
-  const profBonus = profDestreza
-    ? Math.ceil((level - 10) / 4 + 4)
-    : 0;
-  return roll + dexMod + profBonus;
+  const profBonus = profDestreza ? Math.ceil((level - 10) / 4 + 4) : 0;
+
+  const rollResult = calculateActionRoll({
+    tokenId: "initiative",
+    Q: 1, // 1d20
+    P: 1, // P = 1 (Posição, sempre 1)
+    A: destreza, // Atributo: Destreza
+    PF: profBonus, // PF = bônus de proficiência
+    O: 0, // O = 0 (sem adição ocasional)
+    N: 0, // N = 0
+    L: level, // Level
+    M: 0, // M = 0
+  });
+
+  return rollResult.total;
 }
 
 /**
@@ -106,4 +132,45 @@ export function initializeBattleStats(token: Token): Token {
     currentMana: maxMana,
     maxMana,
   };
+
+  
+
 }
+
+export function recalculateRound(nextIdx: number, totalTokens: number, currentRound: number): number {
+  if (totalTokens <= 0) return 1;
+  // Se nextIdx voltou para 0, significa que completou uma volta
+  if (nextIdx === 0) {
+    return currentRound + 1;
+  }
+  return currentRound;
+}
+
+export function calculateDistance(token1: Token, token2: Token): number {
+  const colDiff = Math.abs(token1.position.col - token2.position.col);
+  const rowDiff = Math.abs(token1.position.row - token2.position.row);
+  
+  // Distância de Chebyshev: max(|Δcol|, |Δrow|)
+  // Diagonal = 1 célula
+  return Math.max(colDiff, rowDiff);
+}
+
+
+export function isInAttackRange(
+  attacker: Token,
+  target: Token,
+  attackType: "fisico" | "magico"
+): boolean {
+  const distance = calculateDistance(attacker, target);
+  
+  if (attackType === "fisico") {
+    return distance <= (attacker.bodytobodyRange || 1);
+  } else if (attackType === "magico") {
+    return distance <= (attacker.magicalRange || 6);
+  }
+  
+  return false;
+}
+
+
+

@@ -1,85 +1,212 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import type { Token } from "../../types/token";
 import type { ActionChoice } from "../../types/battle";
-import type { TokenAttributes } from "../../types/token";
+import { calculateDistance, isInAttackRange } from "../../utils/battleCalculations";
 
 interface ActionFormProps {
   token: Token;
   availableActions: number;
-  onExecute: (choice: ActionChoice) => void;
+  onExecute: (
+    choice: ActionChoice & {
+      targetId: string;
+      usedMana: number;
+      usedActions: number;
+    }
+  ) => void;
   onPass: () => void;
+  possibleTargets: Token[];
 }
 
-type AttributeKey = keyof Omit<TokenAttributes, "level" | "xp">;
+const ActionForm: React.FC<ActionFormProps> = ({
+  token,
+  availableActions,
+  onExecute,
+  onPass,
+  possibleTargets,
+}) => {
+  const [selectedAction, setSelectedAction] = useState<
+    "forca" | "destreza" | null
+  >(null);
+  const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
+  const [usedMana, setUsedMana] = useState(0);
+  const [usedActions, setUsedActions] = useState(1);
 
-const attributeActions: Record<AttributeKey, string[]> = {
-  forca: ["Ataque físico"],
-  destreza: ["Surpreender", "Disparar"],
-  consistencia: [],
-  inteligencia: ["Prever"],
-  sabedoria: ["Desnortear"],
-  carisma: [],
-};
+  const targetToken = possibleTargets.find((t) => t.id === selectedTarget);
 
-const ActionForm: React.FC<ActionFormProps> = ({ token, availableActions, onExecute, onPass }) => {
-  const [attribute, setAttribute] = useState<AttributeKey>("forca");
-  const [actionType, setActionType] = useState<string>(attributeActions.forca[0]);
+  // Verifica se o ataque está em alcance
+  const isPhysicalAttack =
+    selectedAction && ["forca", "destreza"].includes(selectedAction);
+  const canAttack =
+    !targetToken ||
+    (isPhysicalAttack && isInAttackRange(token, targetToken, "fisico"));
+  const distance = targetToken ? calculateDistance(token, targetToken) : 0;
+  const maxRange = token.bodytobodyRange || 1;
 
-  useEffect(() => {
-    const options = attributeActions[attribute];
-    setActionType(options[0] || "");
-  }, [attribute]);
+  const hasEnoughActions = usedActions <= availableActions;
+  const hasEnoughMana = usedMana <= (token.currentMana ?? 0);
+  const isFormValid =
+    selectedAction && selectedTarget && hasEnoughActions && hasEnoughMana;
 
   const handleExecute = () => {
-    onExecute({ attribute, type: actionType, rollResult: undefined! });
+    if (!isFormValid || !canAttack) return;
+
+    onExecute({
+      attribute: selectedAction,
+      type:
+        selectedAction === "forca"
+          ? "Ataque Físico"
+          : "Ataque com Destreza",
+      targetId: selectedTarget,
+      usedMana,
+      usedActions,
+    } as ActionChoice & {
+      targetId: string;
+      usedMana: number;
+      usedActions: number;
+    });
+
+    // Reseta o formulário
+    setSelectedAction(null);
+    setSelectedTarget(null);
+    setUsedMana(0);
+    setUsedActions(1);
   };
 
   return (
-    <div className="w-64 bg-gray-800 p-4 rounded shadow-md text-white">
-      <h3 className="font-semibold mb-2">
-        {token.name} – Ações restantes: {availableActions}
-      </h3>
-      <div className="flex flex-col gap-2">
-        <label className="flex flex-col">
-          Atributo:
-          <select
-            value={attribute}
-            onChange={(e) => setAttribute(e.target.value as AttributeKey)}
-            className="mt-1 p-1 rounded bg-gray-700"
-          >
-            {Object.entries(attributeActions).map(([key, opts]) =>
-              opts.length > 0 ? <option key={key} value={key}>{key}</option> : null
-            )}
-          </select>
+    <div className="bg-gray-800 rounded-lg p-4 w-80 border border-gray-700 shadow-lg">
+      <h3 className="text-white font-bold mb-3">Ação de {token.name}</h3>
+
+      {/* Seleção de Ação */}
+      <div className="mb-3">
+        <label className="block text-sm font-semibold text-gray-300 mb-1">
+          Tipo de Ataque
         </label>
-        <label className="flex flex-col">
-          Ação:
-          <select
-            value={actionType}
-            onChange={(e) => setActionType(e.target.value)}
-            className="mt-1 p-1 rounded bg-gray-700"
-          >
-            {attributeActions[attribute].map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-        </label>
-        <div className="flex justify-between mt-4">
+        <div className="flex gap-2">
           <button
-            type="button"
-            onClick={onPass}
-            className="px-3 py-1 bg-red-600 rounded hover:bg-red-700"
+            onClick={() => setSelectedAction("forca")}
+            className={`flex-1 py-2 px-3 rounded font-semibold text-sm transition-colors ${
+              selectedAction === "forca"
+                ? "bg-red-600 text-white"
+                : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+            }`}
           >
-            Passar
+            Força
           </button>
           <button
-            type="button"
-            onClick={handleExecute}
-            className="px-3 py-1 bg-green-600 rounded hover:bg-green-700"
+            onClick={() => setSelectedAction("destreza")}
+            className={`flex-1 py-2 px-3 rounded font-semibold text-sm transition-colors ${
+              selectedAction === "destreza"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+            }`}
           >
-            Executar
+            Destreza
           </button>
         </div>
+      </div>
+
+      {/* Seleção de Alvo */}
+      <div className="mb-3">
+        <label className="block text-sm font-semibold text-gray-300 mb-1">
+          Alvo
+        </label>
+        <select
+          value={selectedTarget || ""}
+          onChange={(e) => setSelectedTarget(e.target.value || null)}
+          className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:border-green-400 focus:outline-none text-sm"
+        >
+          <option value="">Selecione um alvo</option>
+          {possibleTargets.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+
+        {/* Indicador de Distância */}
+        {targetToken && (
+          <div
+            className={`mt-2 text-xs p-2 rounded ${
+              canAttack
+                ? "bg-green-900 text-green-200 border border-green-600"
+                : "bg-red-900 text-red-200 border border-red-600"
+            }`}
+          >
+            {canAttack
+              ? `✓ Distância: ${distance} célula(s) (Alcance: ${maxRange})`
+              : `✗ Fora do alcance! Distância: ${distance}, Alcance: ${maxRange}`}
+          </div>
+        )}
+      </div>
+
+      {/* Ações Usadas */}
+      <div className="mb-3">
+        <label className="block text-sm font-semibold text-gray-300 mb-1">
+          Ações Usadas (Disponível: {availableActions})
+        </label>
+        <input
+          type="number"
+          min={1}
+          max={availableActions}
+          value={usedActions}
+          onChange={(e) =>
+            setUsedActions(Math.max(1, Math.min(availableActions, Number(e.target.value))))
+          }
+          className={`w-full p-2 rounded border focus:outline-none text-sm ${
+            !hasEnoughActions
+              ? "bg-red-900 border-red-600 text-red-100"
+              : "bg-gray-700 border-gray-600 text-white"
+          }`}
+        />
+      </div>
+
+      {/* Mana Usada */}
+      <div className="mb-4">
+        <label className="block text-sm font-semibold text-gray-300 mb-1">
+          Mana Usada (Disponível: {token.currentMana ?? 0})
+        </label>
+        <input
+          type="number"
+          min={0}
+          max={token.currentMana ?? 0}
+          value={usedMana}
+          onChange={(e) =>
+            setUsedMana(Math.max(0, Math.min(token.currentMana ?? 0, Number(e.target.value))))
+          }
+          className={`w-full p-2 rounded border focus:outline-none text-sm ${
+            !hasEnoughMana
+              ? "bg-red-900 border-red-600 text-red-100"
+              : "bg-gray-700 border-gray-600 text-white"
+          }`}
+        />
+      </div>
+
+      {/* Botões de Ação */}
+      <div className="flex gap-2">
+        <button
+          onClick={handleExecute}
+          disabled={!isFormValid || !canAttack}
+          className={`flex-1 py-2 px-3 rounded font-semibold text-sm transition-colors ${
+            isFormValid && canAttack
+              ? "bg-green-600 hover:bg-green-700 text-white cursor-pointer"
+              : "bg-gray-600 text-gray-400 cursor-not-allowed opacity-60"
+          }`}
+          title={
+            !canAttack
+              ? "Alvo fora do alcance"
+              : !isFormValid
+              ? "Preencha todos os campos"
+              : "Executar ataque"
+          }
+        >
+          Executar
+        </button>
+        <button
+          onClick={onPass}
+          className="flex-1 py-2 px-3 rounded font-semibold text-sm bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+        >
+          Passar
+        </button>
       </div>
     </div>
   );

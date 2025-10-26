@@ -9,27 +9,33 @@ export interface InitiativeData {
 }
 
 export interface ActionRollParams {
+  // Remova esta linha:
   tokenId: string;
-  Q: number;
-  P: number;
-  A: number;
-  O: number;
-  N: number;
-  L: number;
-  M: number;
-  CRI: number;
+  Q: number; // Quantidade de d20s
+  P: number; // P (parâmetro da fórmula)
+  A: number; // Atributo
+  PF: number; // Proficiência
+  O: number; // O (parâmetro da fórmula)
+  N: number; // N (proficiência)
+  L: number; // Level
+  M: number; // Mana usada
+  CRI?: number; // Opcional
 }
 
 export interface RollResult {
   rawRolls: number[];
   total: number;
   usedMana: number;
+  CRI: number;
 }
 
 export interface ActionChoice {
   attribute: keyof Omit<TokenAttributes, "level" | "xp">;
   type: string;
   rollResult: RollResult;
+  attackerId?: string;  // ← Adicione
+  targetId?: string;    // ← Adicione
+  round?: number; // ← Adicione isto
 }
 
 /**
