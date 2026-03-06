@@ -1,0 +1,82 @@
+.
+├── eslint.config.js
+├── estrutura.txt
+├── index.html
+├── package.json
+├── package-lock.json
+├── public
+│   ├── effects
+│   │   ├── blood.png
+│   │   ├── darkelectric.gif
+│   │   ├── darkfire.gif
+│   │   ├── dark-poison-fire.gif
+│   │   ├── electric.gif
+│   │   ├── explosion.gif
+│   │   ├── fire.gif
+│   │   ├── ice.jpg
+│   │   └── poison.gif
+│   └── vite.svg
+├── README.md
+├── src
+│   ├── App.css
+│   ├── App.tsx
+│   ├── assets
+│   │   └── react.svg
+│   ├── components
+│   │   ├── music
+│   │   │   └── MusicList.tsx
+│   │   └── ui
+│   │       ├── ActionForm.tsx
+│   │       ├── BattlePanel.tsx
+│   │       ├── CardCreateForm.tsx
+│   │       ├── CardForm.tsx
+│   │       ├── DefenseResolutionForm.tsx
+│   │       ├── ReactionPrompt.tsx
+│   │       ├── SettingsDropdown.tsx
+│   │       ├── Sidebar.tsx
+│   │       ├── StatusBars.tsx
+│   │       └── TokenForm.tsx
+│   ├── hooks
+│   │   └── useMusicLibrary.ts
+│   ├── index.css
+│   ├── main.tsx
+│   ├── musics
+│   │   ├── Ancient Stones.mp3
+│   │   ├── Apocalypse Fabrications.mp3
+│   │   ├── At Doom's Gate.mp3
+│   │   ├── BFG Division.mp3
+│   │   ├── Breath of Life.mp3
+│   │   ├── Catastrophic Fabrications.mp3
+│   │   ├── Corre.mp3
+│   │   ├── Disc 13.mp3
+│   │   ├── Draedon Theme's.mp3
+│   │   ├── Goodbye Brother.mp3
+│   │   ├── Inferior Fabrications.mp3
+│   │   ├── My Hero Academia OST - You Say Run.mp3
+│   │   ├── Red Sex (Slowed).mp3
+│   │   ├── Trinity.mp3
+│   │   └── Untrust Us (Slowed).mp3
+│   ├── pages
+│   │   └── BoardPage.tsx
+│   ├── routes
+│   │   └── index.tsx
+│   ├── types
+│   │   ├── battle.ts
+│   │   ├── card.ts
+│   │   ├── effects.ts
+│   │   ├── getTokenVisual.ts
+│   │   ├── music.ts
+│   │   ├── status.ts
+│   │   ├── target.tsx
+│   │   ├── tokenEffectVisual.ts
+│   │   └── token.tsx
+│   └── utils
+│       ├── battleCalculations.tsx
+│       ├── battleEffects.ts
+│       └── paralysis.ts
+├── tsconfig.app.json
+├── tsconfig.json
+├── tsconfig.node.json
+└── vite.config.ts
+
+14 directories, 66 files

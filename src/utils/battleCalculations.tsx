@@ -1,14 +1,23 @@
-import type { Token } from "../types/token";
+import type { Token, TokenClass } from "../types/token";
 import type { ActionRollParams, RollResult } from "../types/battle";
+import type { Card } from "../types/card";
+import TokenEditForm from "../components/ui/TokenEditForm";
+
 
 /**
  * Rola um dado de 20 faces N vezes.
  * @param times Número de dados a rolar.
  * @returns Array com resultados individuais.
  */
+
+
+export const sum = (values: number[]) =>
+  values.reduce((a, b) => a + b, 0);
+
 export function rollD20(times: number): number[] {
   return Array.from({ length: times }, () => Math.ceil(Math.random() * 20));
 }
+
 
 /**
  * Calcula o resultado de uma ação com base na fórmula:
@@ -53,12 +62,85 @@ export function calculateActionRoll(
   const subtotal = Q * P * (attrMod + PF + O + inner);
 
   // Total com d20 e subtotal arredondado, multiplicado por CRI
-  const total = (sumD20 + Math.ceil(subtotal)) * CRI;
+  const total = rawRolls[0] === 1 ? 0 : (sumD20 + Math.ceil(subtotal)) * CRI;
 
   // Mana gasta: M (a mana que foi passada)
   const usedMana = M;
 
   return { rawRolls, total, usedMana, CRI };
+}
+
+export function calculateMedianRoll(actions: number, manaUsage: number, tokenPosition: number,tokenProficiency: number, attributeValue: number | undefined, ocassionalAddition: number)
+{
+
+  if(attributeValue === undefined)
+  {
+    return 0;
+  }
+
+  const medianRoll  = 10;
+  const modificador = (attributeValue - 10)/2
+  const areManaUsage = manaUsage > 0 ? 1 : 0; 
+
+  const result = actions * medianRoll + Math.ceil(actions * tokenPosition * (modificador + tokenProficiency + ocassionalAddition + Math.ceil(areManaUsage * ((tokenProficiency + (manaUsage - 1) * tokenProficiency))/2)));
+  return result;
+}
+
+// Qd20 + FLOOR((1 + Ações) * ((L - Circle) * (Quantity * Type) + Extra_Actions * (CEIL(PROFICIENCY))))
+export function calculateCardRoll(actions: number, token: Token, card: Card) : RollResult
+{
+  let mult = 0
+
+  const type     = card.baseDice?.type;
+  const quantity = card.baseDice?.quantity
+
+  switch (type) 
+  {
+    case "d4":
+      mult = (quantity ?? 1)* 4;
+      break;
+    case "d6":
+      mult = (quantity ?? 1)* 6;
+      break;
+    case "d8":
+      mult = (quantity ?? 1)* 8;
+      break;
+    case "d10":
+      mult = (quantity ?? 1)* 8;
+      break;
+    case "d12":
+      mult = (quantity ?? 1)* 12;
+      break;
+    case "d20":
+      mult = (quantity ?? 1)* 20;
+      break;
+    case "d100":
+      mult = (quantity ?? 1)* 100;
+      break;                          
+    default:
+      break;
+  }
+
+  const circleAndLevelDiffer = Math.max(1, token.attributes.level - (card.spellCircle ?? 0))
+  const tokenProficiency = Math.ceil((token.attributes.level - 10) / 4 + 4)
+  const totalSum = Math.floor((actions + (card.actionsRequired ?? 0)) * (circleAndLevelDiffer) * (mult) +  (card.actionsRequired ?? 0) * tokenProficiency);
+  const rawRolls = rollD20(actions);
+
+  let CRI = 1;
+  if (rawRolls[0] === 20)
+  {
+    CRI = Math.floor(Math.random() * 3) + 2;
+  }
+
+  const result: RollResult = {
+    total: totalSum,
+    rawRolls: rawRolls,
+    usedMana: card.manaRequired ?? 0,
+    CRI: CRI,
+  }
+
+  return result;
+
 }
 
 /**
@@ -72,7 +154,7 @@ export function calculateActionRoll(
 export function rollInitiative(
   destreza: number,
   profDestreza: boolean,
-  level: number
+  level: number,
 ): number {
   const profBonus = profDestreza ? Math.ceil((level - 10) / 4 + 4) : 0;
 
@@ -91,6 +173,14 @@ export function rollInitiative(
   return rollResult.total;
 }
 
+export const classMultipliers: Record<TokenClass, { MC: number; MM: number }> = {
+  Guerreiro: { MC: 1.5, MM: 1.0 },
+  Mago: { MC: 1.0, MM: 1.5 },
+  Ladino: { MC: 1.25, MM: 1.25 },
+  Bárbaro: { MC: 2.0, MM: 0.5 },
+  Feitiçeiro: { MC: 1.25, MM: 1.5 },
+};
+
 /**
  * Inicializa os pontos de vida e mana de um token no início da batalha.
  * Fórmulas corrigidas:
@@ -104,14 +194,15 @@ export function initializeBattleStats(token: Token): Token {
   const C = token.attributes.consistencia;
   const S = token.attributes.sabedoria;
   const L = token.attributes.level;
+  
   const PS = token.proficiencies.sabedoria
     ? Math.ceil((L - 10) / 4 + 4)
     : 0;
 
   // Por ora, assumindo MC e MM como 1 (multiplicadores de classe)
   // Estes valores deverão ser configuráveis por classe futuramente
-  const MC = 1; // Multiplicador de Vida da Classe
-  const MM = 1; // Multiplicador de Mana da Classe
+  const { MC, MM } = classMultipliers[token.class];
+
 
   // Cálculo de Max_Life
   const floorHalfC = Math.floor((C - 10) / 2);
@@ -171,6 +262,4 @@ export function isInAttackRange(
   
   return false;
 }
-
-
 

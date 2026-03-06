@@ -1,0 +1,3 @@
+
+roll [[1]]d[[20]] + floor((1+0)*((@{selected|l1mancer_status}-0)*24  + 0*(ceil(@{selected|l1mancer_status}-10)/4 +4)))
+

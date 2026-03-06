@@ -1,0 +1,1 @@
+export type ParalysisState = 'none' | 'paralisia' | 'paralisia_rapida';

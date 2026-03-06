@@ -12,14 +12,14 @@ export interface ActionRollParams {
   // Remova esta linha:
   tokenId: string;
   Q: number; // Quantidade de d20s
-  P: number; // P (parâmetro da fórmula)
+  P: number; // P (posição)
   A: number; // Atributo
-  PF: number; // Proficiência
-  O: number; // O (parâmetro da fórmula)
-  N: number; // N (proficiência)
+  PF: number;// Proficiência
+  O: number; // O (Adição Ocasional)
+  N: number; // N (Houve uso de mana?)
   L: number; // Level
   M: number; // Mana usada
-  CRI?: number; // Opcional
+  CRI?: number; // Crítico
 }
 
 export interface RollResult {

@@ -2,13 +2,14 @@ import React, { useState } from "react";
 import type { Token } from "../../types/token";
 import type { RollResult } from "../../types/battle";
 import { calculateActionRoll } from "../../utils/battleCalculations";
+import { Zap } from "lucide-react";
 
 interface DefenseResolutionFormProps {
   attacker: Token;
   defenderName: string;
   reactionResult: number;
   availableActions: number;
-  onResolve: (usedActions: number, result: RollResult) => void; // ⬅️ ADICIONE usedActions
+  onResolve: (usedActions: number, result: RollResult, usedMana: number) => void; // ⬅️ ADICIONAR usedMana
   onCancel: () => void;
 }
 
@@ -16,7 +17,7 @@ const DefenseResolutionForm: React.FC<DefenseResolutionFormProps> = ({
   attacker,
   defenderName,
   reactionResult,
-  availableActions, // ⬅️ NOVA PROP
+  availableActions, 
   onResolve,
   onCancel,
 }) => {
@@ -68,16 +69,19 @@ const DefenseResolutionForm: React.FC<DefenseResolutionFormProps> = ({
 
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    onResolve(usedActions, rollResult); // ⬅️ PASSE usedActions
-  } finally {
+    onResolve(usedActions, rollResult, usedMana); // ⬅️ PASSE usedActions
+  } 
+  finally 
+  {
     setIsLoading(false);
   }
 };
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 w-96 border-2 border-cyan-600 shadow-lg">
-      <h3 className="text-cyan-300 font-bold mb-2">
-        ⚔️ Definição de Velocidade
+      <Zap className="inline-block h-5 w-5 text-cyan-300 mr-1" />
+      <h3 className="inline-block text-cyan-300 font-bold mb-2">
+      Definição de Velocidade
       </h3>
 
       {/* Context */}
@@ -92,9 +96,9 @@ const DefenseResolutionForm: React.FC<DefenseResolutionFormProps> = ({
           <span className="text-cyan-400 font-bold">{reactionResult}</span>
         </p>
         <p className="text-xs italic text-gray-400 mt-2">
-          Se Definição ≥ Esquiva → Acerta com dano completo
+          Se Definição &gt; Esquiva → Acerta com dano completo
           <br />
-          Se Definição &lt; Esquiva → Desvia, dano = 0
+          Se Definição &le; Esquiva → Desvia, dano = 0
         </p>
       </div>
 

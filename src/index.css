@@ -6,3 +6,398 @@ html, body, #root {
   background-color: #101828; /* equivalente a bg-gray-900 do tailwind */
   color: white;
 }
+
+/* * */
+.clip-hex {
+  clip-path: polygon(
+    25% 0%,
+    75% 0%,
+    100% 50%,
+    75% 100%,
+    25% 100%,
+    0% 50%
+  );
+}
+
+/* * */
+
+/* Animação de “piscar em branco” */
+@keyframes white-blink {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(2.2); }
+}
+
+/* Classe utilitária para aplicar a animação */
+.animate-white-blink {
+  animation: white-blink 0.9s ease-in-out infinite;
+}
+
+/* --- QUEIMANDO (FIRE) --- */
+@keyframes fire-glow {
+  0% { filter: brightness(1) drop-shadow(0 0 4px #ff6b00); }
+  50% { filter: brightness(1.3) drop-shadow(0 0 12px #ff3b00); }
+  100% { filter: brightness(1) drop-shadow(0 0 4px #ff6b00); }
+}
+
+.animate-fire-glow {
+  animation: fire-glow 0.7s infinite ease-in-out;
+}
+
+.overlay-fire {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: url("/effects/fire.gif") center/cover no-repeat;
+  mix-blend-mode: screen;
+  opacity: 0.7;
+}
+
+
+@keyframes fire-overlay-pulse {
+  0% { opacity: 0.55; }
+  50% { opacity: 0.8; }
+  100% { opacity: 0.55; }
+}
+
+/* --- CONGELANDO (ICE) --- */
+.freeze-filter {
+  filter: saturate(0.5) brightness(0.8) contrast(1.1) hue-rotate(180deg);
+}
+
+/* --- OVERLAY DE GELO COM IMAGEM --- */
+.overlay-ice {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+
+  /* imagem estática em vez de gradiente */
+  background: url("/effects/ice.jpg") center/cover no-repeat;
+
+  /* mistura que dá efeito gelado */
+  mix-blend-mode: lighten;
+
+  /* leve amarelamento/brilho congelado */
+  opacity: 0.5;
+
+  /* gelo precisa disso pra suavizar */
+  filter: brightness(1.1) saturate(0.7) contrast(1.2);
+}
+
+
+/* --- ELETRIZADO (ELECTRIC) --- */
+@keyframes electric-shake {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(1px, -1px); }
+  50% { transform: translate(-1px, 1px); }
+  75% { transform: translate(2px, -2px); }
+  100% { transform: translate(0, 0); }
+}
+
+.electric-shake {
+  animation: electric-shake 0.12s infinite;
+  filter: drop-shadow(0 0 6px yellow);
+}
+
+.overlay-electric {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+
+  background: url("/effects/electric.gif") center/contain no-repeat;
+
+  mix-blend-mode: screen;
+  opacity: 0.9;
+
+  animation: electric-flicker 0.12s infinite steps(2);
+}
+
+@keyframes electric-flicker {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 1; }
+}
+
+
+/* --- ENVENENADO (POISON) --- */
+.poison-tint {
+  filter: hue-rotate(90deg) saturate(1.3);
+}
+
+.overlay-poison {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: url("/effects/poison.gif") center/cover no-repeat;
+  mix-blend-mode: color-dodge;
+  opacity: 0.6;
+}
+
+
+@keyframes poison-breath {
+  0% { opacity: 0.35; }
+  50% { opacity: 0.55; }
+  100% { opacity: 0.35; }
+}
+
+/* --- PRESO (LOCKED) --- */
+.overlay-lock {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(45deg,
+      rgba(80, 80, 80, 0.4) 0 6px,
+      transparent 6px 12px);
+  mix-blend-mode: multiply;
+}
+
+/* --- DARKFIRE --- */
+@keyframes darkfire-pulse {
+  0% { filter: drop-shadow(0 0 4px #8a00e6); }
+  50% { filter: drop-shadow(0 0 14px #b300ff); }
+  100% { filter: drop-shadow(0 0 4px #8a00e6); }
+}
+
+.shadow-purple-glow {
+  animation: darkfire-pulse 0.9s infinite;
+}
+
+.overlay-darkfire {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: url("/effects/darkfire.gif") center/cover no-repeat;
+  mix-blend-mode: screen;
+  opacity: 0.9;
+}
+
+
+@keyframes darkfire-waves {
+  0% { opacity: 0.5; }
+  50% { opacity: 0.8; }
+  100% { opacity: 0.5; }
+}
+
+/* --- SANGRANDO (BLEEDING) --- */
+@keyframes bleeding-glow-pulse {
+  0%   { filter: drop-shadow(0 0 2px #ff0000); }
+  50%  { filter: drop-shadow(0 0 8px #ff2b2b); }
+  100% { filter: drop-shadow(0 0 2px #ff0000); }
+}
+
+.bleending-glow {
+  animation: bleeding-glow-pulse 0.9s infinite ease-in-out;
+  filter: saturate(1.4) brightness(1.1);
+}
+
+/* Overlay com sangue escorrendo */
+.bleending-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+
+  background: url("/effects/blood.png") center/contain no-repeat;
+
+  mix-blend-mode: darken;
+  opacity: 1.0;
+
+  animation: bleeding-overlay-drip 1.5s infinite ease-in-out;
+}
+
+@keyframes bleeding-overlay-drip {
+  0%   { opacity: 0.8; transform: translateY(0px); }
+  50%  { opacity: 1.0; transform: translateY(1px); }
+  100% { opacity: 0.8; transform: translateY(0px); }
+}
+
+/* --- ELETRICIDADE SOMBRIA (DARKELECTRIC) --- */
+
+@keyframes darkelectric-shake {
+  0%   { transform: translate(0px, 0px); }
+  25%  { transform: translate(1px, -1px); }
+  50%  { transform: translate(-1px, 1px); }
+  75%  { transform: translate(2px, -2px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+.darkelectric-glow {
+  animation:
+    darkelectric-shake 0.10s infinite,
+    darkelectric-glow-pulse 0.5s infinite ease-in-out;
+  filter: drop-shadow(0 0 8px #4d00cc)
+          drop-shadow(0 0 14px #7a00ff)
+          brightness(1.25)
+          saturate(1.8);
+}
+
+@keyframes darkelectric-glow-pulse {
+  0%   { filter: drop-shadow(0 0 5px #4d00cc); }
+  50%  { filter: drop-shadow(0 0 15px #7a00ff); }
+  100% { filter: drop-shadow(0 0 5px #4d00cc); }
+}
+
+/* --- OVERLAY ESCURO DE ELETRICIDADE SOMBRIA --- */
+
+.darkelectric-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 30;
+
+  background: url("/effects/darkelectric.gif") center/cover no-repeat;
+
+  /* 🌑 deixa tudo MUITO visível em qualquer token */
+  mix-blend-mode: darken;
+
+  opacity: 1;
+
+  animation: darkelectric-overlay-flicker 0.12s infinite steps(2);
+}
+
+@keyframes darkelectric-overlay-flicker {
+  0%   { opacity: 0.7; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.7; }
+}
+
+.overlay-explosao-area {
+  pointer-events: none;
+  position: absolute;
+
+  background: var(--explosion-gif) center/cover no-repeat;
+  z-index: 30;
+  animation: explosion-fade 1s forwards;
+}
+
+@keyframes explosion-fade {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Formatação de texto raridade */
+
+.item-name {
+  font-weight: bold;
+  font-size: 0.95rem;
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+}
+
+/* COMMON */
+.rarity-common {
+  color: #9ca3af; /* cinza pobre */
+}
+
+/* UNCOMMON */
+.rarity-uncommon {
+  color: #3b82f6;
+}
+
+/* RARE */
+.rarity-rare {
+  color: #f59e0b;
+  text-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
+}
+
+/* VERY RARE */
+.rarity-very-rare {
+  color: #22c55e;
+  text-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+}
+
+/* EPIC */
+.rarity-epic {
+  background: linear-gradient(
+    90deg,
+    #7c3aed,
+    #a855f7,
+    #7c3aed
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 8px rgba(168, 85, 247, 0.7);
+}
+
+.rarity-mitic {
+  background: linear-gradient(
+    90deg,
+    #ed3a3a,
+    #f75555,
+    #ed3a3a
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 8px rgba(247, 85, 85, 0.8);
+}
+
+.rarity-legendary {
+  color: #facc15;
+  text-shadow:
+    0 0 6px #facc15,
+    0 0 12px #eab308;
+}
+
+.rarity-legendary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-size: 20px 20px;
+
+}
+
+
+.rarity-supreme {
+  color: #741414;
+  text-shadow:
+    0 0 8px #ef4444,
+    0 0 16px #7f1d1d;
+}
+
+.rarity-supreme::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 100%, rgba(255,0,0,0.35), transparent 60%);
+  animation: fog-rise 3s ease-in-out infinite;
+}
+
+@keyframes fog-rise {
+  0%   { transform: translateY(6px); opacity: 0.4; }
+  50%  { opacity: 0.7; }
+  100% { transform: translateY(-6px); opacity: 0.3; }
+}
+
+.rarity-absolute {
+  background: linear-gradient(
+    90deg,
+    #4c1d95,
+    #000000,
+    #4c1d95
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+
+  text-shadow:
+    0 0 10px rgba(81, 30, 158, 0.9),
+    0 0 18px rgba(0,0,0,1);
+}
+
+
+.rarity-canvas {
+  position: absolute;
+  inset: -6px;
+  pointer-events: none;
+  z-index: -1;
+}
+
+
+
+/**/

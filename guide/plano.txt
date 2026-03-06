@@ -1,0 +1,9 @@
+### CARDS
+
+- Editar Token [X]
+- Aplicar recarga [X]
+- Exibir card usado no Chat de Batalha []
+- Desenvolver spell de ambiente
+- Como funcionaram VFX, SFX?
+
+Resultado = (Qd20 + CEIL(Q * P * ((A - 10)/2 + PF + O + CEIL(N * (((L - 10)/4 + 4 + ((M - 1)*((L - 10)/4 + 4)))/2))))) * CRI
