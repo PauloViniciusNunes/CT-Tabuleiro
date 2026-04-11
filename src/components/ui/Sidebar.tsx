@@ -9,12 +9,16 @@ import MusicList from "../music/MusicList";
 import { PencilLine } from "lucide-react";
 import type { Item, ItemRarity } from "../../types/item";
 import ItemCreateForm from "./ItemCreateForm";
+import CardEditForm from "./CardEditForm";
+import ItemEditForm from "./ItemEditForm";
 
 interface SidebarProps {
   tokens: Token[];
   tokenBeingEdited: Token | null,
   cards: Card[];
+  cardBeingEdited: Card | null,
   items: Item[];
+  itemBeingEdited: Item | null
   addToken: (token: Token) => void;
   updateToken: (token: Token) => void;
   onEditToken: (token: Token) => void;
@@ -22,8 +26,14 @@ interface SidebarProps {
   onCloseEditedToken: (token: Token | null) => void,
   removeToken: (tokenId: string) => void;
   addCard: (card: Card) => void;
+  onEditCard: (card: Card) => void;
+  onSaveEditedCard: (card: Card) => void;
+  onCloseEditedCard: (card: Card| null) => void;
   removeCard: (cardId: string) => void;
   addItem: (item: Item) => void;
+  onEditItem: (item: Item) => void;
+  onSaveEditedItem: (item: Item) => void;
+  onCloseEditedItem: (item: Item | null) => void;
   removeItem: (itemId: string) => void;
   battleHistory: (ActionChoice & { round: number; attackerName: string; targetName: string })[];
   // Controle de largura vindo do BoardPage (wrapper fixed right-0)
@@ -37,7 +47,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   tokens,
   tokenBeingEdited,
   cards,
+  cardBeingEdited,
   items,
+  itemBeingEdited,
   addToken,
   updateToken,
   onEditToken,
@@ -45,8 +57,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   onCloseEditedToken,
   removeToken,
   addCard,
+  onEditCard,
+  onSaveEditedCard,
+  onCloseEditedCard,
   removeCard,
   addItem,
+  onSaveEditedItem,
+  onCloseEditedItem,
+  onEditItem,
   removeItem,
   battleHistory,
   widthPx,
@@ -153,45 +171,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       window.removeEventListener("touchend", onTouchEnd);
     };
   }, []);
-
-  const renderInventory = (token: Token) => (
-    <div className="grid grid-cols-2 gap-2">
-      {(["primaryHand", "offHand", "neck", "ring", "armor"] as const).map((slot) => (
-        <div key={slot} className="flex flex-col">
-          <label className="text-xs text-gray-400 capitalize mb-1">{slot}</label>
-          <input
-            type="text"
-            value={token.inventory[slot] || ""}
-            placeholder="vazio"
-            className="p-1 rounded bg-gray-700 text-white text-sm"
-            onChange={(e) => {
-              const updated = {
-                ...token,
-                inventory: { ...token.inventory, [slot]: e.target.value },
-              };
-              updateToken(updated);
-            }}
-          />
-        </div>
-      ))}
-      <div className="flex flex-col col-span-2">
-        <label className="text-xs text-gray-400 mb-1">economy</label>
-        <input
-          type="number"
-          min={0}
-          value={token.inventory.economy}
-          className="p-1 rounded bg-gray-700 text-white text-sm"
-          onChange={(e) => {
-            const updated = {
-              ...token,
-              inventory: { ...token.inventory, economy: Number(e.target.value) },
-            };
-            updateToken(updated);
-          }}
-        />
-      </div>
-    </div>
-  );
 
   const formatActionHistory = (
     action: ActionChoice & { round: number; attackerName: string; targetName: string }
@@ -307,10 +286,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                             <PencilLine size={15}></PencilLine>
                           </button>
                         </div>
-                        <div className="bg-gray-700 p-2 rounded">
-                          <h3 className="text-sm text-white mb-1 text-center">Inventário</h3>
-                          {renderInventory(token)}
-                        </div>
                       </div>
                     ))
                   )}
@@ -374,6 +349,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                           >
                             ✕
                           </button>
+                          <button
+                            onClick={() => onEditCard(card)}
+                            title="Editar Card"
+                            className="text-gray-400 hover:text-gray-300 text-sm"
+                          >
+                            <PencilLine size={15}></PencilLine>
+                          </button>                          
+                          
                         </div>
 
                         {/* Rodapé técnico */}
@@ -456,6 +439,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                           >
                             ✕
                           </button>
+                          <button
+                            onClick={() => onEditItem(item)}
+                            title="Editar Item"
+                            className="text-gray-400 hover:text-gray-300 text-sm"
+                          >
+                            <PencilLine size={15}></PencilLine>
+                          </button>                          
                         </div>
 
                         {/* Rodapé técnico */}
@@ -562,6 +552,23 @@ const Sidebar: React.FC<SidebarProps> = ({
           items={items}
           onClose={() => onCloseEditedToken(null)}
           onSave={onSaveEditedToken}
+        />
+      )}
+
+      {cardBeingEdited && (
+        <CardEditForm
+          theseCard={cardBeingEdited}
+          onSave={onSaveEditedCard}
+          onClose={() => onCloseEditedCard}
+        />
+      )}
+
+      {itemBeingEdited && (
+        <ItemEditForm
+          availableCards={cards}
+          theseItem={itemBeingEdited}
+          onSave={onSaveEditedItem}
+          onClose={() => onCloseEditedItem}
         />
       )}
 

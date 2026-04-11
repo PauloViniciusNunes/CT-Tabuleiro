@@ -1,5 +1,5 @@
 import React, { useState, type ChangeEvent, type FormEvent } from "react";
-import type {TokenPrimaryElement, TokenPrimaryDisvantage} from "/home/paulon/Área de trabalho/Projetos/CT-Tabuleiro/src/types/effects.ts"
+import type {TokenPrimaryElement, TokenPrimaryDisvantage} from "../../types/effects.ts";
 import type {
   Token,
   TokenAttributes,
@@ -132,6 +132,7 @@ export const TokenEditForm: React.FC<TokenFormProps> = ({theseToken, onSave, onC
       status,
       team,
       class: tokenClass,
+      tokenCards: selfCards,
       cards: selfCards, // Aqui
       position: { col: theseToken.position.col, row: theseToken.position.row },
       bodytobodyRange: Math.max(1, bodytobodyRange),

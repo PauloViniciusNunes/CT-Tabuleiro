@@ -67,7 +67,10 @@ export interface Token {
   ocassionalAddition: TokenOccasionalAddition;
   proficiencies: TokenProficiencies;
   class: TokenClass;
+  
+  tokenCards: Card[];
   cards: Card[]; // AQUI
+
   inventory: TokenInventory;
   status: TokenStatus;
   team: TokenTeam;

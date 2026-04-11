@@ -1,5 +1,5 @@
 // /src/components/ui/ReactionPrompt.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import * as RadioGroup from "@radix-ui/react-radio-group";
 import * as Switch from "@radix-ui/react-switch";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -7,6 +7,7 @@ import { Shield, Swords, Zap, XCircle, CheckCircle2, Brain, Book} from "lucide-r
 import { GiDiceTwentyFacesTwenty} from "react-icons/gi";
 import type { Token } from "../../types/token";
 import type { RollResult } from "../../types/battle";
+import { type Item } from "../../types/item";
 import {
   calculateDistance,
   isInAttackRange,
@@ -49,6 +50,7 @@ export interface ReactionPromptProps {
     usedActions: number,
     usedCertaintyDie?: boolean,
     roll?: number | RollResult,
+    item?: Item | null,
   ) => void;
 
   // Paralisia/lock
@@ -194,9 +196,27 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
   const [usedActions, setUsedActions] = useState<number>(1);
   const [usedMana, setUsedMana] = useState<number>(0);
   const [useCertaintyDie, setUseCertaintyDie] = useState<boolean>(false);
-  const [currentRoll, setCurrentRoll] = useState<number | RollResult | undefined>(
-    undefined
-  );
+
+  const equippedItems: Item[] = [
+    actor?.inventory.primaryHand,
+    actor?.inventory.offHand,
+    actor?.inventory.neck,
+    actor?.inventory.ring,
+    actor?.inventory.armor,
+  ]
+  .filter(Boolean) as Item[];
+
+  const commonItems: Item[] = actor?.inventory.commonSlot ?? []; // Atualizar, para itens específicos usáveis na mochila
+  const availableItems: Item[] = [...equippedItems];  
+
+  // Selecionar item
+  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const [itemCoerentAdd, setItemCoerentAdd] = useState<boolean>(false);
+  useEffect(() => {
+    const r = selectedAttribute;
+    const s = r === selectedItem?.atributeToOcasionalAdd ? true : false;
+    setItemCoerentAdd(s);
+  },[selectedItem, selectedAttribute]);
 
   const maxAvailableActions = useMemo(
     () => Math.max(1, availableActions),
@@ -278,7 +298,7 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
         PF: actor.proficiencies[selectedAttribute!]
           ? Math.ceil((actor.attributes.level - 10) / 4 + 4)
           : 0,
-        O: 0,
+        O: itemCoerentAdd ? (selectedItem?.ocasionalAdd ?? 0) : 0,
         N: usedMana > 0 ? 1 : 0,
         L: actor.attributes.level,
         M: usedMana,
@@ -292,7 +312,8 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
         usedMana,
         usedActions,
         useCertaintyDie || undefined,
-        rollResult
+        rollResult,
+        selectedItem,
       );
     }
   }
@@ -339,6 +360,33 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
         <p className="mt-2 text-xs text-gray-400">
           {reactionTypeLabel} — {attributeDescriptions[selectedAttribute ?? ""] ?? ""}
         </p>
+        </div>
+        
+        {/* Item */}
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">
+            Item 
+          </label>
+
+          <select
+            value={selectedItem?.id ?? ""}
+            onChange={(e) => {
+              const item =
+                availableItems.find(i => i.id === e.target.value) ?? null;
+
+              setSelectedItem(item);
+            }}
+
+            className={`w-full p-2 rounded ${itemCoerentAdd ? "bg-gray-700" : "bg-red-700"} text-white border ${itemCoerentAdd ? "border-gray-600" : "border-red-600"} border-gray-600 text-sm`}
+          >
+            <option value="">Nenhum item</option>
+
+            {availableItems.map(item => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

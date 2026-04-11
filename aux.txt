@@ -1,3 +1,17 @@
+Próximas atualizações
 
-roll [[1]]d[[20]] + floor((1+0)*((@{selected|l1mancer_status}-0)*24  + 0*(ceil(@{selected|l1mancer_status}-10)/4 +4)))
-
+1  - Arrastar otimizado para Vertical + Horizontal
+2  - Botão dev de gerar Doll Cards para teste de interface.
+3  - Botão de pesquisar por card em CardForm.
+4  - Desenvolver restantes dos efeitos.
+5  - VFX para Items.
+7  - Transformações de tokens (inclusão de novos tipos em token.tsx).
+8  - Efeito sonoros para items.
+9  - Remoção de itens nos slots principais de volta para o inventário.( Otimizando swapItemInInventory)
+10 - Atualizar/Editar Cards ou Items implica na atualização em todos os tokens que possuem esses Cards ou Items.
+11 - Atualização do XP automaticamente.
+12 - Criação de AtributeAtributionForm
+13 - Bots de batalha
+14 - Objetos do tipo parede e objetos do tipo baú
+15 - Gerador de labirintos
+14 - Multiusuário

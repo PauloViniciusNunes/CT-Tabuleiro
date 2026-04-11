@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import type { Token } from "../../types/token";
 import type { ActionChoice } from "../../types/battle";
 import { calculateDistance, isInAttackRange, calculateActionRoll } from "../../utils/battleCalculations";
 import { Swords, Sword, Brain, Book, Zap, Sparkles} from "lucide-react";
 import { GiDiceTwentyFacesTwenty, GiCardRandom} from "react-icons/gi";
+import { type Item } from "../../types/item";
 
 
 type AttackAttr = "ataque_fisico" | "surpreender" | "desnortear" | "previnir" | "mana_recover" | "card_selection";
@@ -19,6 +20,7 @@ interface ActionFormProps {
       usedCertaintyDie?: boolean;
       pos: number;
       actionType: string;
+      item: Item | null;
     }
   ) => void;
 
@@ -37,7 +39,7 @@ const ActionForm: React.FC<ActionFormProps> = ({
   possibleTargets,
   isResponseAttack,
   hidePass,
-  restrictedMode
+  restrictedMode,
 }) => {
   const [selectedAction, setSelectedAction] = useState<AttackAttr | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
@@ -45,6 +47,30 @@ const ActionForm: React.FC<ActionFormProps> = ({
   const [usedActions, setUsedActions] = useState<number>(1);
   const [pos, setPos] = useState<number>(1);
   const willBeResponse = selectedTarget ? !!isResponseAttack?.(selectedTarget, usedMana) : false;
+
+  const equippedItems: Item[] = [
+    token.inventory.primaryHand,
+    token.inventory.offHand,
+    token.inventory.neck,
+    token.inventory.ring,
+    token.inventory.armor,
+  ]
+  .filter(Boolean) as Item[];
+
+  const commonItems: Item[] = token.inventory.commonSlot ?? []; // Atualizar, para itens específicos usáveis na mochila
+  const availableItems: Item[] = [...equippedItems];
+
+  // Selecionar item
+  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const [itemCoerentAdd, setItemCoerentAdd] = useState<boolean>(false);
+  const itemOcasionalAdd = useRef<number>(0);
+  useEffect(() => {
+    itemOcasionalAdd.current = (selectedItem?.ocasionalAdd ?? 0);
+    const r = selectedAction === "ataque_fisico" ? "forca": (selectedAction === "desnortear" ? "sabedoria": (selectedAction === "previnir" ? "inteligencia" : "destreza"));
+    const s = r === selectedItem?.atributeToOcasionalAdd ? true : false;
+    setItemCoerentAdd(s);
+    console.log(`Adição ocasional do item: ${itemOcasionalAdd.current}`);
+  },[selectedItem, selectedAction]);
 
   // Dado Certo
   const [usedCertaintyDie, setUsedCertaintyDie] = useState<boolean>(false);
@@ -73,10 +99,13 @@ const ActionForm: React.FC<ActionFormProps> = ({
     setSelectedTarget(null); // desmarca quando fica oculto
   }
 }, [selectedAction]);
+
   const handleExecute = () => {
     if (!isFormValid) return;
 
     const respectiveAtribute = selectedAction === "ataque_fisico" ? "forca": (selectedAction === "desnortear" ? "sabedoria": (selectedAction === "previnir" ? "inteligencia" : "destreza"));
+    
+
 
     const params = {
       tokenId: token.id,
@@ -93,17 +122,18 @@ const ActionForm: React.FC<ActionFormProps> = ({
 
     const actionType = selectedAction === "ataque_fisico" ? "Ataque Físico": (selectedAction === "desnortear" ? "Desnortear": (selectedAction === "previnir" ? "Previnir" : (selectedAction === "surpreender" ? "Surpreender" : (selectedAction === "mana_recover" ? "Recarga de Mana" : "Seleção de Card"))));
 
-    onExecute({
-      attribute: respectiveAtribute!,
-      type: actionType,
-      targetId: selectedTarget!,
-      usedMana,
-      usedActions,
-      usedCertaintyDie,
-      pos,
-      rollResult,
-      actionType: selectedAction
-    });
+  onExecute({
+    attribute: respectiveAtribute!,
+    type: actionType,
+    targetId: selectedTarget!,
+    usedMana,
+    usedActions,
+    usedCertaintyDie,
+    pos,
+    rollResult,
+    actionType: selectedAction,
+    item: selectedItem // novo campo
+  });
 
     setUsedCertaintyDie(false);
     setUsedMana(0);
@@ -255,6 +285,33 @@ const ActionForm: React.FC<ActionFormProps> = ({
             }`}
           />
         </div>
+
+      {/* Item */}
+      <div>
+        <label className="block text-xs text-gray-400 mb-1">
+          Item 
+        </label>
+
+        <select
+          value={selectedItem?.id ?? ""}
+          onChange={(e) => {
+            const item =
+              availableItems.find(i => i.id === e.target.value) ?? null;
+
+            setSelectedItem(item);
+          }}
+
+          className={`w-full p-2 rounded ${itemCoerentAdd ? "bg-gray-700" : "bg-red-700"} text-white border ${itemCoerentAdd ? "border-gray-600" : "border-red-600"} border-gray-600 text-sm`}
+        >
+          <option value="">Nenhum item</option>
+
+          {availableItems.map(item => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+      </div>
 
         {/* Mana Usada */}
         {selectedAction !== "mana_recover" && selectedAction !== "card_selection" &&  (
