@@ -5,6 +5,8 @@ import BattlePanel from "../components/ui/BattlePanel";
 import StatusBars from "../components/ui/StatusBars";
 import ActionForm from "../components/ui/ActionForm";
 import ReactionPrompt from "../components/ui/ReactionPrompt";
+import CinematicDisplayNameUI from "../components/ui/Introduction";
+
 
 import DefenseResolutionForm from "../components/ui/DefenseResolutionForm";
 import { calculateCardRoll, calculateDistance, isInAttackRange, sum } from "../utils/battleCalculations";
@@ -96,6 +98,7 @@ const BoardPage: React.FC = () => {
 
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [introdutionAnimation, setIntroductionAnimation] = useState<boolean>(false);
 
   useEffect(() => {
     audioRef.current = new Audio();
@@ -4486,6 +4489,7 @@ const BoardPage: React.FC = () => {
           itemBeingEdited={itemBeingEdited}
           addItem={addItem}
           removeItem={removeItem}
+          setIntroduction={setIntroductionAnimation}
           battleHistory={battleState.actionHistory
             .filter((act) => act.round !== undefined)
             .map((act) => {
@@ -4808,6 +4812,10 @@ const BoardPage: React.FC = () => {
           />
         )
       })()}
+
+      {introdutionAnimation && (
+        <CinematicDisplayNameUI/>
+      )}
 
     </div>
   );

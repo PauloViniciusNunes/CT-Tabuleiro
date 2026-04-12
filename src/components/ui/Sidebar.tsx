@@ -34,6 +34,7 @@ interface SidebarProps {
   onEditItem: (item: Item) => void;
   onSaveEditedItem: (item: Item) => void;
   onCloseEditedItem: (item: Item | null) => void;
+  setIntroduction: (b: boolean) => void;
   removeItem: (itemId: string) => void;
   battleHistory: (ActionChoice & { round: number; attackerName: string; targetName: string })[];
   // Controle de largura vindo do BoardPage (wrapper fixed right-0)
@@ -66,6 +67,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onCloseEditedItem,
   onEditItem,
   removeItem,
+  setIntroduction,
   battleHistory,
   widthPx,
   onWidthChange,
@@ -515,6 +517,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                       disabled
                     >
                       Filtrar
+                    </button>
+                    <button
+                      className="px-4 py-2 bg-purple-600 hover:bg-green-700 rounded text-white text-sm font-bold flex-shrink-0"
+                      onClick={() => setIntroduction(true)}
+                    >
+                      Exibir Tela
                     </button>
                   </div>
               </div>
