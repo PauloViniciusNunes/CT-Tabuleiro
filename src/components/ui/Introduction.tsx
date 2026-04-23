@@ -1,10 +1,13 @@
 import { motion } from "framer-motion";
 
-export default function CinematicDisplayNameUI() {
+interface CDNProps {
+  onEnd: (b: boolean) => void;
+}
 
-  const name = "CODORIUS, O TITÃ";
+export default function CinematicDisplayNameUI({ onEnd }: CDNProps) {
 
-  // controla o tamanho dinamicamente
+  const name = "ATLAS BLACKOUT";
+
   const baseSize = 120;
 
   const fontSize =
@@ -17,12 +20,28 @@ export default function CinematicDisplayNameUI() {
 
   return (
 
-    <div className="
-      fixed inset-0
-      flex items-center justify-center
-      bg-black
-      z-[9999]
-    ">
+    <motion.div
+      className="
+        fixed inset-0
+        flex items-center justify-center
+        bg-black
+        z-[9999]
+      "
+
+      initial={{ opacity: 1 }}
+
+      animate={{ opacity: 0 }}
+
+      transition={{
+        delay: 15,        // tempo total antes do fade
+        duration: 2.5,    // duração do fade
+        ease: "easeInOut"
+      }}
+
+      onAnimationComplete={() => {
+        onEnd(true);
+      }}
+    >
 
       <svg
         viewBox={`0 0 ${Math.max(1200, estimatedLength)} 200`}
@@ -43,10 +62,10 @@ export default function CinematicDisplayNameUI() {
           fontFamily="Cinzel, serif"
           fontWeight="bold"
 
-          fill="#af3535"
+          fill="#000000"
           fillOpacity={0}
 
-          stroke="#830f0f"
+          stroke="#971e91"
           strokeWidth="2"
 
           initial={{
@@ -76,9 +95,9 @@ export default function CinematicDisplayNameUI() {
             letterSpacing: "0.05em",
 
             filter: `
-              drop-shadow(0 0 6px #ffffff)
-              drop-shadow(0 0 12px rgb(236, 17, 17))
-              drop-shadow(0 0 20px rgb(247, 30, 23))
+              drop-shadow(0 0 6px #5e3f7c)
+              drop-shadow(0 0 12px rgb(214, 69, 228))
+              drop-shadow(0 0 20px rgb(219, 54, 197))
             `
           }}
 
@@ -89,7 +108,7 @@ export default function CinematicDisplayNameUI() {
 
       </svg>
 
-    </div>
+    </motion.div>
 
   );
 

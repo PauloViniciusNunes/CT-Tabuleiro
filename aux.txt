@@ -1,7 +1,6 @@
 Próximas atualizações
 
-1  - Arrastar otimizado para Vertical + Horizontal
-2  - Botão dev de gerar Doll Cards para teste de interface.
+
 3  - Botão de pesquisar por card em CardForm.
 4  - Desenvolver restantes dos efeitos.
 5  - VFX para Items.

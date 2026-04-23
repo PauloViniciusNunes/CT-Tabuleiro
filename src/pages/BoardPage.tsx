@@ -6,7 +6,8 @@ import StatusBars from "../components/ui/StatusBars";
 import ActionForm from "../components/ui/ActionForm";
 import ReactionPrompt from "../components/ui/ReactionPrompt";
 import CinematicDisplayNameUI from "../components/ui/Introduction";
-
+import { type Mapa } from "../types/mapas";
+import MapSelect from "../components/ui/MapSelect";
 
 import DefenseResolutionForm from "../components/ui/DefenseResolutionForm";
 import { calculateCardRoll, calculateDistance, isInAttackRange, sum } from "../utils/battleCalculations";
@@ -42,7 +43,7 @@ import OffensiveCardResolution from "../components/ui/OffensiveCardResolution";
 import type { ActionRollParams } from "../types/battle";
 import InventoryUI from "../components/ui/Inventory";
 import { type MusicContextType } from "../components/context/MusicContext";
-import { type DJEffects } from "../components/context/MusicContext";
+
 
 const getColumnName = (num: number): string => {
   let name = "";
@@ -95,7 +96,6 @@ const BoardPage: React.FC = () => {
 
   /* Audio Resolution */
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [introdutionAnimation, setIntroductionAnimation] = useState<boolean>(false);
@@ -116,42 +116,82 @@ const BoardPage: React.FC = () => {
       a.pause();
     };
   }, []);
-
-  function playTrack(track: Track) {
-    const a = audioRef.current;
-    if (!a) return;
-
-    const isSame = currentTrack?.id === track.id;
-
-    if (!isSame) {
-      a.src = track.url;
-      a.currentTime = 0;
-      a.play()
-        .then(() => {
-          setCurrentTrack(track);
-          setIsPlaying(true);
-        })
-        .catch(() => {
-          setCurrentTrack(null);
-          setIsPlaying(false);
-        });
-      return;
-    }
-
-    if (isPlaying) {
-      a.pause();
-      setIsPlaying(false);
-    } else {
-      a.play().then(() => setIsPlaying(true));
-    }
-  }
-
-
   /* * */
 
   const [rows, setRows] = useState(25);
   const [cols, setCols] = useState(25);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef({ x: 0, y: 0 });
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 2) { // botão direito
+      e.preventDefault();
+      setIsPanning(true);
+      panStart.current = {
+        x: e.clientX - pan.x,
+        y: e.clientY - pan.y,
+      };
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isPanning) return;
+
+    setPan({
+      x: e.clientX - panStart.current.x,
+      y: e.clientY - panStart.current.y,
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsPanning(false);
+  };  
+
+  const [mapas, setMapas] = useState<Mapa[]>([]);
+  const [selectedMapa, setSelectedMapa] = useState<Mapa | undefined>(undefined);
+  const [isMapSelectOpen, setIsMapSelectOpen] = useState(false);
+
+  const handleSelectMapa = (mapa: Mapa) => {
+    setSelectedMapa(mapa);
+
+    setRows(mapa.rows);
+    setCols(mapa.cols);
+    setBackgroundImage(mapa.img);
+
+    setIsMapSelectOpen(false);
+  };  
+
+  const handleCreateMapa = () => {
+    const newMapa: Mapa = {
+      id: crypto.randomUUID(),
+      name: `Mapa ${mapas.length + 1}`,
+      rows: 25,
+      cols: 25,
+      img: "" // ou imagem padrão
+    };
+
+    setMapas(prev => [...prev, newMapa]);
+    setSelectedMapa(newMapa);
+
+    // reset configs
+    setRows(10);
+    setCols(10);
+    setBackgroundImage("");
+
+    setIsMapSelectOpen(false);
+  };  
+ 
+  useEffect(() => {
+    if (!selectedMapa) return;
+
+    setRows(selectedMapa.rows);
+    setCols(selectedMapa.cols);
+    setBackgroundImage(selectedMapa.img);
+  }, [selectedMapa]);
+
+
+  
   type GridCell = {
     row: number;
     col: number;
@@ -172,6 +212,24 @@ const BoardPage: React.FC = () => {
   const [selectedCell, setSelectedCell] = useState<string | null>(null);
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedMapa) return;
+
+    setMapas(prev =>
+      prev.map(m =>
+        m.id === selectedMapa.id
+          ? {
+              ...m,
+              rows,
+              cols,
+              img: (backgroundImage ?? ""),
+            }
+          : m
+      )
+    );
+  }, [rows, cols, backgroundImage]);
+
   const [zoom, setZoom] = useState(1);
   const [didActThisTurn, setDidActThisTurn] = useState<Record<string, boolean>>({});
   const [shouldAdvanceTurn, setShouldAdvanceTurn] = useState(false);
@@ -259,11 +317,6 @@ const BoardPage: React.FC = () => {
     };
   }
 
-
-
-
-
-
   function IsTokenInCardInstanceRange(token: Token, cardInstance: CardEntityInstance) {
     const dx = Math.abs(token.position.col - cardInstance.position.col);
     const dy = Math.abs(token.position.row - cardInstance.position.row);
@@ -281,7 +334,6 @@ const BoardPage: React.FC = () => {
       )
     };
   }
-
 
   function applyCardEntityEffect() {
     cardEntities.forEach((c) => {
@@ -346,7 +398,6 @@ const BoardPage: React.FC = () => {
     setCardEntities(prev => [...prev, instance]);
   }
 
-
   function applyCardEntityEffectToToken(
     cardEntity: CardEntityInstance,
     targetToken: Token
@@ -355,7 +406,6 @@ const BoardPage: React.FC = () => {
     if (targetToken.team === cardEntity.friendlyTeam) return;
 
     const triggerToken = boardTokens.find(t => t.id === cardEntity.triggerId);
-
     const tokenProficiency = Math.ceil(
       (((triggerToken?.attributes.level ?? 1) - 10) / 4) + 4
     );
@@ -377,9 +427,7 @@ const BoardPage: React.FC = () => {
 
 
   const [prevReaction, setPrevReaction] = useState<Record<string, string>>({});
-
   const [lastAllUsedResponse, setLastAllUsedResponse] = useState<Record<string, boolean>>({});
-
   const [postParalyse, setPostParalyse] = useState<{
     responderId: string;
     forcedId: string;
@@ -387,7 +435,6 @@ const BoardPage: React.FC = () => {
   } | null>(null);
 
   const lastTurnKeyRef = useRef<string>("");
-
   const [pendingFreeResponse, setPendingFreeResponse] = useState<{
     responderId: string;  // quem ganhou a ação livre
     paralyzedId: string;  // quem ficou sem poder reagir a este próximo ataque
@@ -399,13 +446,7 @@ const BoardPage: React.FC = () => {
     reactionType: "destreza";
   } | null>(null);
 
-
-
-
-
   const isAdvancingTurnRef = useRef(false);
-
-
 
   const [createdTokens, setCreatedTokens] = useState<Token[]>([]);
   const [createdItems, setCreatedItems] = useState<Item[]>([])
@@ -4190,6 +4231,12 @@ const BoardPage: React.FC = () => {
           <div className="ml-4 font-semibold text-blue-400 whitespace-nowrap">
             Zoom: {Math.round(zoom * 100)}%
           </div>
+          <button
+            onClick={() => setIsMapSelectOpen(true)}
+            className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-sm"
+          >
+            Mapas
+          </button>
         </div>
 
 
@@ -4207,195 +4254,289 @@ const BoardPage: React.FC = () => {
         )}
 
 
-        {/* Grid */}
-        <div style={{ paddingTop: 48 }}>
-          <div className="flex ml-10 relative" style={{ userSelect: "none" }}>
-            {letters.map((l) => (
-              <div key={l} style={{ width: cellSize, height: cellSize, position: "relative", flexShrink: 0 }}>
-                <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", fontWeight: 700, fontSize: 14 * zoom }}>
-                  {l}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="flex">
-            <div className="flex flex-col select-none">
-              {Array.from({ length: rows }, (_, i) => (
-                <div key={i} style={{ width: cellSize, height: cellSize, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 * zoom, fontWeight: 700 }}>
-                  {i + 1}
-                </div>
-              ))}
+{/* VIEWPORT */}
+<div
+  className="w-full h-full overflow-hidden cursor-grab"
+  onMouseDown={handleMouseDown}
+  onMouseMove={handleMouseMove}
+  onMouseUp={handleMouseUp}
+  onMouseLeave={handleMouseUp}
+  onContextMenu={(e) => e.preventDefault()}
+  style={{ position: "relative" }}
+>
+  {/* WORLD */}
+  <div
+    style={{
+      transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+      transformOrigin: "top left",
+      position: "absolute",
+      left: 0,
+      top: 0,
+    }}
+  >
+    <div style={{ paddingTop: 48 }}>
+      {/* Header letras */}
+      <div className="flex ml-10 relative" style={{ userSelect: "none" }}>
+        {letters.map((l) => (
+          <div
+            key={l}
+            style={{
+              width: cellSize,
+              height: cellSize,
+              position: "relative",
+              flexShrink: 0,
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                fontWeight: 700,
+                fontSize: 14,
+              }}
+            >
+              {l}
             </div>
-            <div className="grid relative overflow-hidden" style={{ gridTemplateColumns: `repeat(${cols}, ${cellSize}px)`, backgroundImage: backgroundImage ? `url(${backgroundImage})` : undefined, backgroundSize: "100% 100%", backgroundRepeat: "no-repeat", backgroundPosition: "center center" }}>
+          </div>
+        ))}
+      </div>
 
-              {Array.from({ length: rows }, (_, row) =>
-                letters.map((l) => {
-                  const coord = `${l}${row + 1}`;
-                  const isSel = coord === selectedCell;
-                  const tok = boardTokens.find(
-                    (t) =>
-                      t.position.col === letters.indexOf(l) + 1 &&
-                      t.position.row === row + 1
-                  );
+      <div className="flex">
+        {/* Coluna números */}
+        <div className="flex flex-col select-none">
+          {Array.from({ length: rows }, (_, i) => (
+            <div
+              key={i}
+              style={{
+                width: cellSize,
+                height: cellSize,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 14,
+                fontWeight: 700,
+              }}
+            >
+              {i + 1}
+            </div>
+          ))}
+        </div>
 
-                  const cardInstances = cardEntities.find((c) =>
-                    c.position.col === letters.indexOf(l) + 1 &&
-                    c.position.row === row + 1);
+        {/* GRID */}
+        <div
+          className="grid relative"
+          style={{
+            gridTemplateColumns: `repeat(${cols}, ${cellSize}px)`,
+            backgroundImage: backgroundImage
+              ? `url(${backgroundImage})`
+              : undefined,
+            backgroundSize: "100% 100%",
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "center",
+          }}
+        >
+          {Array.from({ length: rows }, (_, row) =>
+            letters.map((l) => {
+              const coord = `${l}${row + 1}`;
+              const colIndex = letters.indexOf(l) + 1;
 
-                  const effectClasses = tok
-                    ? getTokenVisualEffects(tok).classes
-                    : [];
+              const isSel = coord === selectedCell;
 
-                  const effectOverlays = tok
-                    ? getTokenVisualEffects(tok).overlays
-                    : [];
-                  const inB = battleState.status === "In Battle";
-                  const isCurr = tok?.id === currentId;
-                  const isTokSel = tok?.id === selectedTokenId;
-                  return (
-                    <div
-                      key={coord}
-                      onClick={() => handleCellClick(l, row + 1, tok)}
-                      className={[
-                        "border border-gray-700 flex items-center justify-center cursor-pointer transition-colors duration-150 relative",
-                        isSel
-                          ? "border-green-400 shadow-[0_0_10px_2px_rgba(34,197,94,0.7)]"
-                          : "hover:bg-gray-800",
-                        previewCells.has(`${letters.indexOf(l) + 1}-${row + 1}`)
-                          ? "bg-red-500/30 border-red-400"
-                          : "",
-                      ].join(" ")}
-                      style={{ width: cellSize, height: cellSize }}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const id = e.dataTransfer.getData("tokenId");
-                        const fromLib = e.dataTransfer.getData("fromLibrary") === "true";
-                        if (fromLib) {
-                          placeTokenOnBoard(id, letters.indexOf(l) + 1, row + 1);
-                        } else if (id === currentId) {
-                          moveTokenOnBoard(id, letters.indexOf(l) + 1, row + 1);
-                        }
-                      }}
-                    >
+              const tok = boardTokens.find(
+                (t) =>
+                  t.position.col === colIndex &&
+                  t.position.row === row + 1
+              );
 
-                      {tok && (
-                        <div className="relative w-full h-full flex items-center justify-center">
+              const cardInstances = cardEntities.find(
+                (c) =>
+                  c.position.col === colIndex &&
+                  c.position.row === row + 1
+              );
 
-                          {inB &&
-                            tok.currentLife !== undefined &&
-                            tok.maxLife !== undefined &&
-                            tok.currentMana !== undefined &&
-                            tok.maxMana !== undefined && (
-                              <StatusBars
-                                currentLife={tok.currentLife}
-                                maxLife={tok.maxLife}
-                                currentMana={tok.currentMana}
-                                maxMana={tok.maxMana}
-                                teamColor={tok.team}
-                              />
-                            )}
+              const effectClasses = tok
+                ? getTokenVisualEffects(tok).classes
+                : [];
 
-                          {tok.visualOverlays?.map(o => {
-                            console.log("Overlay GIF:", o.gifPath);
-                            console.log("Overlay Size: ", o.size);
-                            return (
-                              <div
-                                key={o.id}
-                                className={o.type} // "overlay-explosao-area"
-                                style={{
-                                  position: "absolute",
-                                  width: o.size,
-                                  height: o.size,
-                                  left: "50%",
-                                  top: "50%",
-                                  transform: "translate(-50%, -50%)",
+              const effectOverlays = tok
+                ? getTokenVisualEffects(tok).overlays
+                : [];
 
-                                  backgroundImage: `url(${o.gifPath})`,
-                                  backgroundSize: "cover",
-                                  backgroundRepeat: "no-repeat",
-                                  backgroundPosition: "center",
+              const inB = battleState.status === "In Battle";
+              const isCurr = tok?.id === currentId;
+              const isTokSel = tok?.id === selectedTokenId;
 
-                                  zIndex: 30
-                                }}
-                              />
-                            )
-                          })}
+              return (
+                <div
+                  key={coord}
+                  onClick={() => handleCellClick(l, row + 1, tok)}
+                  className={[
+                    "border border-gray-700 flex items-center justify-center cursor-pointer transition-colors duration-150 relative",
+                    isSel
+                      ? "border-green-400 shadow-[0_0_10px_2px_rgba(34,197,94,0.7)]"
+                      : "hover:bg-gray-800",
+                    previewCells.has(`${colIndex}-${row + 1}`)
+                      ? "bg-red-500/30 border-red-400"
+                      : "",
+                  ].join(" ")}
+                  style={{
+                    width: cellSize,
+                    height: cellSize,
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const id = e.dataTransfer.getData("tokenId");
+                    const fromLib =
+                      e.dataTransfer.getData("fromLibrary") === "true";
 
-
-
-                          {effectOverlays.map((ov) => (
-                            <div key={ov.id} className={`${ov.className} absolute inset-0 z-20`}></div>
-                          ))}
-                          <img
-                            src={tok.imageUrl}
-                            alt={tok.name}
-                            className={[
-                              "absolute rounded object-cover transition-filter duration-200",
-                              ...effectClasses,
-                              isCooling && tok.id === selectedTokenId ? "filter grayscale" : "",
-                              getParalysis(tok.id) !== "none" ? "animate-white-blink" : "",
-                            ].join(" ")}
-                            draggable={tok?.id === currentId}
-                            onDragStart={(e) => {
-                              const isTokenArrested = boardTokens.some(
-                                (t) =>
-                                  t.id === tok?.id &&
-                                  Array.isArray(t.tokenEffects) &&
-                                  t.tokenEffects.some((eff) => eff.effectType === "preso")
-                              );
-
-                              if (tok?.id !== currentId || isTokenArrested) return;
-                              e.dataTransfer.setData("tokenId", tok.id);
-                              e.dataTransfer.setData("fromLibrary", "false");
-                            }}
-                            style={{
-                              width: cellSize * 0.95,
-                              height: cellSize * 0.95,
-                              zIndex: 2,
-                              ...(inB
-                                ? {
-                                  boxShadow: isCurr
-                                    ? `0 0 15px 4px ${teamGlowColors[tok.team]}, 0 0 25px 6px rgba(255,255,255,0.8)`
-                                    : `0 0 10px 3px ${teamGlowColors[tok.team]}`,
-                                  border: isCurr ? "2px solid white" : "none",
-                                }
-                                : isTokSel
-                                  ? {
-                                    boxShadow: "0 0 10px 3px rgba(34,197,94,0.8)",
-                                    border: "2px solid #22c55e",
-                                  }
-                                  : {}),
-                            }}
+                    if (fromLib) {
+                      placeTokenOnBoard(id, colIndex, row + 1);
+                    } else if (id === currentId) {
+                      moveTokenOnBoard(id, colIndex, row + 1);
+                    }
+                  }}
+                >
+                  {tok && (
+                    <div className="relative w-full h-full flex items-center justify-center">
+                      {inB &&
+                        tok.currentLife !== undefined &&
+                        tok.maxLife !== undefined &&
+                        tok.currentMana !== undefined &&
+                        tok.maxMana !== undefined && (
+                          <StatusBars
+                            currentLife={tok.currentLife}
+                            maxLife={tok.maxLife}
+                            currentMana={tok.currentMana}
+                            maxMana={tok.maxMana}
+                            teamColor={tok.team}
                           />
-                        </div>
-                      )}
+                        )}
 
-                      {cardInstances && (
+                      {tok.visualOverlays?.map((o) => (
                         <div
-                          className="absolute pointer-events-none"
+                          key={o.id}
+                          className={o.type}
                           style={{
-                            width: (cardInstances.pivotSettings.range * 2 + 1) * cellSize,
-                            height: (cardInstances.pivotSettings.range * 2 + 1) * cellSize,
-                            zIndex: 1,
+                            position: "absolute",
+                            width: o.size,
+                            height: o.size,
                             left: "50%",
                             top: "50%",
                             transform: "translate(-50%, -50%)",
+                            backgroundImage: `url(${o.gifPath})`,
+                            backgroundSize: "cover",
+                            backgroundRepeat: "no-repeat",
+                            backgroundPosition: "center",
+                            zIndex: 30,
                           }}
-                        >
-                          <img
-                            src={cardInstances.pivotSettings.areaImgUrl}
-                            className="w-full h-full object-cover rounded"
-                          />
-                        </div>
-                      )}
+                        />
+                      ))}
+
+                      {effectOverlays.map((ov) => (
+                        <div
+                          key={ov.id}
+                          className={`${ov.className} absolute inset-0 z-20`}
+                        />
+                      ))}
+
+                      <img
+                        src={tok.imageUrl}
+                        alt={tok.name}
+                        className={[
+                          "absolute rounded object-cover transition-filter duration-200",
+                          ...effectClasses,
+                          isCooling && tok.id === selectedTokenId
+                            ? "filter grayscale"
+                            : "",
+                          getParalysis(tok.id) !== "none"
+                            ? "animate-white-blink"
+                            : "",
+                        ].join(" ")}
+                        draggable={tok?.id === currentId}
+                        onDragStart={(e) => {
+                          const isTokenArrested = boardTokens.some(
+                            (t) =>
+                              t.id === tok?.id &&
+                              Array.isArray(t.tokenEffects) &&
+                              t.tokenEffects.some(
+                                (eff) => eff.effectType === "preso"
+                              )
+                          );
+
+                          if (
+                            tok?.id !== currentId ||
+                            isTokenArrested
+                          )
+                            return;
+
+                          e.dataTransfer.setData("tokenId", tok.id);
+                          e.dataTransfer.setData(
+                            "fromLibrary",
+                            "false"
+                          );
+                        }}
+                        style={{
+                          width: cellSize * 0.95,
+                          height: cellSize * 0.95,
+                          zIndex: 2,
+                          ...(inB
+                            ? {
+                                boxShadow: isCurr
+                                  ? `0 0 15px 4px ${teamGlowColors[tok.team]}, 0 0 25px 6px rgba(255,255,255,0.8)`
+                                  : `0 0 10px 3px ${teamGlowColors[tok.team]}`,
+                                border: isCurr
+                                  ? "2px solid white"
+                                  : "none",
+                              }
+                            : isTokSel
+                            ? {
+                                boxShadow:
+                                  "0 0 10px 3px rgba(34,197,94,0.8)",
+                                border: "2px solid #22c55e",
+                              }
+                            : {}),
+                        }}
+                      />
                     </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
+                  )}
+
+                  {cardInstances && (
+                    <div
+                      className="absolute pointer-events-none"
+                      style={{
+                        width:
+                          (cardInstances.pivotSettings.range * 2 + 1) *
+                          cellSize,
+                        height:
+                          (cardInstances.pivotSettings.range * 2 + 1) *
+                          cellSize,
+                        zIndex: 1,
+                        left: "50%",
+                        top: "50%",
+                        transform: "translate(-50%, -50%)",
+                      }}
+                    >
+                      <img
+                        src={cardInstances.pivotSettings.areaImgUrl}
+                        className="w-full h-full object-cover rounded"
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+        {/* Grid */}
+
 
         {/* OVERLAY DE PREVIEW */}
 
@@ -4814,15 +4955,24 @@ const BoardPage: React.FC = () => {
       })()}
 
       {introdutionAnimation && (
-        <CinematicDisplayNameUI/>
+        <CinematicDisplayNameUI
+          onEnd={(b) => setIntroductionAnimation(!b)}
+        />
       )}
+
+      {isMapSelectOpen && (
+        <MapSelect
+          mapas={mapas}
+          selectedMapa={selectedMapa}
+          onChoice={handleSelectMapa}
+          onCreateNew={handleCreateMapa}
+          onClose={() => setIsMapSelectOpen(false)}
+        />
+      )}      
 
     </div>
   );
 };
-
-//            availableActions={battleState.accumulatedActions[pendingAttack.targetId] ?? 1}
-//            availableMana={boardTokens.find((t) => t.id === pendingAttack.targetId)?.currentMana ?? 0}
 
 export { BoardPage };
 export default BoardPage;
