@@ -1,19 +1,18 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import SettingsDropdown from "../components/ui/SettingsDropdown";
 import Sidebar from "../components/ui/Sidebar";
-import BattlePanel from "../components/ui/BattlePanel";
 import StatusBars from "../components/ui/StatusBars";
 import ActionForm from "../components/ui/ActionForm";
 import ReactionPrompt from "../components/ui/ReactionPrompt";
 import CinematicDisplayNameUI from "../components/ui/Introduction";
 import { type Mapa } from "../types/mapas";
 import MapSelect from "../components/ui/MapSelect";
+import GenerateMaze from "../components/ui/GenerateMaze";
 
 import DefenseResolutionForm from "../components/ui/DefenseResolutionForm";
 import { calculateCardRoll, calculateDistance, isInAttackRange, sum } from "../utils/battleCalculations";
 import type { Token, TokenAttributes, TokenClass, TokenProficiencies } from "../types/token";
 import type { Item, ItemSlot } from "../types/item";
-import type { Track } from "../types/music";
 import { canDefenderReact, nextParalysisAfterHit } from '../utils/paralysis';
 import type { ParalysisState } from '../types/status';
 import type { TokenInventory } from "../types/token";
@@ -38,11 +37,13 @@ import processTurnEffects from "../utils/battleEffects";
 import type { EffectType, TokenPrimaryElement, EffectMoment, TokenEffect, } from "../types/effects";
 import type { CardEntityInstance, Card } from "../types/card";
 import CardForm from "../components/ui/CardForm";
-import type { Pivot, Target } from "../types/target";
+import type { Target } from "../types/target";
 import OffensiveCardResolution from "../components/ui/OffensiveCardResolution";
 import type { ActionRollParams } from "../types/battle";
 import InventoryUI from "../components/ui/Inventory";
 import { type MusicContextType } from "../components/context/MusicContext";
+import type { MapObject } from "../types/mapObject";
+import CreateMapObject from "../components/ui/CreateMapObject";
 
 
 const getColumnName = (num: number): string => {
@@ -94,28 +95,9 @@ export const MusicContext = React.createContext<MusicContextType | null>(null);
 
 const BoardPage: React.FC = () => {
 
-  /* Audio Resolution */
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [introdutionAnimation, setIntroductionAnimation] = useState<boolean>(false);
 
-  useEffect(() => {
-    audioRef.current = new Audio();
 
-    const a = audioRef.current;
-    const onEnded = () => {
-      setIsPlaying(false);
-      setCurrentTrack(null);
-    };
-
-    a.addEventListener("ended", onEnded);
-
-    return () => {
-      a.removeEventListener("ended", onEnded);
-      a.pause();
-    };
-  }, []);
   /* * */
 
   const [rows, setRows] = useState(25);
@@ -146,11 +128,12 @@ const BoardPage: React.FC = () => {
 
   const handleMouseUp = () => {
     setIsPanning(false);
-  };  
+  };
 
   const [mapas, setMapas] = useState<Mapa[]>([]);
   const [selectedMapa, setSelectedMapa] = useState<Mapa | undefined>(undefined);
   const [isMapSelectOpen, setIsMapSelectOpen] = useState(false);
+  const [generateMazeOpen, setGenerateMazeOpen] = useState(false);
 
   const handleSelectMapa = (mapa: Mapa) => {
     setSelectedMapa(mapa);
@@ -158,9 +141,10 @@ const BoardPage: React.FC = () => {
     setRows(mapa.rows);
     setCols(mapa.cols);
     setBackgroundImage(mapa.img);
+    setBoardMapObjects(mapa.mapObjs);
 
     setIsMapSelectOpen(false);
-  };  
+  };
 
   const handleCreateMapa = () => {
     const newMapa: Mapa = {
@@ -168,30 +152,33 @@ const BoardPage: React.FC = () => {
       name: `Mapa ${mapas.length + 1}`,
       rows: 25,
       cols: 25,
-      img: "" // ou imagem padrão
+      img: "", // ou imagem padrão
+      mapObjs: [],
     };
 
     setMapas(prev => [...prev, newMapa]);
     setSelectedMapa(newMapa);
 
     // reset configs
-    setRows(10);
-    setCols(10);
+    setRows(25);
+    setCols(25);
     setBackgroundImage("");
+    setBoardMapObjects([]);
 
     setIsMapSelectOpen(false);
-  };  
- 
+  };
+
   useEffect(() => {
     if (!selectedMapa) return;
 
     setRows(selectedMapa.rows);
     setCols(selectedMapa.cols);
     setBackgroundImage(selectedMapa.img);
+    setBoardMapObjects(selectedMapa.mapObjs);
   }, [selectedMapa]);
 
 
-  
+
   type GridCell = {
     row: number;
     col: number;
@@ -212,6 +199,7 @@ const BoardPage: React.FC = () => {
   const [selectedCell, setSelectedCell] = useState<string | null>(null);
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+  const [boardMapObjects, setBoardMapObjects] = useState<MapObject[]>([]);
 
   useEffect(() => {
     if (!selectedMapa) return;
@@ -220,15 +208,16 @@ const BoardPage: React.FC = () => {
       prev.map(m =>
         m.id === selectedMapa.id
           ? {
-              ...m,
-              rows,
-              cols,
-              img: (backgroundImage ?? ""),
-            }
+            ...m,
+            rows,
+            cols,
+            img: (backgroundImage ?? ""),
+            mapObjs: boardMapObjects,
+          }
           : m
       )
     );
-  }, [rows, cols, backgroundImage]);
+  }, [rows, cols, backgroundImage, boardMapObjects]);
 
   const [zoom, setZoom] = useState(1);
   const [didActThisTurn, setDidActThisTurn] = useState<Record<string, boolean>>({});
@@ -449,7 +438,7 @@ const BoardPage: React.FC = () => {
   const isAdvancingTurnRef = useRef(false);
 
   const [createdTokens, setCreatedTokens] = useState<Token[]>([]);
-  const [createdItems, setCreatedItems] = useState<Item[]>([])
+  const [createdItems, setCreatedItems] = useState<Item[]>([]);
   const [tokenBeingEdited, setTokenBeingEdited] = useState<Token | null>(null);
   const [cardBeingEdited, setCardBeingEdited] = useState<Card | null>(null);
   const [itemBeingEdited, setItemBeingEdited] = useState<Item | null>(null);
@@ -462,24 +451,21 @@ const BoardPage: React.FC = () => {
     setCreatedItems(prev => prev.filter((i) => i.id !== itemId))
   }
 
-  function cardIds(cards: Card[] | null | undefined): string[]
-  {
-    if(!cards) return [];
+  function cardIds(cards: Card[] | null | undefined): string[] {
+    if (!cards) return [];
     return cards.map(c => c.id);
   }
 
   function resolveCardsById(
     ids: string[],
     sources: (Card[] | null | undefined)[]
-  ): Card[]
-  {
+  ): Card[] {
     const map = new Map<string, Card>();
 
-    for(const src of sources)
-    {
-      if(!src) continue;
+    for (const src of sources) {
+      if (!src) continue;
 
-      for(const c of src)
+      for (const c of src)
         map.set(c.id, c);
     }
 
@@ -491,8 +477,7 @@ const BoardPage: React.FC = () => {
   function setTransformerAdd(
     v1: string[],
     v2: string[]
-  ): string[]
-  {
+  ): string[] {
     return [
       ...new Set([
         ...v1,
@@ -504,13 +489,12 @@ const BoardPage: React.FC = () => {
   function equalsSets<T>(
     A: Set<T>,
     B: Set<T>
-  ): boolean
-  {
-    if(A.size !== B.size)
+  ): boolean {
+    if (A.size !== B.size)
       return false;
 
-    for(const el of A)
-      if(!B.has(el))
+    for (const el of A)
+      if (!B.has(el))
         return false;
 
     return true;
@@ -519,8 +503,7 @@ const BoardPage: React.FC = () => {
   function complemento<T>(
     A: Set<T>,
     B: Set<T>
-  ): Set<T>
-  {
+  ): Set<T> {
     return new Set(
       [...B].filter(
         x => !A.has(x)
@@ -532,8 +515,7 @@ const BoardPage: React.FC = () => {
     p: string[],
     I: string[],
     vi: string[][]
-  ): string[]
-  {
+  ): string[] {
     let sp =
       new Set(p);
 
@@ -543,12 +525,11 @@ const BoardPage: React.FC = () => {
     const originalSi =
       new Set(I);
 
-    for(const v of vi)
-    {
+    for (const v of vi) {
       const sc =
         new Set(v);
 
-      if(
+      if (
         equalsSets(
           originalSi,
           sc
@@ -573,12 +554,12 @@ const BoardPage: React.FC = () => {
   }
 
   type KeysMatching<T, V> =
-  {
-    [K in keyof T]:
+    {
+      [K in keyof T]:
       T[K] extends V
-        ? K
-        : never
-  }[keyof T];
+      ? K
+      : never
+    }[keyof T];
 
   type EquippedSlot =
     NonNullable<
@@ -590,16 +571,15 @@ const BoardPage: React.FC = () => {
 
   function getEquippedItemCardSets(
     token: Token
-  ): Card[][]
-  {
+  ): Card[][] {
     const slots: EquippedSlot[] =
-    [
-      "primaryHand",
-      "offHand",
-      "neck",
-      "ring",
-      "armor",
-    ];
+      [
+        "primaryHand",
+        "offHand",
+        "neck",
+        "ring",
+        "armor",
+      ];
 
     return slots
       .map(
@@ -616,8 +596,7 @@ const BoardPage: React.FC = () => {
     token: Token,
     removedItem?: Item,
     addedItem?: Item
-  ): Card[]
-  {
+  ): Card[] {
     let p =
       cardIds(
         token.tokenCards
@@ -627,8 +606,7 @@ const BoardPage: React.FC = () => {
       getEquippedItemCardSets(token);
 
     // união dos items atuais
-    for(const src of sources)
-    {
+    for (const src of sources) {
       p =
         setTransformerAdd(
           p,
@@ -637,10 +615,9 @@ const BoardPage: React.FC = () => {
     }
 
     // adicionar novo item
-    if(
+    if (
       addedItem?.habilityCards
-    )
-    {
+    ) {
       p =
         setTransformerAdd(
           p,
@@ -651,24 +628,23 @@ const BoardPage: React.FC = () => {
     }
 
     // remover exclusivo
-    if(
+    if (
       removedItem?.habilityCards
-    )
-    {
+    ) {
       const vi =
-      [
-        cardIds(
-          token.tokenCards
-        ),
+        [
+          cardIds(
+            token.tokenCards
+          ),
 
-        ...sources.map(
-          cardIds
-        ),
+          ...sources.map(
+            cardIds
+          ),
 
-        cardIds(
-          removedItem.habilityCards
-        ),
-      ];
+          cardIds(
+            removedItem.habilityCards
+          ),
+        ];
 
       p =
         setTransformerRemove(
@@ -701,9 +677,8 @@ const BoardPage: React.FC = () => {
     setBoardTokens: React.Dispatch<
       React.SetStateAction<Token[]>
     >
-  )
-  {
-    if(item.slot === "inventory-only")
+  ) {
+    if (item.slot === "inventory-only")
       return;
 
     type EquippedSlot =
@@ -738,64 +713,62 @@ const BoardPage: React.FC = () => {
       slotMap[item.slot];
 
     const updateToken =
-      (t: Token): Token =>
-    {
-      if(t.id !== token.id)
-        return t;
+      (t: Token): Token => {
+        if (t.id !== token.id)
+          return t;
 
-      const inventory =
-        t.inventory;
+        const inventory =
+          t.inventory;
 
-      const removedItem =
-        inventory[targetSlot];
+        const removedItem =
+          inventory[targetSlot];
 
-      const newCommonSlot =
-        (inventory.commonSlot ?? [])
-          .filter(
-            (_,i)=>i!==itemIndex
+        const newCommonSlot =
+          (inventory.commonSlot ?? [])
+            .filter(
+              (_, i) => i !== itemIndex
+            );
+
+        if (removedItem)
+          newCommonSlot.push(
+            removedItem
           );
 
-      if(removedItem)
-        newCommonSlot.push(
-          removedItem
-        );
-
-      const updatedToken: Token =
-      {
-        ...t,
-
-        inventory:
+        const updatedToken: Token =
         {
-          ...inventory,
-          [targetSlot]: item,
-          commonSlot:
-            newCommonSlot
-        }
+          ...t,
+
+          inventory:
+          {
+            ...inventory,
+            [targetSlot]: item,
+            commonSlot:
+              newCommonSlot
+          }
+        };
+
+        const newCards =
+          computeTokenCardsWithSets(
+            updatedToken,
+            removedItem,
+            item
+          );
+
+        return {
+
+          ...updatedToken,
+
+          cards: newCards
+        };
       };
 
-      const newCards =
-        computeTokenCardsWithSets(
-          updatedToken,
-          removedItem,
-          item
-        );
-
-      return {
-
-        ...updatedToken,
-
-        cards: newCards
-      };
-    };
-
-    setCreatedTokens(prev =>
-    {
+    setCreatedTokens(prev => {
       const index =
         prev.findIndex(
-          t=>t.id===token.id
+          t => t.id === token.id
         );
 
-      if(index === -1)
+      if (index === -1)
         return prev;
 
       const next =
@@ -834,9 +807,22 @@ const BoardPage: React.FC = () => {
     setTokenBeingEdited(null);
   }
 
-
-
   const [boardTokens, setBoardTokens] = useState<Token[]>([]);
+  
+  const [mapObjectCreateForm, setMapObjectCreateForm] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Open Create Map Object Form
+    const handleOpenCMOBJ = (e: KeyboardEvent) => {
+      if (!selectedCell) return;
+
+      if (e.key === "C" || e.key === "c") {
+        setMapObjectCreateForm(true);
+      }
+    }
+    window.addEventListener("keydown", handleOpenCMOBJ);
+  }, [selectedCell]);
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [cards, setCards] = useState<Card[]>([]);
@@ -854,7 +840,7 @@ const BoardPage: React.FC = () => {
       prev.map(c => c.id === editedCard.id ? editedCard : c)
     );
 
-    setCardBeingEdited(null) 
+    setCardBeingEdited(null)
   }
 
   function handleSaveEditedItem(editedItem: Item) {
@@ -1571,18 +1557,6 @@ const BoardPage: React.FC = () => {
     */
   }
 
-  function removeTokenEffect(
-    token: Token,
-    effectType: EffectType
-  ) {
-    if (!Array.isArray(token.tokenEffects)) return;
-
-    token.tokenEffects = token.tokenEffects.filter(
-      e => e.effectType !== effectType
-    );
-  }
-
-
   function triggerExplosion(centerToken: Token, baseIntensity: number, combo: CombinationResult) {
     const radius = 1; // pode ser variável
     const damage = baseIntensity * (combo?.areaDamage ?? 1); // explosão = dano amplificado
@@ -1641,26 +1615,6 @@ const BoardPage: React.FC = () => {
     useState<"awaiting-pivot" | "preview" | "confirm">("awaiting-pivot");
 
   const [selectedPivots, setSelectedPivots] = useState<PivotCandidate[]>([]);
-
-  function getAvailablePivotTargets(): number {
-
-    if (!armedCard?.target) return 0;
-
-    switch (armedCard.target.pivotSettings?.pivotType) {
-      case "Token-Fix":
-        return boardTokens.length;
-
-      case "Cell-Fix":
-        return gridCells.length;
-
-      case "Trigger-Fix":
-        return 1;
-
-      default:
-        return 0;
-    }
-  }
-
 
   /* * */
 
@@ -1827,15 +1781,17 @@ const BoardPage: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKey);
   }, [selectedTokenId]);
 
-
   // Movement keys when Not in Battle
   useEffect(() => {
     const handleMoveKey = (e: KeyboardEvent) => {
       if (battleState.status !== "Not in Battle") return;
       if (!selectedTokenId) return;
+
       const now = Date.now();
       if (now - lastMoveTime < 500) return;
+
       let dCol = 0, dRow = 0;
+
       switch (e.key) {
         case "ArrowUp":
         case "w":
@@ -1860,20 +1816,48 @@ const BoardPage: React.FC = () => {
         default:
           return;
       }
+
       e.preventDefault();
+
       const token = boardTokens.find((t) => t.id === selectedTokenId);
       if (!token) return;
+
       const newCol = token.position.col + dCol;
       const newRow = token.position.row + dRow;
+
+      // Limite do mapa
       if (newCol < 1 || newCol > cols || newRow < 1 || newRow > rows) return;
+
+      // 🚫 BLOQUEIO POR WALL
+      const hasWall = boardMapObjects.some(
+        (obj) =>
+          obj.type === "wall" &&
+          obj.position.col === newCol &&
+          obj.position.row === newRow
+      );
+
+      if (hasWall) return;
+
       moveTokenOnBoard(selectedTokenId, newCol, newRow);
+
       setLastMoveTime(now);
       setIsCooling(true);
       setTimeout(() => setIsCooling(false), 500);
     };
+
     window.addEventListener("keydown", handleMoveKey);
     return () => window.removeEventListener("keydown", handleMoveKey);
-  }, [battleState.status, selectedTokenId, lastMoveTime, boardTokens, cols, rows]);
+  }, [
+    battleState.status,
+    selectedTokenId,
+    lastMoveTime,
+    boardTokens,
+    boardMapObjects,
+    cols,
+    rows
+  ]);
+
+
 
   const [inventoryOpen, setInventoryOpen] = useState<boolean>(false);
 
@@ -1923,8 +1907,6 @@ const BoardPage: React.FC = () => {
 
   // Adicione este useEffect após os outros useEffects em BoardPage.tsx
   useEffect(() => {
-    // Quando showDefenseResolution é definido, mas pendingAttack ainda tem reações
-    // Significa que o form DEVE aparecer
     if (showDefenseResolution && pendingAttack && pendingAttack.pendingReactions.length === 0) {
       console.log("✅ DefenseResolutionForm PRONTO PARA RENDERIZAR!");
       // O JSX renderizará automaticamente aqui
@@ -2115,6 +2097,35 @@ const BoardPage: React.FC = () => {
     setCardEntities(updatedCards);
   };
 
+  function cellToPosition(cell: string) {
+
+    const alpha = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
+                  'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
+    ] // Convenção do Alfabeto
+
+    let letters = [];
+    let number: string | number = "";
+
+    for (const char of cell) {
+      if (Number.isNaN(Number(char))) {
+        letters.push(char);
+      }
+      else {
+        number += char; // Conseguir y
+      }
+    }
+
+    number = Number(number)
+    letters.reverse()
+   
+    let c = 0;
+    for (let i = 0; i < letters.length; i++) {
+      c += (26 ** i) * (alpha.indexOf(letters[i]) + 1)  // Conseguir x
+    }
+
+    const position = { row: number, col: c }
+    return position;
+  }
 
   const handleCellClick = (
     letter: string,
@@ -2385,7 +2396,6 @@ const BoardPage: React.FC = () => {
   };
   // End battle
 
-
   const handleEndBattle = () => {
     setBattleState({
       status: "Not in Battle",
@@ -2469,10 +2479,6 @@ const BoardPage: React.FC = () => {
     setPreviewCells(new Set());
   };
 
-
-
-
-
   const handleExecuteAction = (choice: ExecuteChoice) => {
     const current = battleState.turnOrder[battleState.currentTurnIndex];
     if (!current) return;
@@ -2515,7 +2521,7 @@ const BoardPage: React.FC = () => {
       return;
     }
 
-    
+
 
     if (!token || !target) return;
 
@@ -2799,10 +2805,8 @@ const BoardPage: React.FC = () => {
 
     const attackerToken = boardTokens.find(t => t.id === attackerId);
     const defenderToken = boardTokens.find(t => t.id === defenderId);
-
-    const typeDiretionalAction = pendingAttack.attackAttribute; // Captura qual o tipo de ação ofensiva que está vindo.
-
     const defender = boardTokens.find((t) => t.id === defenderId);
+
     if (!defender) return;
 
     console.log("⚠️ ENTROU EM HANDLE REACTION DO OUTRO TOKEN");
@@ -3422,7 +3426,6 @@ const BoardPage: React.FC = () => {
     // Se reação é permitida, o ReactionPrompt cuidará da sequência normal.
   };
 
-
   /// Resolução da defesa por Destreza (Esquiva) com TA-1 aplicado ao ATACANTE
   const handleDefenseResolution = (
     usedActions: number,
@@ -3745,8 +3748,6 @@ const BoardPage: React.FC = () => {
     return;
   };
 
-
-
   const handleCardResolution = (currentId: string, target: Target, card: Card) => {
 
     const targetType = card.target.type;
@@ -3816,7 +3817,6 @@ const BoardPage: React.FC = () => {
     token: Token;
     previewAction: boolean;
   };
-
 
   const handleOffensiveCardResponse = ({
     usedCard,
@@ -3994,7 +3994,6 @@ const BoardPage: React.FC = () => {
     setCardEntities(prev => [...prev, ...instances]);
   }
 
-
   function resolvePivotPosition(pivot: PivotCandidate): Position {
     if (pivot.type === "cell") {
       return pivot.position;
@@ -4029,17 +4028,6 @@ const BoardPage: React.FC = () => {
     });
   }
 
-  /*
-  
-  function getTokensInRadius(tokens: Token[], center: Token, radius: number) {
-    return tokens.filter(t => {
-      const dx = Math.abs(t.position.col - center.position.col);
-      const dy = Math.abs(t.position.row - center.position.row);
-      return dx <= radius && dy <= radius;
-    });
-  }
-  * */
-
   function getTokensInCardEntityRadius(tokens: Token[], position: Position, range: number, triggerId: string) {
     return tokens.filter(t => {
       const dx = Math.abs(t.position.col - position.col);
@@ -4047,16 +4035,6 @@ const BoardPage: React.FC = () => {
       return dx <= range && dy <= range && t.id !== triggerId;
     });
   }
-
-  function calculateAffectedArea(
-    pivot: PivotCandidate,
-    pivotSettings: Pivot
-  ): Position[] {
-    const center = resolvePivotPosition(pivot);
-
-    return getCellsInRadius(center, pivotSettings.range, gridCells);
-  }
-
 
   function confirmAmbientPivots() {
     if (!armedCard?.target?.pivotSettings) {
@@ -4126,8 +4104,6 @@ const BoardPage: React.FC = () => {
     setTokenInAmbientPivotSelection("");
   }
 
-
-
   const handleAmbientPivotSelection = (
     payload: BoardClickPayload,
     letter: string,
@@ -4162,9 +4138,6 @@ const BoardPage: React.FC = () => {
         return;
       }
 
-      // =========================
-      // 🧲 TOKEN-FIX
-      // =========================
       if (pivotType === "Token-Fix") {
         if (payload.type !== "token") return;
 
@@ -4190,15 +4163,6 @@ const BoardPage: React.FC = () => {
       }
     }
   };
-
-
-  const previewArea = useMemo(() => {
-    if (ambientPivotPhase !== "preview") return [];
-
-    return selectedPivots.map(pivot =>
-      calculateAffectedArea(pivot, armedCard!.target.pivotSettings!)
-    );
-  }, [ambientPivotPhase, selectedPivots]);
 
   const maxSelectablePivots = useRef<number>(0);
 
@@ -4237,307 +4201,305 @@ const BoardPage: React.FC = () => {
           >
             Mapas
           </button>
+          <button
+            onClick={() => setGenerateMazeOpen(true)}
+            className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-sm"
+          >
+            Gerar Labirinto
+          </button>          
         </div>
 
 
-        {/* BattlePanel */}
-        {battleState.status === "In Battle" && (
-          <div className="absolute bg-gray-900 z-20 rounded-md" style={{ top: 6, right: 80, width: 250 }}>
-            <BattlePanel
-              battleState={battleState}
-              tokens={boardTokens}
-              onStartBattle={handleStartBattle}
-              onEndBattle={handleEndBattle}
-              onNextTurn={handleNextTurn}
-            />
-          </div>
-        )}
-
-
-{/* VIEWPORT */}
-<div
-  className="w-full h-full overflow-hidden cursor-grab"
-  onMouseDown={handleMouseDown}
-  onMouseMove={handleMouseMove}
-  onMouseUp={handleMouseUp}
-  onMouseLeave={handleMouseUp}
-  onContextMenu={(e) => e.preventDefault()}
-  style={{ position: "relative" }}
->
-  {/* WORLD */}
-  <div
-    style={{
-      transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-      transformOrigin: "top left",
-      position: "absolute",
-      left: 0,
-      top: 0,
-    }}
-  >
-    <div style={{ paddingTop: 48 }}>
-      {/* Header letras */}
-      <div className="flex ml-10 relative" style={{ userSelect: "none" }}>
-        {letters.map((l) => (
+        {/* VIEWPORT */}
+        <div
+          className="w-full h-full overflow-hidden cursor-grab"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onContextMenu={(e) => e.preventDefault()}
+          style={{ position: "relative" }}
+        >
+          {/* WORLD */}
           <div
-            key={l}
             style={{
-              width: cellSize,
-              height: cellSize,
-              position: "relative",
-              flexShrink: 0,
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: "top left",
+              position: "absolute",
+              left: 0,
+              top: 0,
             }}
           >
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                fontWeight: 700,
-                fontSize: 14,
-              }}
-            >
-              {l}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex">
-        {/* Coluna números */}
-        <div className="flex flex-col select-none">
-          {Array.from({ length: rows }, (_, i) => (
-            <div
-              key={i}
-              style={{
-                width: cellSize,
-                height: cellSize,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 14,
-                fontWeight: 700,
-              }}
-            >
-              {i + 1}
-            </div>
-          ))}
-        </div>
-
-        {/* GRID */}
-        <div
-          className="grid relative"
-          style={{
-            gridTemplateColumns: `repeat(${cols}, ${cellSize}px)`,
-            backgroundImage: backgroundImage
-              ? `url(${backgroundImage})`
-              : undefined,
-            backgroundSize: "100% 100%",
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "center",
-          }}
-        >
-          {Array.from({ length: rows }, (_, row) =>
-            letters.map((l) => {
-              const coord = `${l}${row + 1}`;
-              const colIndex = letters.indexOf(l) + 1;
-
-              const isSel = coord === selectedCell;
-
-              const tok = boardTokens.find(
-                (t) =>
-                  t.position.col === colIndex &&
-                  t.position.row === row + 1
-              );
-
-              const cardInstances = cardEntities.find(
-                (c) =>
-                  c.position.col === colIndex &&
-                  c.position.row === row + 1
-              );
-
-              const effectClasses = tok
-                ? getTokenVisualEffects(tok).classes
-                : [];
-
-              const effectOverlays = tok
-                ? getTokenVisualEffects(tok).overlays
-                : [];
-
-              const inB = battleState.status === "In Battle";
-              const isCurr = tok?.id === currentId;
-              const isTokSel = tok?.id === selectedTokenId;
-
-              return (
-                <div
-                  key={coord}
-                  onClick={() => handleCellClick(l, row + 1, tok)}
-                  className={[
-                    "border border-gray-700 flex items-center justify-center cursor-pointer transition-colors duration-150 relative",
-                    isSel
-                      ? "border-green-400 shadow-[0_0_10px_2px_rgba(34,197,94,0.7)]"
-                      : "hover:bg-gray-800",
-                    previewCells.has(`${colIndex}-${row + 1}`)
-                      ? "bg-red-500/30 border-red-400"
-                      : "",
-                  ].join(" ")}
-                  style={{
-                    width: cellSize,
-                    height: cellSize,
-                  }}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const id = e.dataTransfer.getData("tokenId");
-                    const fromLib =
-                      e.dataTransfer.getData("fromLibrary") === "true";
-
-                    if (fromLib) {
-                      placeTokenOnBoard(id, colIndex, row + 1);
-                    } else if (id === currentId) {
-                      moveTokenOnBoard(id, colIndex, row + 1);
-                    }
-                  }}
-                >
-                  {tok && (
-                    <div className="relative w-full h-full flex items-center justify-center">
-                      {inB &&
-                        tok.currentLife !== undefined &&
-                        tok.maxLife !== undefined &&
-                        tok.currentMana !== undefined &&
-                        tok.maxMana !== undefined && (
-                          <StatusBars
-                            currentLife={tok.currentLife}
-                            maxLife={tok.maxLife}
-                            currentMana={tok.currentMana}
-                            maxMana={tok.maxMana}
-                            teamColor={tok.team}
-                          />
-                        )}
-
-                      {tok.visualOverlays?.map((o) => (
-                        <div
-                          key={o.id}
-                          className={o.type}
-                          style={{
-                            position: "absolute",
-                            width: o.size,
-                            height: o.size,
-                            left: "50%",
-                            top: "50%",
-                            transform: "translate(-50%, -50%)",
-                            backgroundImage: `url(${o.gifPath})`,
-                            backgroundSize: "cover",
-                            backgroundRepeat: "no-repeat",
-                            backgroundPosition: "center",
-                            zIndex: 30,
-                          }}
-                        />
-                      ))}
-
-                      {effectOverlays.map((ov) => (
-                        <div
-                          key={ov.id}
-                          className={`${ov.className} absolute inset-0 z-20`}
-                        />
-                      ))}
-
-                      <img
-                        src={tok.imageUrl}
-                        alt={tok.name}
-                        className={[
-                          "absolute rounded object-cover transition-filter duration-200",
-                          ...effectClasses,
-                          isCooling && tok.id === selectedTokenId
-                            ? "filter grayscale"
-                            : "",
-                          getParalysis(tok.id) !== "none"
-                            ? "animate-white-blink"
-                            : "",
-                        ].join(" ")}
-                        draggable={tok?.id === currentId}
-                        onDragStart={(e) => {
-                          const isTokenArrested = boardTokens.some(
-                            (t) =>
-                              t.id === tok?.id &&
-                              Array.isArray(t.tokenEffects) &&
-                              t.tokenEffects.some(
-                                (eff) => eff.effectType === "preso"
-                              )
-                          );
-
-                          if (
-                            tok?.id !== currentId ||
-                            isTokenArrested
-                          )
-                            return;
-
-                          e.dataTransfer.setData("tokenId", tok.id);
-                          e.dataTransfer.setData(
-                            "fromLibrary",
-                            "false"
-                          );
-                        }}
-                        style={{
-                          width: cellSize * 0.95,
-                          height: cellSize * 0.95,
-                          zIndex: 2,
-                          ...(inB
-                            ? {
-                                boxShadow: isCurr
-                                  ? `0 0 15px 4px ${teamGlowColors[tok.team]}, 0 0 25px 6px rgba(255,255,255,0.8)`
-                                  : `0 0 10px 3px ${teamGlowColors[tok.team]}`,
-                                border: isCurr
-                                  ? "2px solid white"
-                                  : "none",
-                              }
-                            : isTokSel
-                            ? {
-                                boxShadow:
-                                  "0 0 10px 3px rgba(34,197,94,0.8)",
-                                border: "2px solid #22c55e",
-                              }
-                            : {}),
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  {cardInstances && (
+            <div style={{ paddingTop: 48 }}>
+              {/* Header letras */}
+              <div className="flex ml-10 relative" style={{ userSelect: "none" }}>
+                {letters.map((l) => (
+                  <div
+                    key={l}
+                    style={{
+                      width: cellSize,
+                      height: cellSize,
+                      position: "relative",
+                      flexShrink: 0,
+                    }}
+                  >
                     <div
-                      className="absolute pointer-events-none"
                       style={{
-                        width:
-                          (cardInstances.pivotSettings.range * 2 + 1) *
-                          cellSize,
-                        height:
-                          (cardInstances.pivotSettings.range * 2 + 1) *
-                          cellSize,
-                        zIndex: 1,
-                        left: "50%",
+                        position: "absolute",
                         top: "50%",
+                        left: "50%",
                         transform: "translate(-50%, -50%)",
+                        fontWeight: 700,
+                        fontSize: 14,
                       }}
                     >
-                      <img
-                        src={cardInstances.pivotSettings.areaImgUrl}
-                        className="w-full h-full object-cover rounded"
-                      />
+                      {l}
                     </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex">
+                {/* Coluna números */}
+                <div className="flex flex-col select-none">
+                  {Array.from({ length: rows }, (_, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        width: cellSize,
+                        height: cellSize,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 14,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {i + 1}
+                    </div>
+                  ))}
+                </div>
+
+                {/* GRID */}
+                <div
+                  className="grid relative"
+                  style={{
+                    gridTemplateColumns: `repeat(${cols}, ${cellSize}px)`,
+                    backgroundImage: backgroundImage
+                      ? `url(${backgroundImage})`
+                      : undefined,
+                    backgroundSize: "100% 100%",
+                    backgroundRepeat: "no-repeat",
+                    backgroundPosition: "center",
+                  }}
+                >
+                  {Array.from({ length: rows }, (_, row) =>
+                    letters.map((l) => {
+                      const coord = `${l}${row + 1}`;
+                      const colIndex = letters.indexOf(l) + 1;
+
+                      const isSel = coord === selectedCell;
+
+                      const tok = boardTokens.find(
+                        (t) =>
+                          t.position.col === colIndex &&
+                          t.position.row === row + 1
+                      );
+
+                      const mapObj = boardMapObjects.find(
+                        (m) => m.position.col === colIndex && m.position.row === row + 1
+                      )
+
+                      const cardInstances = cardEntities.find(
+                        (c) =>
+                          c.position.col === colIndex &&
+                          c.position.row === row + 1
+                      );
+
+                      const effectClasses = tok
+                        ? getTokenVisualEffects(tok).classes
+                        : [];
+
+                      const effectOverlays = tok
+                        ? getTokenVisualEffects(tok).overlays
+                        : [];
+
+                      const inB = battleState.status === "In Battle";
+                      const isCurr = tok?.id === currentId;
+                      const isTokSel = tok?.id === selectedTokenId;
+
+                      return (
+                        <div
+                          key={coord}
+                          onClick={() => handleCellClick(l, row + 1, tok)}
+                          className={[
+                            "border border-gray-700 flex items-center justify-center cursor-pointer transition-colors duration-150 relative",
+                            isSel
+                              ? "border-green-400 shadow-[0_0_10px_2px_rgba(34,197,94,0.7)]"
+                              : "hover:bg-gray-800",
+                            previewCells.has(`${colIndex}-${row + 1}`)
+                              ? "bg-red-500/30 border-red-400"
+                              : "",
+                          ].join(" ")}
+                          style={{
+                            width: cellSize,
+                            height: cellSize,
+                          }}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const id = e.dataTransfer.getData("tokenId");
+                            const fromLib =
+                              e.dataTransfer.getData("fromLibrary") === "true";
+
+                            if (fromLib) {
+                              placeTokenOnBoard(id, colIndex, row + 1);
+                            } else if (id === currentId) {
+                              moveTokenOnBoard(id, colIndex, row + 1);
+                            }
+                          }}
+                        >
+                          {tok && (
+                            <div className="relative w-full h-full flex items-center justify-center">
+                              {inB &&
+                                tok.currentLife !== undefined &&
+                                tok.maxLife !== undefined &&
+                                tok.currentMana !== undefined &&
+                                tok.maxMana !== undefined && (
+                                  <StatusBars
+                                    currentLife={tok.currentLife}
+                                    maxLife={tok.maxLife}
+                                    currentMana={tok.currentMana}
+                                    maxMana={tok.maxMana}
+                                    teamColor={tok.team}
+                                  />
+                                )}
+
+                              {tok.visualOverlays?.map((o) => (
+                                <div
+                                  key={o.id}
+                                  className={o.type}
+                                  style={{
+                                    position: "absolute",
+                                    width: o.size,
+                                    height: o.size,
+                                    left: "50%",
+                                    top: "50%",
+                                    transform: "translate(-50%, -50%)",
+                                    backgroundImage: `url(${o.gifPath})`,
+                                    backgroundSize: "cover",
+                                    backgroundRepeat: "no-repeat",
+                                    backgroundPosition: "center",
+                                    zIndex: 30,
+                                  }}
+                                />
+                              ))}
+
+                              {effectOverlays.map((ov) => (
+                                <div
+                                  key={ov.id}
+                                  className={`${ov.className} absolute inset-0 z-20`}
+                                />
+                              ))}
+
+                              <img
+                                src={tok.imageUrl}
+                                alt={tok.name}
+                                className={[
+                                  "absolute rounded object-cover transition-filter duration-200",
+                                  ...effectClasses,
+                                  isCooling && tok.id === selectedTokenId
+                                    ? "filter grayscale"
+                                    : "",
+                                  getParalysis(tok.id) !== "none"
+                                    ? "animate-white-blink"
+                                    : "",
+                                ].join(" ")}
+                                draggable={tok?.id === currentId}
+                                onDragStart={(e) => {
+                                  const isTokenArrested = boardTokens.some(
+                                    (t) =>
+                                      t.id === tok?.id &&
+                                      Array.isArray(t.tokenEffects) &&
+                                      t.tokenEffects.some(
+                                        (eff) => eff.effectType === "preso"
+                                      )
+                                  );
+
+                                  if (
+                                    tok?.id !== currentId ||
+                                    isTokenArrested
+                                  )
+                                    return;
+
+                                  e.dataTransfer.setData("tokenId", tok.id);
+                                  e.dataTransfer.setData(
+                                    "fromLibrary",
+                                    "false"
+                                  );
+                                }}
+                                style={{
+                                  width: cellSize * 0.95,
+                                  height: cellSize * 0.95,
+                                  zIndex: 2,
+                                  ...(inB
+                                    ? {
+                                      boxShadow: isCurr
+                                        ? `0 0 15px 4px ${teamGlowColors[tok.team]}, 0 0 25px 6px rgba(255,255,255,0.8)`
+                                        : `0 0 10px 3px ${teamGlowColors[tok.team]}`,
+                                      border: isCurr
+                                        ? "2px solid white"
+                                        : "none",
+                                    }
+                                    : isTokSel
+                                      ? {
+                                        boxShadow:
+                                          "0 0 10px 3px rgba(34,197,94,0.8)",
+                                        border: "2px solid #22c55e",
+                                      }
+                                      : {}),
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {cardInstances && (
+                            <div
+                              className="absolute pointer-events-none"
+                              style={{
+                                width:
+                                  (cardInstances.pivotSettings.range * 2 + 1) *
+                                  cellSize,
+                                height:
+                                  (cardInstances.pivotSettings.range * 2 + 1) *
+                                  cellSize,
+                                zIndex: 1,
+                                left: "50%",
+                                top: "50%",
+                                transform: "translate(-50%, -50%)",
+                              }}
+                            >
+                              <img
+                                src={cardInstances.pivotSettings.areaImgUrl}
+                                className="w-full h-full object-cover rounded"
+                              />
+                            </div>
+                          )}
+
+                          {mapObj && (
+                            <div className="relative w-full h-full flex items-center justify-center">
+                              <img src={mapObj.imgUrl} alt="Map Object" className="absolute rounded object-cover transition-filter duration-200" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
                   )}
                 </div>
-              );
-            })
-          )}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-        {/* Grid */}
-
-
         {/* OVERLAY DE PREVIEW */}
 
       </div>
@@ -4606,7 +4568,6 @@ const BoardPage: React.FC = () => {
           }`}
         style={{ width: sidebarWidth }}
       >
-
         <Sidebar
           tokens={createdTokens}
           tokenBeingEdited={tokenBeingEdited}
@@ -4646,26 +4607,15 @@ const BoardPage: React.FC = () => {
           // passe os controles de largura para o Sidebar
           widthPx={sidebarWidth}
           onWidthChange={setSidebarWidth}
+          battleState={battleState}
+          onEndBattle={handleEndBattle}
+          onNextTurn={handleNextTurn}
+          onStartBattle={handleStartBattle}
+          boardTokens={boardTokens}
         />
 
 
       </div>
-
-
-      {/* BattlePanel when not in battle */}
-      {battleState.status === "Not in Battle" && (
-        <div className="fixed bottom-4 left-4 z-30">
-          <BattlePanel
-            battleState={battleState}
-            tokens={boardTokens}
-            onStartBattle={handleStartBattle}
-            onEndBattle={handleEndBattle}
-            onNextTurn={handleNextTurn}
-          />
-        </div>
-      )}
-
-
       {/* ActionForm during battle */}
       {battleState.status === "In Battle" && currentToken && !pendingAttack && !pendingFreeResponse && !inCardSelection && !((remainingExtraActions.current?.extraActions ?? 0) > 0) && tokensInOffensiveCard.length <= 0 && !isAmbientPivotSelection && (
         <div className="fixed bottom-4 left-4 z-30">
@@ -4968,7 +4918,26 @@ const BoardPage: React.FC = () => {
           onCreateNew={handleCreateMapa}
           onClose={() => setIsMapSelectOpen(false)}
         />
-      )}      
+      )}
+
+      {mapObjectCreateForm && (
+        <CreateMapObject
+          position={cellToPosition(selectedCell ?? "A1")}
+          createdItems={createdItems}
+          onClose={() => setMapObjectCreateForm(false)}
+          setBoardMapObjects={setBoardMapObjects}
+        />
+      )
+      }
+
+    {generateMazeOpen && (
+      <GenerateMaze
+        rows={rows}
+        cols={cols}
+        setBoardMapObjects={setBoardMapObjects}
+        onClose={() => setGenerateMazeOpen(false)}
+      />
+    )}      
 
     </div>
   );

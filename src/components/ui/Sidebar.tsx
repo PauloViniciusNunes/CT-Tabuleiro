@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import TokenForm from "./TokenForm";
+import BattlePanel from "../ui/BattlePanel";
 import TokenEditForm from "./TokenEditForm";
 import CardCreate from "./CardCreateForm";
 import type { Token } from "../../types/token";
 import type { Card } from "../../types/card";
-import type { ActionChoice } from "../../types/battle";
+import type { ActionChoice, BattleState } from "../../types/battle";
 import MusicList from "../music/MusicList";
 import { PencilLine } from "lucide-react";
 import type { Item, ItemRarity } from "../../types/item";
@@ -40,6 +41,12 @@ interface SidebarProps {
   // Controle de largura vindo do BoardPage (wrapper fixed right-0)
   widthPx: number;
   onWidthChange: (w: number) => void;
+
+  battleState: BattleState;
+  boardTokens: Token[];
+  onStartBattle: () => void;
+  onEndBattle: () => void;
+  onNextTurn: () => void;
 }
 
 type TabType = "token" | "cards" |"item" | "music" | "chat";
@@ -71,6 +78,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   battleHistory,
   widthPx,
   onWidthChange,
+  battleState,
+  boardTokens,
+  onStartBattle,
+  onEndBattle, 
+  onNextTurn,
 }) => {
 
   const [formOpen, setFormOpen]         = useState<boolean>(false);
@@ -485,6 +497,13 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             {activeTab === "chat" && (
               <div className="w-full flex flex-col">
+                <BattlePanel
+                  battleState={battleState}
+                  tokens={boardTokens}
+                  onEndBattle={onEndBattle}
+                  onNextTurn={onNextTurn}
+                  onStartBattle={onStartBattle}
+                />         
                 <h2 className="text-lg font-bold text-white select-none mb-2 text-center">Historic Battle</h2>
                   <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-800 rounded p-3 mb-2 space-y-2">
                     {battleHistory.length === 0 ? (

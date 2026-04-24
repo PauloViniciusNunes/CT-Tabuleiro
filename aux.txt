@@ -11,6 +11,4 @@ Próximas atualizações
 11 - Atualização do XP automaticamente.
 12 - Criação de AtributeAtributionForm
 13 - Bots de batalha
-14 - Objetos do tipo parede e objetos do tipo baú
-15 - Gerador de labirintos
 14 - Multiusuário
