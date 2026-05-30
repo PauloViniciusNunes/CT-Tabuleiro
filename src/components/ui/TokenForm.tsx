@@ -1,17 +1,19 @@
 import React, { useState, type ChangeEvent, type FormEvent } from "react";
 import type {TokenPrimaryElement, TokenPrimaryDisvantage} from "../../types/effects.ts"
-import type {
-  Token,
-  TokenAttributes,
-  TokenProficiencies,
-  TokenInventory,
-  TokenStatus,
-  TokenTeam,
-  TokenClass
+import {
+  type Token,
+  type TokenAttributes,
+  type TokenProficiencies,
+  type TokenInventory,
+  type TokenStatus,
+  type TokenTeam,
+  type TokenClass,
+  type TokenType
 } from "../../types/token";
 import type { Card } from "../../types/card";
 import type { Item } from "../../types/item";
 import { type ItemSlot } from "../../types/item";
+import { type BossInterfaceColors } from "../../types/token";
 
 interface TokenFormProps {
   onSave: (token: Token) => void;
@@ -94,6 +96,14 @@ const generateId = (): string => Math.random().toString(36).slice(2, 11);
 
 export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, items }) => {
   const [name, setName] = useState("");
+  const [type, setType] = useState<TokenType>("player");
+  const [bossSettings, setBossSettings] = useState<BossInterfaceColors>({
+    fill: "#000000",
+    stroke: "#971e91",
+    shadow_init: "#5e3f7c",
+    shadow_mid: "#d645e4",
+    shadow_end: "#db36c5"
+  });  
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [attributes, setAttributes] = useState<TokenAttributes>(initialAttributes);
   const [proficiencies, setProficiencies] = useState<TokenProficiencies>(
@@ -187,6 +197,7 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
     const token: Token = {
       id: generateId(),
       name: name.trim(),
+      type: type,
       imageUrl: imagePreview,
       attributes,
       proficiencies,
@@ -209,6 +220,7 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
         sabedoria: 0,
         carisma: 0,
       },
+      bossSettings: type === "boss" ? bossSettings : undefined
     };
 
     onSave(token);
@@ -324,6 +336,98 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
           </div>
         </fieldset>
 
+        {/* Tipo de Token */}
+        <fieldset className="border border-gray-600 p-3 rounded bg-gray-700 bg-opacity-50">
+          <legend className="font-semibold text-green-400 px-2">
+            Tipo de Token
+          </legend>
+          <select name="" id="" className="p-2 rounded bg-gray-700 border border-gray-600 focus:border-green-400 focus:outline-none"
+          value={type}
+          onChange={(e) => setType(e.target.value as TokenType)}>
+              <option value="player">Player</option>
+              <option value="ia">IA</option>
+              <option value="boss">Boss</option>
+          </select>              
+        </fieldset>
+
+        {/* Boss Interface Settings */}
+        {type === "boss" && (
+          <fieldset className="border border-purple-600 p-3 rounded bg-gray-700 bg-opacity-50 mt-3">
+            <legend className="font-semibold text-purple-400 px-2">
+              Boss Visual (Cinematic)
+            </legend>
+
+            <div className="grid grid-cols-2 gap-3">
+
+              {/* Fill */}
+              <div>
+                <label className="text-sm">Fill</label>
+                <input
+                  type="color"
+                  value={bossSettings.fill}
+                  onChange={(e) =>
+                    setBossSettings({ ...bossSettings, fill: e.target.value })
+                  }
+                  className="w-full h-10 cursor-pointer"
+                />
+              </div>
+
+              {/* Stroke */}
+              <div>
+                <label className="text-sm">Stroke</label>
+                <input
+                  type="color"
+                  value={bossSettings.stroke}
+                  onChange={(e) =>
+                    setBossSettings({ ...bossSettings, stroke: e.target.value })
+                  }
+                  className="w-full h-10 cursor-pointer"
+                />
+              </div>
+
+              {/* Shadow Init */}
+              <div>
+                <label className="text-sm">Shadow Start</label>
+                <input
+                  type="color"
+                  value={bossSettings.shadow_init}
+                  onChange={(e) =>
+                    setBossSettings({ ...bossSettings, shadow_init: e.target.value })
+                  }
+                  className="w-full h-10 cursor-pointer"
+                />
+              </div>
+
+              {/* Shadow Mid */}
+              <div>
+                <label className="text-sm">Shadow Mid</label>
+                <input
+                  type="color"
+                  value={bossSettings.shadow_mid}
+                  onChange={(e) =>
+                    setBossSettings({ ...bossSettings, shadow_mid: e.target.value })
+                  }
+                  className="w-full h-10 cursor-pointer"
+                />
+              </div>
+
+              {/* Shadow End */}
+              <div className="col-span-2">
+                <label className="text-sm">Shadow End</label>
+                <input
+                  type="color"
+                  value={bossSettings.shadow_end}
+                  onChange={(e) =>
+                    setBossSettings({ ...bossSettings, shadow_end: e.target.value })
+                  }
+                  className="w-full h-10 cursor-pointer"
+                />
+              </div>
+
+            </div>
+          </fieldset>
+        )}                      
+        {/* Elemento */}
         <fieldset className="border border-gray-600 p-3 rounded bg-gray-700 bg-opacity-50">
           <legend className="font-semibold text-green-400 px-2">
             Definição Elementar

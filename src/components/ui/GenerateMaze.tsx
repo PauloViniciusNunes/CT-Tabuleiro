@@ -13,6 +13,8 @@ type Cell = {
   row: number;
 };
 
+const generateId = (): string => Math.random().toString(36).slice(2, 11);
+
 const GenerateMaze: React.FC<GenerateMazeProps> = ({
   rows,
   cols,
@@ -92,6 +94,7 @@ const GenerateMaze: React.FC<GenerateMazeProps> = ({
 
         if (!pathCells.has(k)) {
           walls.push({
+            id: generateId(),
             type: "wall",
             position: { col, row },
             imgUrl: wallImg,

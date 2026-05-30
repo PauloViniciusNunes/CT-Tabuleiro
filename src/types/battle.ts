@@ -32,10 +32,10 @@ export interface RollResult {
 export interface ActionChoice {
   attribute: keyof Omit<TokenAttributes, "level" | "xp">;
   type: string;
-  rollResult: RollResult;
   attackerId?: string;  // ← Adicione
   targetId?: string;    // ← Adicione
   round?: number; // ← Adicione isto
+  rollResult?: RollResult;
 }
 
 /**

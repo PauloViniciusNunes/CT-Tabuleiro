@@ -3,12 +3,13 @@ Próximas atualizações
 
 3  - Botão de pesquisar por card em CardForm.
 4  - Desenvolver restantes dos efeitos.
-5  - VFX para Items.
 7  - Transformações de tokens (inclusão de novos tipos em token.tsx).
-8  - Efeito sonoros para items.
 9  - Remoção de itens nos slots principais de volta para o inventário.( Otimizando swapItemInInventory)
 10 - Atualizar/Editar Cards ou Items implica na atualização em todos os tokens que possuem esses Cards ou Items.
 11 - Atualização do XP automaticamente.
 12 - Criação de AtributeAtributionForm
 13 - Bots de batalha
 14 - Multiusuário
+
+
+OBS: A instância de token tem um novo id, que não corresponde ao ID de create tokens

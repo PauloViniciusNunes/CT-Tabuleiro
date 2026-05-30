@@ -122,6 +122,9 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, onClose, swap}) => {
   const [pageName, setPageName] = useState<string>("MOCHILA");
 
 
+  useEffect(() => {
+    // força re-render quando inventário muda
+  }, [token.inventory.commonSlot]);
 
   const numberToSlot: Record<number, Partial<ItemSlot>> = 
   {
@@ -252,6 +255,10 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, onClose, swap}) => {
   }
 
   const totalSlots = rows * cols;
+ 
+  useEffect(() => {
+    console.info("INVENTORY RENDER:", token.inventory.commonSlot);
+  }, [token]);
 
   useRarityParticles(
     canvasRef.current,
@@ -388,7 +395,8 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, onClose, swap}) => {
                 }}
               >
                 {Array.from({ length: totalSlots }).map((_, index) => {
-                  const item = inventory.commonSlot?.[index];
+                  const items = inventory.commonSlot ?? [];
+                  const item = items[index];
 
                   return (
                     <div

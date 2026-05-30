@@ -10,6 +10,7 @@ import TokenEditForm from "../components/ui/TokenEditForm";
  * @returns Array com resultados individuais.
  */
 
+export type ResultType = "fail" | "normal" | "success" | "critical" | "total";
 
 export const sum = (values: number[]) =>
   values.reduce((a, b) => a + b, 0);

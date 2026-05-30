@@ -53,15 +53,25 @@ export interface TokenInventory {
 export type TokenStatus = "Vivo" | "Morto";
 export type TokenTeam = "Red" | "Blue" | "Green" | "Yellow";
 export type TokenClass = "Guerreiro" | "Mago" | "Bárbaro" | "Ladino" | "Feitiçeiro";
+export type TokenType = "player" | "ia" | "boss";
 
 export interface TokenPosition {
   col: number;
   row: number;
 }
 
+export interface BossInterfaceColors {
+  fill: string;
+  stroke: string;
+  shadow_init: string;
+  shadow_mid: string;
+  shadow_end: string;
+}
+
 export interface Token {
   id: string;
   name: string;
+  type: TokenType;
   imageUrl: string;
   attributes: TokenAttributes;
   ocassionalAddition: TokenOccasionalAddition;
@@ -96,5 +106,5 @@ export interface Token {
     offset: number;
     gifPath: string;
   }[];
-
+  bossSettings?: BossInterfaceColors;
 }

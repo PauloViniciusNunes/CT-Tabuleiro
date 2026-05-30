@@ -7,6 +7,7 @@ import { Brain } from "lucide-react";
 import type { Card } from "../../types/card";
 import type { Token, TokenAttributes } from "../../types/token";
 import type { RollResult } from "../../types/battle";
+import { type ResultType } from "../../utils/battleCalculations";
 import {
   calculateActionRoll,
   calculateMedianRoll,
@@ -38,7 +39,7 @@ interface OffensiveCardProps {
   onCancel?: () => void;
 }
 
-type ResultType = "fail" | "normal" | "success" | "critical" | "total";
+
 
 const OffensiveCardResolution: React.FC<OffensiveCardProps> = ({
   card,

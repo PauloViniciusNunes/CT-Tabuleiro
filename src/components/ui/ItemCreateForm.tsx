@@ -28,6 +28,7 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
   const [selectedCards, setSelectedCards]   = useState<Card[]>([]);
   const [cardPickerOpen, setCardPickerOpen] = useState<boolean>(false);
   const [craftable, setCraftable] = useState(false);
+  const [haveVfx, setHaveVfx] = useState<boolean>(false);
 
   const toggleCard = (card: Card) => {
     setSelectedCards(prev =>
@@ -40,7 +41,9 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
   const [itemName, setItemName]   = useState<string>("")
   const [itemDesc, setItemDesc]   = useState<string>("")
 
-  const [itemImgUrl, setItemImgUrl]   = useState<string>("")
+  const [itemImgUrl, setItemImgUrl]   = useState<string>("");
+  const [itemVFXurl, setItemVFXurl] = useState<string[]>([]);
+  const [itemSFXurl, setItemSFXurl] = useState<string>("");
   const [itemValue, setItemValue]     = useState<number>(0)
 
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -54,6 +57,30 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
       setItemImgUrl(reader.result as string);
     reader.readAsDataURL(file);
   };
+
+  const handleVFXImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newFrames = Array.from(files).map(file =>
+      URL.createObjectURL(file)
+    );
+
+    setItemVFXurl(prev => [...prev, ...newFrames]);
+  };
+
+  const handleSFXChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if(!file)
+    {
+      setItemSFXurl("");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () =>
+      setItemSFXurl(reader.result as string);
+    reader.readAsDataURL(file);
+  }
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -71,6 +98,8 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
       value: itemValue,
       craftable,
       craftableWith: undefined,
+      vfxUrl: itemVFXurl,
+      sfxUrl: itemSFXurl,
     };
 
     onSave(item);
@@ -100,8 +129,6 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
           />
         </label>
 
-
-
         {/* Imagem */}
         <label className="flex flex-col gap-1">
           <span className="font-semibold text-sm">Imagem</span>
@@ -122,7 +149,6 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
         </label>
 
         {/* Descrição */}
-
         <label className="flex flex-col gap-1 mb-2">
           <span className="text-sm font-semibold">Descrição</span>
           <input
@@ -148,6 +174,45 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
             <option value="ring">Anel</option>
             <option value="inventory-only">Mochila</option>
           </select>
+        </label>
+        
+        {/* VFX */}
+        <label className="flex flex-col gap-1">
+          <span className="font-semibold text-sm">VFX Frames</span>
+
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleVFXImageChange}
+            className="p-2 rounded bg-gray-700 border border-gray-600"
+          />
+
+          {itemVFXurl.length > 0 && (
+            <div className="mt-2 flex gap-2 flex-wrap">
+              {itemVFXurl.map((frame, i) => (
+                <img
+                  key={i}
+                  src={frame}
+                  className="w-16 h-16 object-cover rounded border border-purple-400"
+                />
+              ))}
+            </div>
+          )}
+        </label>
+
+        {/* SFX */}
+        <label className="flex flex-col gap-1">
+          <span className="font-semibold text-sm">SFX</span>
+          <input
+            type="file"
+            accept="audio/*"
+            onChange={handleSFXChange}
+            className="p-2 rounded bg-gray-700 border border-gray-600"
+          />
+          {itemSFXurl !== "" && (
+            <p>SFX: {itemSFXurl}</p>
+          )}
         </label>
 
         {/* Raridade */}

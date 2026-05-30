@@ -23,4 +23,6 @@ export type Item =
 
     craftable: boolean;                  // Pode ser usado como craft?
     craftableWith: string[] | undefined; // Armazena IDs de outros items.
+    vfxUrl?: string[];
+    sfxUrl?: string;
 }

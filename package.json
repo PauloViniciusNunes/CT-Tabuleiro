@@ -15,6 +15,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@tailwindcss/vite": "^4.1.15",
     "class-variance-authority": "^0.7.1",
+    "gifuct-js": "^2.1.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.38.0",
     "react": "^19.2.4",

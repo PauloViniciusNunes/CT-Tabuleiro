@@ -7,7 +7,11 @@ import ReactionPrompt from "../components/ui/ReactionPrompt";
 import CinematicDisplayNameUI from "../components/ui/Introduction";
 import { type Mapa } from "../types/mapas";
 import MapSelect from "../components/ui/MapSelect";
+import PresentItem from "../components/ui/PresentItem";
 import GenerateMaze from "../components/ui/GenerateMaze";
+import { spawnItemVFX } from "../types/elementoVFX";
+import { cartesianMirror } from "../components/mechanisms/doors";
+
 
 import DefenseResolutionForm from "../components/ui/DefenseResolutionForm";
 import { calculateCardRoll, calculateDistance, isInAttackRange, sum } from "../utils/battleCalculations";
@@ -27,6 +31,8 @@ import type {
   RollResult,
   ActionChoice,
 } from "../types/battle";
+
+import type { ExecuteChoice } from "../types/executeChoice";
 import {
   rollInitiative,
   initializeBattleStats,
@@ -44,7 +50,15 @@ import InventoryUI from "../components/ui/Inventory";
 import { type MusicContextType } from "../components/context/MusicContext";
 import type { MapObject } from "../types/mapObject";
 import CreateMapObject from "../components/ui/CreateMapObject";
+import type { ElementoVFX } from "../types/elementoVFX";
 
+/* AI */
+import { executeAITurn } from "../ai/executeAITurn";
+import type { AIContext } from "../ai/types/aiContext";
+import { executeAIReaction } from "../ai/executeAIReaction";
+import { executeAIResponseAction } from "../ai/executeAIResponseAction";
+import { executeAIDefenseResolution } from "../ai/executeAIDefenseResolution";
+/* * */
 
 const getColumnName = (num: number): string => {
   let name = "";
@@ -75,16 +89,6 @@ const teamGlowColors: Record<string, string> = {
   Yellow: "rgba(234, 179, 8, 0.6)",
 };
 
-type ExecuteChoice = ActionChoice & {
-  targetId: string;
-  usedMana: number;
-  usedActions: number;
-  usedCertaintyDie?: boolean;
-  pos: number;
-  actionType: string;
-  item?: Item | null,
-};
-
 
 type PendingReaction = {
   type: "consistencia" | "destreza";
@@ -97,8 +101,41 @@ const BoardPage: React.FC = () => {
 
   const [introdutionAnimation, setIntroductionAnimation] = useState<boolean>(false);
 
-
   /* * */
+
+  const [boardTokens, setBoardTokens] = useState<Token[]>([]);
+  const [currentAI, setCurrentAI] = useState<Token | undefined>(undefined); 
+  const [enemies, setEnemies] = useState<Token[]>([]);
+  const [alies, setAlies] = useState<Token[]>([]);
+  const [aiContext, setAiContext] = useState<AIContext | undefined>(undefined);
+  const [isAIThinking, setIsAIThinking] = useState(false);
+
+  useEffect(() => {
+    setCurrentAI(
+      boardTokens.find((t) => t.type === "ia")
+    );
+    setEnemies(
+      boardTokens.filter(
+        t => t.type === "player"
+      )
+    );
+    setAlies(
+      boardTokens.filter(
+        t => t.type === "ia"
+      )
+    );
+  }, [boardTokens]);
+
+  useEffect(() => {
+    setAiContext({
+      self: currentAI,
+      enemies: enemies,
+      allies: alies,
+      currentTurn: 1,
+    } as AIContext);
+  }, [currentAI, enemies, alies])
+
+
 
   const [rows, setRows] = useState(25);
   const [cols, setCols] = useState(25);
@@ -142,28 +179,93 @@ const BoardPage: React.FC = () => {
     setCols(mapa.cols);
     setBackgroundImage(mapa.img);
     setBoardMapObjects(mapa.mapObjs);
+    setBoardTokens(mapa.boardTokens);
 
     setIsMapSelectOpen(false);
   };
 
-  const handleCreateMapa = () => {
+  function generatePairDoor(primaryDoor: MapObject) {
+    if (
+      !primaryDoor.linkedMapId ||
+      !primaryDoor.linkedDoorId
+    ) return;
+
+    setMapas(prev =>
+      prev.map(mapa => {
+
+        // 🔥 encontrou mapa alvo
+        if (mapa.id !== primaryDoor.linkedMapId) {
+          return mapa;
+        }
+
+
+        // 🔥 posição espelhada
+        const [mirrorCol, mirrorRow] = cartesianMirror(
+          primaryDoor.position.col,
+          primaryDoor.position.row,
+
+          1,
+          mapa.cols,
+
+          1,
+          mapa.rows
+        );
+
+        // 🔥 cria porta correspondente
+        const pairDoor: MapObject = {
+          id: primaryDoor.linkedDoorId ?? "",
+
+          type: "door",
+
+          position: {
+            col: mirrorCol,
+            row: mirrorRow
+          },
+          itemRelative: null,
+          imgUrl: primaryDoor.imgUrl,
+
+          // 🔥 agora linka de volta
+          linkedMapId: selectedMapa?.id,
+
+          // 🔥 aponta para original
+          linkedDoorId: primaryDoor.id,
+        };
+
+        return {
+          ...mapa,
+          mapObjs: [...mapa.mapObjs, pairDoor]
+        };
+      })
+    );
+  }
+
+  const handleCreateMapa = (mapName: string) => {
+
     const newMapa: Mapa = {
       id: crypto.randomUUID(),
-      name: `Mapa ${mapas.length + 1}`,
+      name: mapName,
       rows: 25,
       cols: 25,
-      img: "", // ou imagem padrão
+      img: "",
       mapObjs: [],
+      boardTokens: []
     };
 
+    setMapas(prev => [...prev]);
+
     setMapas(prev => [...prev, newMapa]);
+
     setSelectedMapa(newMapa);
 
     // reset configs
     setRows(25);
     setCols(25);
+
     setBackgroundImage("");
+
     setBoardMapObjects([]);
+
+    setBoardTokens([]);
 
     setIsMapSelectOpen(false);
   };
@@ -176,6 +278,7 @@ const BoardPage: React.FC = () => {
     setBackgroundImage(selectedMapa.img);
     setBoardMapObjects(selectedMapa.mapObjs);
   }, [selectedMapa]);
+
 
 
 
@@ -213,11 +316,12 @@ const BoardPage: React.FC = () => {
             cols,
             img: (backgroundImage ?? ""),
             mapObjs: boardMapObjects,
+            boardTokens: boardTokens,
           }
           : m
       )
     );
-  }, [rows, cols, backgroundImage, boardMapObjects]);
+  }, [rows, cols, backgroundImage, boardMapObjects, boardTokens]);
 
   const [zoom, setZoom] = useState(1);
   const [didActThisTurn, setDidActThisTurn] = useState<Record<string, boolean>>({});
@@ -670,38 +774,20 @@ const BoardPage: React.FC = () => {
   function swapItemInInventory(
     item: Item,
     itemIndex: number,
-    token: Token,
-    setCreatedTokens: React.Dispatch<
-      React.SetStateAction<Token[]>
-    >,
-    setBoardTokens: React.Dispatch<
-      React.SetStateAction<Token[]>
-    >
+    tokenId: string,
+    setBoardTokens: React.Dispatch<React.SetStateAction<Token[]>>
   ) {
-    if (item.slot === "inventory-only")
-      return;
+    if (item.slot === "inventory-only") return;
 
     type EquippedSlot =
       keyof Pick<
         TokenInventory,
-        "primaryHand"
-        | "offHand"
-        | "neck"
-        | "ring"
-        | "armor"
+        "primaryHand" | "offHand" | "neck" | "ring" | "armor"
       >;
 
-    type EquippableItemSlot =
-      Exclude<
-        ItemSlot,
-        "inventory-only"
-      >;
+    type EquippableItemSlot = Exclude<ItemSlot, "inventory-only">;
 
-    const slotMap: Record<
-      EquippableItemSlot,
-      EquippedSlot
-    > =
-    {
+    const slotMap: Record<EquippableItemSlot, EquippedSlot> = {
       "primary-hand": "primaryHand",
       "off-hand": "offHand",
       neck: "neck",
@@ -709,81 +795,41 @@ const BoardPage: React.FC = () => {
       armor: "armor",
     };
 
-    const targetSlot =
-      slotMap[item.slot];
-
-    const updateToken =
-      (t: Token): Token => {
-        if (t.id !== token.id)
-          return t;
-
-        const inventory =
-          t.inventory;
-
-        const removedItem =
-          inventory[targetSlot];
-
-        const newCommonSlot =
-          (inventory.commonSlot ?? [])
-            .filter(
-              (_, i) => i !== itemIndex
-            );
-
-        if (removedItem)
-          newCommonSlot.push(
-            removedItem
-          );
-
-        const updatedToken: Token =
-        {
-          ...t,
-
-          inventory:
-          {
-            ...inventory,
-            [targetSlot]: item,
-            commonSlot:
-              newCommonSlot
-          }
-        };
-
-        const newCards =
-          computeTokenCardsWithSets(
-            updatedToken,
-            removedItem,
-            item
-          );
-
-        return {
-
-          ...updatedToken,
-
-          cards: newCards
-        };
-      };
-
-    setCreatedTokens(prev => {
-      const index =
-        prev.findIndex(
-          t => t.id === token.id
-        );
-
-      if (index === -1)
-        return prev;
-
-      const next =
-        [...prev];
-
-      next[index] =
-        updateToken(
-          prev[index]
-        );
-
-      return next;
-    });
+    const targetSlot = slotMap[item.slot];
 
     setBoardTokens(prev =>
-      prev.map(updateToken)
+      prev.map(t => {
+        if (t.id !== tokenId) return t;
+
+        const inventory = t.inventory;
+        const currentItems = inventory.commonSlot ?? [];
+
+        const removedItem = inventory[targetSlot];
+
+        const newCommonSlot = currentItems.filter((_, i) => i !== itemIndex);
+
+        if (removedItem) newCommonSlot.push(removedItem);
+
+        const updatedToken: Token = {
+          ...t,
+          inventory: {
+            ...inventory,
+            [targetSlot]: item,
+            commonSlot: newCommonSlot,
+          },
+        };
+
+        const newCards = computeTokenCardsWithSets(
+          updatedToken,
+          removedItem,
+          item
+        );
+
+        return {
+          ...updatedToken,
+          cards: newCards,
+        };
+      })
     );
   }
 
@@ -807,8 +853,49 @@ const BoardPage: React.FC = () => {
     setTokenBeingEdited(null);
   }
 
-  const [boardTokens, setBoardTokens] = useState<Token[]>([]);
-  
+
+  const [boardBoss, setBoardBoss] = useState<Token | null>(null);
+
+  useEffect(() => {
+    for (const t of boardTokens) {
+      if (t.type === "boss") {
+        setBoardBoss(t);
+        return;
+      }
+    }
+    setBoardBoss(null);
+  }, [boardTokens])
+  const [boardVfxElements, setBoardVfxElements] = useState<ElementoVFX[]>([]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBoardVfxElements(prev =>
+        prev
+          .map(vfx => {
+            const now = Date.now();
+
+            if (now - vfx.lastFrameTime >= vfx.frameDuration) {
+              return {
+                ...vfx,
+                frameIndex: vfx.frameIndex + 1,
+                lastFrameTime: now,
+              };
+            }
+
+            return vfx;
+          })
+          // 🔥 remove automaticamente quando acabar
+          .filter(vfx => vfx.frameIndex < vfx.frames.length)
+      );
+    }, 16); // ~60fps
+
+    return () => clearInterval(interval);
+  }, []);
+
+  function playSomeSFX(ulr: string) {
+    new Audio(ulr).play()
+  }
+
   const [mapObjectCreateForm, setMapObjectCreateForm] = useState<boolean>(false);
 
   useEffect(() => {
@@ -862,6 +949,210 @@ const BoardPage: React.FC = () => {
     actionHistory: [],
   });
 
+  /* ESTADOS DE COMBATE DINÂMICO */
+  const reallocTurnLock = useRef(false);
+  const tokenDeadLock = useRef(false);
+  useEffect(() => {
+
+    /*
+      IDs vivos.
+    */
+    reallocTurnLock.current = true;
+    console.info("Recalculando ordem de turnos...");
+    const aliveTokenIds =
+      boardTokens
+        .filter(
+          token =>
+            (token.currentLife ?? 1) > 0
+        )
+        .map(
+          token => token.id
+        );
+
+    setBattleState(prev => {
+
+      /*
+        Remove mortos.
+      */
+
+      const newTurnOrder =
+        prev.turnOrder.filter(
+
+          turn =>
+
+            aliveTokenIds.includes(
+              turn.tokenId
+            )
+
+        );
+
+      /*
+        Sem turnos restantes.
+      */
+
+      if (newTurnOrder.length <= 0) {
+
+        return {
+
+          ...prev,
+
+          turnOrder: [],
+          currentTurnIndex: 0,
+
+        };
+
+      }
+
+      /*
+        Token atual antigo.
+      */
+
+      const currentTurn =
+        prev.turnOrder[
+          prev.currentTurnIndex
+        ];
+
+      /*
+        Procura esse token
+        na nova turnOrder.
+      */
+
+      let newCurrentIndex =
+        newTurnOrder.findIndex(
+
+          turn =>
+
+            turn.tokenId ===
+            currentTurn?.tokenId
+
+        );
+
+      /*
+        Se morreu/removido,
+        cai para 0.
+      */
+
+      if (newCurrentIndex < 0) {
+
+        newCurrentIndex = 0;
+
+      }
+
+      /*
+        Nada mudou.
+      */
+
+      const sameOrder =
+        newTurnOrder.length ===
+        prev.turnOrder.length;
+
+      const sameIndex =
+        newCurrentIndex ===
+        prev.currentTurnIndex;
+
+      if (
+        sameOrder &&
+        sameIndex
+      ) {
+
+        return prev;
+
+      }
+
+      return {
+
+        ...prev,
+
+        turnOrder:
+          newTurnOrder,
+
+        currentTurnIndex:
+          newCurrentIndex,
+
+      };
+
+    });
+
+    reallocTurnLock.current = false;
+
+  }, [boardTokens]);
+
+  useEffect(() => {
+
+    /*
+      Tokens mortos.
+    */
+    tokenDeadLock.current = true;
+    console.info("Detectando tokens mortos...");
+    const deadTokens =
+      boardTokens.filter(
+
+        token =>
+
+          (token.currentLife ?? 1) <= 0
+
+      );
+
+    /*
+      Nada morto.
+    */
+
+    if (deadTokens.length <= 0) {
+
+      return;
+
+    }
+
+    /*
+      Agenda remoção.
+    */
+
+    const timeouts =
+      deadTokens.map(token =>
+
+        setTimeout(() => {
+
+          setBoardTokens(prev =>
+
+            prev.filter(
+
+              t => t.id !== token.id
+
+            )
+
+          );
+
+        }, 1000)
+
+      );
+
+    /*
+      Cleanup.
+    */
+
+    tokenDeadLock.current = false;
+
+    return () => {
+
+      timeouts.forEach(
+
+        timeout => clearTimeout(timeout)
+
+      );
+
+    };
+
+  }, [boardTokens]);
+
+  useEffect(() => {
+    if(battleState.turnOrder.length <= 1 && battleState.status === "In Battle") {
+      handleEndBattle();
+    }
+  }, [battleState])
+ /* * */
+
+
+
   const [pendingAttack, setPendingAttack] = useState<{
     attackerId: string;
     targetId: string;
@@ -874,6 +1165,7 @@ const BoardPage: React.FC = () => {
     isFreeAttack?: boolean;
     usedActions: number;
     atackElement: TokenPrimaryElement;
+    usedItem?: Item;
   } | null>(null);
 
   const pendingAttackRef = useRef(pendingAttack);
@@ -1782,6 +2074,124 @@ const BoardPage: React.FC = () => {
   }, [selectedTokenId]);
 
   // Movement keys when Not in Battle
+
+  const [presentedItem, setPresentedItem] = useState<Item | null>(null);
+
+  function haveSpaceInInventory(tokenId: string) // Função válida únicamente quando há apenas um token com ID único
+  {
+    const token = boardTokens.find((t) => t.id === tokenId);
+
+    if (!token) return false;
+
+    const totalSpace = token.inventory.inventoryDimensions.cols * token.inventory.inventoryDimensions.rows;
+
+    // É garantido que 'token.inventory.commonSlot?.length' será um number por causa do fluxo, porei o TS sempre avisa.
+    return totalSpace - (token.inventory.commonSlot?.length ?? 0) > 0;
+  }
+
+  function addItemToInventory(
+    tokenId: string,
+    item: Item,
+    setBoardTokens: React.Dispatch<React.SetStateAction<Token[]>>
+  ) {
+
+
+
+    setBoardTokens(prev => {
+      return prev.map(t => {
+        if (t.id !== tokenId) return t;
+
+        const inventory = t.inventory;
+
+        const currentItems = inventory.commonSlot
+          ? [...inventory.commonSlot] // garante nova referência
+          : [];
+
+        const totalSpace =
+          inventory.inventoryDimensions.cols *
+          inventory.inventoryDimensions.rows;
+
+        if (currentItems.length >= totalSpace) return t;
+
+        let updatedCommonSlot = [...currentItems];
+        updatedCommonSlot.push(item);
+
+        return {
+          ...t,
+          inventory: {
+            ...inventory,
+            commonSlot: updatedCommonSlot,
+          },
+        };
+      });
+    });
+
+    setTimeout(() => {
+
+    }, 100);
+
+  }
+
+  useEffect(() => {
+    console.log("SELECTED:", selectedTokenId);
+    console.log("TOKENS:", boardTokens.map(t => t.id));
+  }, [selectedTokenId])
+
+  function replaceTokenInAnotherMap(
+    tokenId: string,
+    door: MapObject,
+    mapas: Mapa[]
+  ) {
+    const token = boardTokens.find((t) => t.id === tokenId);
+
+    if (!token) return;
+    if (!selectedMapa) return;
+    if (!door.linkedMapId) return;
+    if (!door.linkedDoorId) return;
+
+    // 🔥 encontra mapa destino
+    const targetMap = mapas.find(
+      (m) => m.id === door.linkedMapId
+    );
+
+    if (!targetMap) return;
+
+    // 🔥 encontra a porta correspondente
+    const targetDoor = targetMap.mapObjs.find(
+      (obj) =>
+        obj.type === "door" &&
+        obj.id === door.linkedDoorId
+    );
+
+    if (!targetDoor) return;
+
+    // 🔥 remove token do mapa atual
+    setBoardTokens((prev) =>
+      prev.filter((t) => t.id !== tokenId)
+    );
+
+    // 🔥 cria token movido
+    const movedToken = {
+      ...token,
+      position: {
+        col: targetDoor.position.col,
+        row: targetDoor.position.row,
+      },
+    };
+
+    // 🔥 adiciona no mapa destino
+    setMapas((prev) =>
+      prev.map((m) => {
+        if (m.id !== door.linkedMapId) return m;
+
+        return {
+          ...m,
+          boardTokens: [...m.boardTokens, movedToken],
+        };
+      })
+    );
+  }
+
   useEffect(() => {
     const handleMoveKey = (e: KeyboardEvent) => {
       if (battleState.status !== "Not in Battle") return;
@@ -1836,9 +2246,46 @@ const BoardPage: React.FC = () => {
           obj.position.row === newRow
       );
 
+      const chest = boardMapObjects.find(
+        (obj) =>
+          obj.type === "chest" &&
+          obj.position.col === newCol &&
+          obj.position.row === newRow
+      );
+
+      const door = boardMapObjects.find(
+        (obj) =>
+          obj.type === "door" &&
+          obj.position.col === newCol &&
+          obj.position.row === newRow
+      )
+
       if (hasWall) return;
 
+      if (chest && haveSpaceInInventory(selectedTokenId)) {
+        const item = chest.itemRelative;
+
+
+        if (item) {
+          setPresentedItem(item);
+
+          addItemToInventory(
+            selectedTokenId,
+            item,
+            setBoardTokens
+          );
+
+          setBoardMapObjects(prev =>
+            prev.filter(obj => obj !== chest)
+          );
+        }
+      }
+
       moveTokenOnBoard(selectedTokenId, newCol, newRow);
+
+      if (door) {
+        replaceTokenInAnotherMap(selectedTokenId, door, mapas);
+      }
 
       setLastMoveTime(now);
       setIsCooling(true);
@@ -1972,6 +2419,356 @@ const BoardPage: React.FC = () => {
     }));
   }, [battleState.status, battleState.currentTurnIndex]);
 
+  /* AI Methods */
+  const aiTurnLock = useRef(false);
+  
+
+  useEffect(() => {
+
+  console.info("Entrando no useEffect de turno de IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current);
+
+  if(battleState.status !== "In Battle") return;
+
+  const current =
+    battleState.turnOrder[
+      battleState.currentTurnIndex
+    ];
+
+  if (!current) return;
+  if (pendingFreeResponse) return;
+  if (aiTurnLock.current) {
+
+    return;
+
+  }
+
+  /*
+    Busca token do turno.
+  */
+
+  const token =
+    boardTokens.find(
+      t => t.id === current.tokenId
+    );
+
+  if (!token) return;
+
+  /*
+    Apenas IA.
+  */
+
+  if (token.type !== "ia") {
+
+    setIsAIThinking(false);
+
+    return;
+
+  }
+
+  if(token.currentLife === 0){
+
+    setIsAIThinking(false);
+
+    return;
+
+  }
+
+  if(reallocTurnLock.current && tokenDeadLock.current){
+    console.info("Turno de IA bloqueado por realloc ou morte de token.");
+    setIsAIThinking(false);
+
+    return;
+  }
+
+  console.info("Passou dos locks, IA vai agir. ID do token:", token.id);
+
+  /*
+    Contexto LOCAL
+    sincronizado com
+    o turno atual.
+  */
+
+  const context = {
+
+    self: token,
+
+    allies:
+      boardTokens.filter(
+
+        t =>
+
+          t.team === token.team &&
+          t.id !== token.id
+
+      ),
+
+    enemies:
+      boardTokens.filter(
+
+        t =>
+
+          t.team !== token.team
+
+      ),
+
+    currentTurn:
+      battleState.currentTurnIndex
+
+  };
+
+  /*
+    Lock.
+  */
+
+  aiTurnLock.current =
+    true;
+
+  setIsAIThinking(true);
+
+  /*
+    Delay de pensamento.
+  */
+
+  const timeout =
+    setTimeout(() => {
+
+      console.info("AI está executando ação. ID do token:", token.id);
+      executeAITurn({
+
+        context,
+        handleExecuteAction,
+        moveToken: moveTokenOnBoard,
+        onCompleteTurn: () => {
+
+            aiTurnLock.current =false;
+            setIsAIThinking(false);
+
+        }
+
+      });
+
+    }, 500);
+
+  /*
+    Cleanup.
+  */
+
+  return () => {
+
+    clearTimeout(timeout);
+
+  };
+
+}, [
+  battleState.status,
+  battleState.currentTurnIndex,
+  pendingFreeResponse,reallocTurnLock,tokenDeadLock
+
+  ]); // AI Execute Action
+
+  useEffect(() => {
+
+    if (!pendingAttack) return;
+
+    if (!pendingAttack.isReactionAllowed) return;
+
+    const defender =
+      boardTokens.find(
+        t => t.id === pendingAttack.targetId
+      );
+
+    if (!defender) return;
+
+    if (defender.type !== "ia"){
+      setIsAIThinking(false);
+      return;
+    };
+    if(defender.currentLife === 0){
+
+      setIsAIThinking(false);
+
+      return;
+
+    }
+
+    if(reallocTurnLock.current && tokenDeadLock.current){
+      console.info("Reação de IA bloqueada por realloc ou morte de token.");
+      setIsAIThinking(false);
+
+      return;
+    }
+
+      const attackAttribute =
+        pendingAttack.attackAttribute;
+
+      if (
+        attackAttribute !== "forca" &&
+        attackAttribute !== "destreza" &&
+        attackAttribute !== "inteligencia" &&
+        attackAttribute !== "sabedoria"
+      ) {
+
+        console.warn(
+          "Atributo inválido para reação da IA:",
+          attackAttribute
+        );
+
+        return;
+
+      }
+
+    setIsAIThinking(true);
+
+    const timeout = setTimeout(() => {
+
+      executeAIReaction({
+
+        self: defender,
+
+        incomingAttribute:
+          attackAttribute,
+
+        availableActions:
+          battleState.accumulatedActions[
+            defender.id
+          ] ?? 1,
+
+        handleReaction
+
+      });
+
+      requestAnimationFrame(() => {
+        setIsAIThinking(false);
+      });
+
+    }, 500);
+
+    return () => clearTimeout(timeout);
+
+  }, [pendingAttack,reallocTurnLock,tokenDeadLock]);
+
+  useEffect(() => {
+
+    if (!pendingFreeResponse) return;
+
+    const responder =
+      boardTokens.find(
+        t => t.id === pendingFreeResponse.responderId
+      );
+
+    const target =
+      boardTokens.find(
+        t => t.id === pendingFreeResponse.paralyzedId
+      );
+
+    if (!responder || !target) return;
+
+    if (responder.type !== "ia"){ 
+      setIsAIThinking(false);
+      return
+    };
+
+    if(responder.currentLife === 0){
+
+      setIsAIThinking(false);
+
+      return;
+
+    }
+
+    if(reallocTurnLock.current && tokenDeadLock.current){
+      console.info("Resposta de IA bloqueada por realloc ou morte de token.");
+      setIsAIThinking(false);
+
+      return;
+    }
+
+    setIsAIThinking(true);
+
+    const timeout = setTimeout(() => {
+
+      executeAIResponseAction({
+
+        self: responder,
+
+        forcedTarget: target,
+
+        handleExecuteResponseAction
+
+      });
+
+      requestAnimationFrame(() => {
+        setIsAIThinking(false);
+      });
+
+    }, 500);
+
+    return () => clearTimeout(timeout);
+
+  }, [pendingFreeResponse,reallocTurnLock,tokenDeadLock]);  
+
+  useEffect(() => {
+
+    if (!pendingEsquivaRoll) return;
+
+    if (!pendingAttack) return;
+
+    const attacker =
+      boardTokens.find(
+        t => t.id === pendingAttack.attackerId
+      );
+
+    if (!attacker) return;
+
+    if (attacker.type !== "ia"){ 
+      setIsAIThinking(false);
+      return
+    }
+
+    if(attacker.currentLife === 0){
+
+      setIsAIThinking(false);
+
+      return;
+
+    }
+
+    if(reallocTurnLock.current && tokenDeadLock.current){
+      console.info("Turno de IA bloqueado por realloc ou morte de token.");
+      setIsAIThinking(false);
+
+      return;
+    }
+
+
+    setIsAIThinking(true);
+
+    const timeout = setTimeout(() => {
+
+      executeAIDefenseResolution({
+
+        self: attacker,
+
+        handleDefenseResolution
+
+      });
+
+      requestAnimationFrame(() => {
+        setIsAIThinking(false);
+      });
+
+    }, 1200);
+
+    return () => clearTimeout(timeout);
+
+  }, [
+
+    pendingEsquivaRoll,
+    pendingAttack,reallocTurnLock,tokenDeadLock
+
+  ]);  
+  /* * */
+
   const letters = Array.from({ length: cols }, (_, i) => getColumnName(i + 1));
 
 
@@ -1990,11 +2787,29 @@ const BoardPage: React.FC = () => {
   const placeTokenOnBoard = (tokenId: string, col: number, row: number) => {
     const template = createdTokens.find((t) => t.id === tokenId);
     if (!template) return;
+
     const instance: Token = {
       ...template,
+
+      // 🔥 NOVO ID
       id: `board_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+
       position: { col, row },
+
+      // 🔥 CLONE PROFUNDO DO INVENTÁRIO
+      inventory: {
+        ...template.inventory,
+        commonSlot: [...(template.inventory.commonSlot ?? [])],
+      },
+
+      // 🔥 (RECOMENDADO) CLONAR ARRAYS IMPORTANTES
+      cards: [...template.cards],
+      tokenCards: [...template.tokenCards],
+      visualOverlays: template.visualOverlays
+        ? template.visualOverlays.map(v => ({ ...v }))
+        : [],
     };
+
     setBoardTokens((prev) => [...prev, instance]);
   };
 
@@ -2054,53 +2869,48 @@ const BoardPage: React.FC = () => {
 
 
 
-  const moveTokenOnBoard = (id: string, col: number, row: number) => {
-    const token = boardTokens.find(t => t.id === id);
-    if (!token) return;
+  function moveTokenOnBoard(id: string, col: number, row: number) {
+    setBoardTokens(prevTokens => {
+      const updatedTokens = prevTokens.map(t =>
+        t.id === id
+          ? { ...t, position: { col, row } }
+          : t
+      );
 
-    if (token.position.col !== col || token.position.row !== row) {
-      setMovedThisTurn(prev => ({ ...prev, [id]: true }));
-    }
+      const updatedCards = cardEntities.map(card => {
+        const isTriggerFix =
+          card.pivotSettings.pivotType === "Trigger-Fix" &&
+          card.triggerId === id;
 
-    // 1️⃣ Move o token
-    const updatedTokens = boardTokens.map(t =>
-      t.id === id ? { ...t, position: { col, row } } : t
-    );
+        const isTokenFix =
+          card.pivotSettings.pivotType === "Token-Fix" &&
+          card.anchorTokenId === id;
 
-    // 2️⃣ Move áreas ancoradas (Trigger-Fix E Token-Fix)
-    const updatedCards = cardEntities.map(card => {
-      const isTriggerFix =
-        card.pivotSettings.pivotType === "Trigger-Fix" &&
-        card.triggerId === id;
+        if (isTriggerFix || isTokenFix) {
+          return {
+            ...card,
+            position: { col, row }
+          };
+        }
 
-      const isTokenFix =
-        card.pivotSettings.pivotType === "Token-Fix" &&
-        card.anchorTokenId === id;
+        return card;
+      });
 
-      if (isTriggerFix || isTokenFix) {
-        return {
-          ...card,
-          position: { col, row }
-        };
-      }
+      const reconciledTokens = reconcileCardEntityEffects(
+        updatedTokens,
+        updatedCards
+      );
 
-      return card;
+      setCardEntities(updatedCards);
+
+      return reconciledTokens;
     });
-
-    // 3️⃣ Recalcula TODOS os efeitos de área
-    const reconciledTokens = reconcileCardEntityEffects(
-      updatedTokens,
-      updatedCards
-    );
-
-    setBoardTokens(reconciledTokens);
-    setCardEntities(updatedCards);
-  };
+  }
 
   function cellToPosition(cell: string) {
 
     const alpha = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
-                  'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
+      'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
     ] // Convenção do Alfabeto
 
     let letters = [];
@@ -2117,7 +2927,7 @@ const BoardPage: React.FC = () => {
 
     number = Number(number)
     letters.reverse()
-   
+
     let c = 0;
     for (let i = 0; i < letters.length; i++) {
       c += (26 ** i) * (alpha.indexOf(letters[i]) + 1)  // Conseguir x
@@ -2154,8 +2964,6 @@ const BoardPage: React.FC = () => {
 
   };
 
-
-  // Start battle
   // Start battle
   const handleStartBattle = () => {
     const teams = new Set(boardTokens.map((t) => t.team));
@@ -2163,6 +2971,7 @@ const BoardPage: React.FC = () => {
       alert("É necessário ter tokens de times diferentes para iniciar.");
       return;
     }
+
     const initialized = boardTokens
       .map(initializeBattleStats)
       .map(t => ({
@@ -2260,12 +3069,15 @@ const BoardPage: React.FC = () => {
 
     setDidActThisTurn(didActObj);
     setMovedThisTurn(movedObj);
+
+    if (boardBoss) {
+      setIntroductionAnimation(true);
+    }
   };
 
 
 
   // Next turn
-  // Avança para o próximo turno
   const handleNextTurn = (isVoluntaryPass: boolean = false) => {
     console.log("-----------------------------------------------------------------------------------------------");
     console.log("➡️ ENTROU NO handleNextTurn");
@@ -2394,8 +3206,8 @@ const BoardPage: React.FC = () => {
       console.log("🔓 LOCK LIBERADO");
     }
   };
+  
   // End battle
-
   const handleEndBattle = () => {
     setBattleState({
       status: "Not in Battle",
@@ -2464,6 +3276,9 @@ const BoardPage: React.FC = () => {
     hasEnteredFirstTurnRef.current = {}; // ⬅️ Limpar ref
     remainingExtraActions.current = null; // Reset das ações extras no fim do turno
     maxSelectablePivots.current = 0;
+    aiTurnLock.current = false;
+    reallocTurnLock.current = false;
+    tokenDeadLock.current = false;
 
     setInCardSelection(false);
     setPendingCardResolution(null);
@@ -2477,6 +3292,7 @@ const BoardPage: React.FC = () => {
     setIsAmbientPivotSelection(false);
     setSelectedPivots([]);
     setPreviewCells(new Set());
+    setIsAIThinking(false);
   };
 
   const handleExecuteAction = (choice: ExecuteChoice) => {
@@ -2521,11 +3337,10 @@ const BoardPage: React.FC = () => {
       return;
     }
 
-
-
     if (!token || !target) return;
 
     console.log(">>> ATRIBUTO USADO FOI: ", choice.attribute);
+    console.log("Isso ta entrnaod aqui?");
 
     const isPhysicalAttack = ["forca", "destreza"].includes(choice.attribute);
     const attackType = isPhysicalAttack ? "fisico" : "magico";
@@ -2533,7 +3348,7 @@ const BoardPage: React.FC = () => {
       const distance = calculateDistance(token, target);
       const maxRange = isPhysicalAttack ? (token.bodytobodyRange || 1) : (token.magicalRange || 6);
       console.warn(
-        `${token.name} está fora do alcance para atacar ${target.name}. ` +
+        `${token.id} está fora do alcance para atacar ${target.name}. ` +
         `Distância: ${distance}, Alcance máximo: ${maxRange}`
       );
       return;
@@ -2556,6 +3371,7 @@ const BoardPage: React.FC = () => {
 
     const elementalPos = (choice.attribute === "forca" && target.tokenPrimaryDisvantege === token.tokenPrimaryElement && usedMana > 0) ? 2 * (choice.pos ?? 1) : choice.pos ?? 1;
     const attrPos = searchTokenPosition(token.id, choice.attribute);
+
     const finalPos = (a: number, b: number) => {
       if (a + b === 3) {
         return 2;
@@ -2583,8 +3399,6 @@ const BoardPage: React.FC = () => {
       }
     }
     // 2, 1, 0.5
-
-    console.info(`RESULTADO TOTAL: ${choice.rollResult.total}`);
 
     const respectiveAtribute = choice.attribute;
     const selectedItem = choice.item;
@@ -2757,7 +3571,8 @@ const BoardPage: React.FC = () => {
       isReactionAllowed,
       isFreeAttack: hasLock || false,
       usedActions: usedActions,
-      atackElement: elementUsed
+      atackElement: elementUsed,
+      usedItem: (choice.item === null ? undefined : choice.item),
     });
 
     // 11) Se não pode reagir, aplica dano e trata Paralisia já neste passo
@@ -3124,6 +3939,8 @@ const BoardPage: React.FC = () => {
 
         if (defenderToken) applyTokenEffect(defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
 
+        spawnItemVFX(attackerId, defenderId, (pendingAttack.usedItem === null ? undefined : pendingAttack.usedItem), boardTokens, setBoardVfxElements, playSomeSFX)
+        playSomeSFX("public/sfx/impact.mp3");
         setBoardTokens((prev) =>
           prev.map((t) =>
             t.id === defenderId
@@ -3355,6 +4172,8 @@ const BoardPage: React.FC = () => {
 
     if (!isReactionAllowed) {
       // Aplica dano direto + progressão de paralisia
+      spawnItemVFX(attackerId, forcedTargetId, pendingAttack?.usedItem, boardTokens, setBoardVfxElements, playSomeSFX);
+      playSomeSFX("public/sfx/impact.mp3");
       setBoardTokens((prev) =>
         prev.map((t) =>
           t.id === forcedTargetId ? { ...t, currentLife: Math.max(0, (t.currentLife ?? 0) - rawDamage) } : t
@@ -3421,12 +4240,9 @@ const BoardPage: React.FC = () => {
       setParalysis(forcedTargetId, "none");
     }
 
-
-
-    // Se reação é permitida, o ReactionPrompt cuidará da sequência normal.
   };
 
-  /// Resolução da defesa por Destreza (Esquiva) com TA-1 aplicado ao ATACANTE
+  // Resolução da defesa por Destreza (Esquiva) com TA-1 aplicado ao ATACANTE
   const handleDefenseResolution = (
     usedActions: number,
     definicaoRoll: RollResult,
@@ -3501,7 +4317,8 @@ const BoardPage: React.FC = () => {
       const intesityCalculus = Math.ceil(((attackerToken?.attributes.level ?? 1) - 10) / 4 + 4);
 
       if (defenderToken) applyTokenEffect(defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
-
+      spawnItemVFX(attackerId, defenderId, pendingAttack.usedItem, boardTokens, setBoardVfxElements, playSomeSFX);
+      playSomeSFX("public/sfx/impact.mp3");
       setBoardTokens((prev) =>
         prev.map((t) =>
           t.id === defenderId
@@ -3985,7 +4802,6 @@ const BoardPage: React.FC = () => {
   function addPivot(pivot: PivotCandidate) {
     setSelectedPivots(prev => {
       const next = [...prev, pivot];
-      console.info(next.length)
       return next;
     });
   }
@@ -4181,35 +4997,35 @@ const BoardPage: React.FC = () => {
     <div className="relative flex w-full min-h-screen bg-gray-900 text-white overflow-x-hidden">
       <div className="relative flex-1 p-6" style={{ maxWidth: sidebarOpen ? `calc(100vw - ${sidebarWidth}px)` : "100vw" }}>
         {/* Controls */}
-        <div className="absolute flex items-center gap-4 bg-gray-900 z-20 rounded-md p-2" style={{ top: 6, left: 6 }}>
-          <SettingsDropdown
-            rows={rows}
-            cols={cols}
-            onChangeRows={(v) => setRows(Number(v))}
-            onChangeCols={(v) => setCols(Number(v))}
-            onChangeBackgroundImage={setBackgroundImage}
-          />
-          <div className="ml-4 font-semibold text-green-400 whitespace-nowrap">
-            {selectedCell ? `Célula selecionada: ${selectedCell}` : "Nenhuma célula selecionada"}
-          </div>
-          <div className="ml-4 font-semibold text-blue-400 whitespace-nowrap">
-            Zoom: {Math.round(zoom * 100)}%
-          </div>
-          <button
-            onClick={() => setIsMapSelectOpen(true)}
-            className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-sm"
-          >
-            Mapas
-          </button>
-          <button
-            onClick={() => setGenerateMazeOpen(true)}
-            className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-sm"
-          >
-            Gerar Labirinto
-          </button>          
-        </div>
-
-
+          {battleState.status !== "In Battle" &&  (
+            <div className="absolute flex items-center gap-4 bg-gray-900 z-20 rounded-md p-2" style={{ top: 6, left: 6 }}>
+              <SettingsDropdown
+                rows={rows}
+                cols={cols}
+                onChangeRows={(v) => setRows(Number(v))}
+                onChangeCols={(v) => setCols(Number(v))}
+                onChangeBackgroundImage={setBackgroundImage}
+              />
+              <div className="ml-4 font-semibold text-green-400 whitespace-nowrap">
+                {selectedCell ? `Célula selecionada: ${selectedCell}` : "Nenhuma célula selecionada"}
+              </div>
+              <div className="ml-4 font-semibold text-blue-400 whitespace-nowrap">
+                Zoom: {Math.round(zoom * 100)}%
+              </div>
+              <button
+                onClick={() => setIsMapSelectOpen(true)}
+                className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-sm"
+              >
+                Mapas
+              </button>
+              <button
+                onClick={() => setGenerateMazeOpen(true)}
+                className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-sm"
+              >
+                Gerar Labirinto
+              </button>
+            </div>
+          )}
         {/* VIEWPORT */}
         <div
           className="w-full h-full overflow-hidden cursor-grab"
@@ -4310,6 +5126,12 @@ const BoardPage: React.FC = () => {
                         (m) => m.position.col === colIndex && m.position.row === row + 1
                       )
 
+                      const vfxHere = boardVfxElements.filter(
+                        (v) =>
+                          v.position.col === colIndex &&
+                          v.position.row === row + 1
+                      );
+
                       const cardInstances = cardEntities.find(
                         (c) =>
                           c.position.col === colIndex &&
@@ -4327,6 +5149,8 @@ const BoardPage: React.FC = () => {
                       const inB = battleState.status === "In Battle";
                       const isCurr = tok?.id === currentId;
                       const isTokSel = tok?.id === selectedTokenId;
+
+                      const isDead = (tok?.currentLife ?? 1) <= 0;
 
                       return (
                         <div
@@ -4406,14 +5230,22 @@ const BoardPage: React.FC = () => {
                                 src={tok.imageUrl}
                                 alt={tok.name}
                                 className={[
-                                  "absolute rounded object-cover transition-filter duration-200",
+                                  "absolute rounded object-cover transition-all duration-300",
+
                                   ...effectClasses,
+
                                   isCooling && tok.id === selectedTokenId
                                     ? "filter grayscale"
                                     : "",
+
+                                  isDead
+                                    ? "grayscale brightness-50 opacity-70"
+                                    : "",
+
                                   getParalysis(tok.id) !== "none"
                                     ? "animate-white-blink"
                                     : "",
+
                                 ].join(" ")}
                                 draggable={tok?.id === currentId}
                                 onDragStart={(e) => {
@@ -4487,10 +5319,38 @@ const BoardPage: React.FC = () => {
                           )}
 
                           {mapObj && (
-                            <div className="relative w-full h-full flex items-center justify-center">
+                            <div className="absolute w-full h-full flex items-center justify-center">
                               <img src={mapObj.imgUrl} alt="Map Object" className="absolute rounded object-cover transition-filter duration-200" />
                             </div>
                           )}
+
+                          {vfxHere.map(vfx => (
+                            <div
+                              key={vfx.id}
+                              className="absolute pointer-events-none flex items-center justify-center overflow-visible"
+                              style={{
+                                zIndex: 50,
+
+                                // 🔥 posição baseada na célula central do VFX
+                                left: `calc(50% - ${cellSize}px)`,
+                                top: `calc(50% - ${cellSize}px)`,
+
+                                // 🔥 ocupa 3x3 células
+                                width: cellSize * 3,
+                                height: cellSize * 3,
+                              }}
+                            >
+                              <img
+                                src={vfx.frames[vfx.frameIndex]}
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "contain",
+                                  transform: `rotate(${vfx.imgRotate}deg)`,
+                                }}
+                              />
+                            </div>
+                          ))}
                         </div>
                       );
                     })
@@ -4505,7 +5365,7 @@ const BoardPage: React.FC = () => {
       </div>
 
       {/* Renderização do ActionForm de resposta imediata (modal central, sem pular) */}
-      {pendingFreeResponse && (remainingExtraActions.current?.extraActions ?? 0) > 0 && (() => {
+      {pendingFreeResponse && !isAIThinking && (remainingExtraActions.current?.extraActions ?? 0) > 0 && (() => {
         const responder = boardTokens.find(t => t.id === pendingFreeResponse.responderId);
         const target = boardTokens.find(t => t.id === pendingFreeResponse.paralyzedId);
         if (!responder || !target) return null;
@@ -4516,8 +5376,8 @@ const BoardPage: React.FC = () => {
         if (!hasPhys && !hasMag) return null;
 
         return (
-          <div className="fixed inset-0 z-[85] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60" />
+          <div className="fixed inset-0 z-[40] flex items-center justify-center p-4">
+            <div className="absolute inset-0" />
             <div className="relative z-10 w-full max-w-md">
               <ActionForm
                 token={responder}
@@ -4611,13 +5471,14 @@ const BoardPage: React.FC = () => {
           onEndBattle={handleEndBattle}
           onNextTurn={handleNextTurn}
           onStartBattle={handleStartBattle}
+          boardBoss={boardBoss}
           boardTokens={boardTokens}
         />
 
 
       </div>
       {/* ActionForm during battle */}
-      {battleState.status === "In Battle" && currentToken && !pendingAttack && !pendingFreeResponse && !inCardSelection && !((remainingExtraActions.current?.extraActions ?? 0) > 0) && tokensInOffensiveCard.length <= 0 && !isAmbientPivotSelection && (
+      {battleState.status === "In Battle" && !isAIThinking && currentToken && !pendingAttack && !pendingFreeResponse && !inCardSelection && !((remainingExtraActions.current?.extraActions ?? 0) > 0) && tokensInOffensiveCard.length <= 0 && !isAmbientPivotSelection && (
         <div className="fixed bottom-4 left-4 z-30">
           <ActionForm
             token={currentToken}
@@ -4638,7 +5499,7 @@ const BoardPage: React.FC = () => {
 
 
       {/* ReactionPrompt */}
-      {pendingAttack &&
+      {pendingAttack && !isAIThinking &&
         pendingAttack.isReactionAllowed &&
         pendingAttack.pendingReactions.length > 0 &&
         !pendingEsquivaRoll && (
@@ -4647,10 +5508,12 @@ const BoardPage: React.FC = () => {
               ...(boardTokens.find((t) => t.id === pendingAttack.targetId) as Token),
               reactionType: pendingAttack.pendingReactions[0].type as "consistencia" | "destreza",
             }}
+            attackerId={pendingAttack.attackerId}
             availableActions={battleState.accumulatedActions[pendingAttack.targetId] ?? 1}
             availableMana={boardTokens.find((t) => t.id === pendingAttack.targetId)?.currentMana ?? 0}
             certaintyDieCharges={boardTokens.find((t) => t.id === pendingAttack.targetId)?.certaintyDiceRemaining ?? 0}
             diretionalActionType={pendingAttack.attackAttribute}
+            diretionalActionValue={pendingAttack.attackRoll}
             isReactionAllowed={pendingAttack.isReactionAllowed}
 
             disabledReason={!pendingAttack.isReactionAllowed ? "Reação bloqueada (Paralisia/ação livre)." : undefined}
@@ -4733,7 +5596,8 @@ const BoardPage: React.FC = () => {
               if (pendingAttack.attackAttribute === "forca") {
 
                 if (defenderToken) applyTokenEffect(defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
-
+                spawnItemVFX(attackerToken!.id, defenderToken!.id, (pendingAttack.usedItem === null ? undefined : pendingAttack.usedItem), boardTokens, setBoardVfxElements, playSomeSFX)
+                playSomeSFX("public/sfx/impact.mp3");
                 setBoardTokens((prev) =>
                   prev.map((t) =>
                     t.id === pendingAttack.targetId
@@ -4777,7 +5641,7 @@ const BoardPage: React.FC = () => {
         )}
 
       {/* DefenseResolutionForm */}
-      {pendingEsquivaRoll !== null && pendingAttack && (
+      {pendingEsquivaRoll !== null && !isAIThinking && pendingAttack && (
         <div className="fixed bottom-4 left-4 z-40">
           <DefenseResolutionForm
             attacker={boardTokens.find((t) => t.id === pendingAttack?.attackerId)!}
@@ -4818,7 +5682,7 @@ const BoardPage: React.FC = () => {
       )}
 
       {/* Card Form */}
-      {inCardSelection && (
+      {inCardSelection && !isAIThinking && (
         <>
           <CardForm
             tokenTrigger={pendingCardResolution as Token}
@@ -4893,19 +5757,24 @@ const BoardPage: React.FC = () => {
 
 
       {inventoryOpen && (() => {
-        const token = boardTokens.find((t) => t.id === selectedTokenId)
-        console.info("Here")
+        const token = boardTokens.find(t => t.id === selectedTokenId);
+        if (!token) return null;
+
         return (
           <InventoryUI
-            token={token!}
-            onClose={(t) => setInventoryOpen(t)}
-            swap={(i, n) => swapItemInInventory(i, n, token!, setCreatedTokens, setBoardTokens)}
+            key={token.id + "-" + (token.inventory.commonSlot?.length ?? 0)}
+            token={token}
+            onClose={setInventoryOpen}
+            swap={(item, index) =>
+              swapItemInInventory(item, index, token.id, setBoardTokens)
+            }
           />
-        )
+        );
       })()}
 
-      {introdutionAnimation && (
+      {introdutionAnimation && boardBoss && (
         <CinematicDisplayNameUI
+          boardBoss={boardBoss}
           onEnd={(b) => setIntroductionAnimation(!b)}
         />
       )}
@@ -4923,21 +5792,31 @@ const BoardPage: React.FC = () => {
       {mapObjectCreateForm && (
         <CreateMapObject
           position={cellToPosition(selectedCell ?? "A1")}
+          createdMapas={mapas}
+          selectedMapa={selectedMapa}
           createdItems={createdItems}
           onClose={() => setMapObjectCreateForm(false)}
+          generatePairDoor={generatePairDoor}
           setBoardMapObjects={setBoardMapObjects}
         />
       )
       }
 
-    {generateMazeOpen && (
-      <GenerateMaze
-        rows={rows}
-        cols={cols}
-        setBoardMapObjects={setBoardMapObjects}
-        onClose={() => setGenerateMazeOpen(false)}
-      />
-    )}      
+      {generateMazeOpen && (
+        <GenerateMaze
+          rows={rows}
+          cols={cols}
+          setBoardMapObjects={setBoardMapObjects}
+          onClose={() => setGenerateMazeOpen(false)}
+        />
+      )}
+
+      {presentedItem && (
+        <PresentItem
+          item={presentedItem}
+          onClose={() => setPresentedItem(null)}
+        />
+      )}
 
     </div>
   );

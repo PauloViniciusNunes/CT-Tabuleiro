@@ -1,4 +1,5 @@
 import type { MapObject } from "./mapObject";
+import type { Token } from "./token";
 
 export type Mapa = {
     name: string,
@@ -7,4 +8,5 @@ export type Mapa = {
     cols: number,
     img: string;
     mapObjs: MapObject[];
+    boardTokens: Token[];
 }

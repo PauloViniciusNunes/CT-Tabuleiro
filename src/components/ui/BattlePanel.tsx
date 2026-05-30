@@ -7,6 +7,7 @@ interface BattlePanelProps {
   onStartBattle: () => void;
   onEndBattle: () => void;
   onNextTurn: () => void;
+  boardBoss: Token | null;
 }
 
 export const BattlePanel: React.FC<BattlePanelProps> = ({
@@ -15,6 +16,7 @@ export const BattlePanel: React.FC<BattlePanelProps> = ({
   onStartBattle,
   onEndBattle,
   onNextTurn,
+  boardBoss,
 }) => {
 
   const canStartBattle = () => {
@@ -25,6 +27,13 @@ export const BattlePanel: React.FC<BattlePanelProps> = ({
   const getCurrentToken = () => {
     if (battleState.turnOrder.length === 0) return null;
     const currentInit = battleState.turnOrder[battleState.currentTurnIndex];
+
+    if (!currentInit) {
+
+      return null;
+
+    }
+
     return tokens.find((t) => t.id === currentInit.tokenId);
   };
 
@@ -49,7 +58,7 @@ export const BattlePanel: React.FC<BattlePanelProps> = ({
               disabled={!canStartBattle()}
               className={`w-full py-2 rounded font-bold text-white ${
                 canStartBattle()
-                  ? "bg-green-600 hover:bg-green-700"
+                  ? ( boardBoss ? "bg-purple-700 text-white": "bg-gray-900 text-gray-300")
                   : "bg-gray-600 cursor-not-allowed"
               }`}
             >

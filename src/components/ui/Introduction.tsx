@@ -1,12 +1,16 @@
 import { motion } from "framer-motion";
+import { type Token } from "../../types/token";
 
 interface CDNProps {
+  boardBoss: Token | null
   onEnd: (b: boolean) => void;
 }
 
-export default function CinematicDisplayNameUI({ onEnd }: CDNProps) {
+export default function CinematicDisplayNameUI({boardBoss, onEnd }: CDNProps) {
 
-  const name = "ATLAS BLACKOUT";
+
+  const name = boardBoss?.name?.toUpperCase() ?? "";
+  const colors = boardBoss?.bossSettings;
 
   const baseSize = 120;
 
@@ -62,10 +66,10 @@ export default function CinematicDisplayNameUI({ onEnd }: CDNProps) {
           fontFamily="Cinzel, serif"
           fontWeight="bold"
 
-          fill="#000000"
+          fill={colors?.fill ?? "#000000"}
           fillOpacity={0}
 
-          stroke="#971e91"
+          stroke={colors?.stroke ?? "#971e91"}
           strokeWidth="2"
 
           initial={{
@@ -93,11 +97,10 @@ export default function CinematicDisplayNameUI({ onEnd }: CDNProps) {
 
           style={{
             letterSpacing: "0.05em",
-
             filter: `
-              drop-shadow(0 0 6px #5e3f7c)
-              drop-shadow(0 0 12px rgb(214, 69, 228))
-              drop-shadow(0 0 20px rgb(219, 54, 197))
+              drop-shadow(0 0 6px ${colors?.shadow_init ?? "#5e3f7c"})
+              drop-shadow(0 0 12px ${colors?.shadow_mid ?? "#d645e4"})
+              drop-shadow(0 0 20px ${colors?.shadow_end ?? "#db36c5"})
             `
           }}
 

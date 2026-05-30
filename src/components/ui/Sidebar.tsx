@@ -47,6 +47,7 @@ interface SidebarProps {
   onStartBattle: () => void;
   onEndBattle: () => void;
   onNextTurn: () => void;
+  boardBoss: Token | null;
 }
 
 type TabType = "token" | "cards" |"item" | "music" | "chat";
@@ -83,6 +84,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onStartBattle,
   onEndBattle, 
   onNextTurn,
+  boardBoss,
 }) => {
 
   const [formOpen, setFormOpen]         = useState<boolean>(false);
@@ -503,8 +505,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   onEndBattle={onEndBattle}
                   onNextTurn={onNextTurn}
                   onStartBattle={onStartBattle}
+                  boardBoss={boardBoss}
                 />         
-                <h2 className="text-lg font-bold text-white select-none mb-2 text-center">Historic Battle</h2>
+                <h2 className="mt-2 text-lg font-bold text-white select-none mb-2 text-center">Historic Battle</h2>
                   <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-800 rounded p-3 mb-2 space-y-2">
                     {battleHistory.length === 0 ? (
                       <p className="text-gray-400 text-sm">Nenhuma ação registrada.</p>
@@ -536,12 +539,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                       disabled
                     >
                       Filtrar
-                    </button>
-                    <button
-                      className="px-4 py-2 bg-purple-600 hover:bg-green-700 rounded text-white text-sm font-bold flex-shrink-0"
-                      onClick={() => setIntroduction(true)}
-                    >
-                      Exibir Tela
                     </button>
                   </div>
               </div>
