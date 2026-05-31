@@ -20,13 +20,6 @@ export function decideResponseAction({
 
   const card = chooseCard(self.cards ?? []);
 
-  if (!card) {
-
-    console.warn("IA não encontrou carta de resposta.");
-    return null;
-
-  }
-
   const choice = generateActionChoice(
 
     self,

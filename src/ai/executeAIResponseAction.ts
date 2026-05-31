@@ -13,7 +13,7 @@ interface ExecuteAIResponseActionParams {
     attackerId: string,
     forcedTargetId: string,
     choice: ExecuteChoice
-  ) => void;
+  ) => boolean;
 
 }
 
@@ -23,7 +23,7 @@ export function executeAIResponseAction({
   forcedTarget,
   handleExecuteResponseAction
 
-}: ExecuteAIResponseActionParams) {
+}: ExecuteAIResponseActionParams): boolean {
 
   const decision = decideResponseAction({
 
@@ -35,11 +35,11 @@ export function executeAIResponseAction({
   if (!decision) {
 
     console.warn("IA não conseguiu decidir resposta.");
-    return;
+    return false;
 
   }
 
-  handleExecuteResponseAction(
+  return handleExecuteResponseAction(
 
     self.id,
 

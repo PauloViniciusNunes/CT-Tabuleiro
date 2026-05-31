@@ -24,7 +24,7 @@ interface ExecuteAITurnParams {
 
   handleExecuteAction: (
     choice: ExecuteChoice
-  ) => void;
+  ) => boolean;
 
   moveToken: (
     tokenId: string,
@@ -32,7 +32,11 @@ interface ExecuteAITurnParams {
     row: number
   ) => void;
 
-  onCompleteTurn?: () => void;
+  onCompleteTurn?: (
+    result?: {
+      actionStarted: boolean;
+    }
+  ) => void;
 
 }
 
@@ -59,7 +63,9 @@ export function executeAITurn({
       "IA sem token associado."
     );
 
-    onCompleteTurn?.();
+    onCompleteTurn?.({
+      actionStarted: false
+    });
 
     return;
 
@@ -78,7 +84,9 @@ export function executeAITurn({
       "IA não conseguiu decidir ação."
     );
 
-    onCompleteTurn?.();
+    onCompleteTurn?.({
+      actionStarted: false
+    });
 
     return;
 
@@ -90,7 +98,9 @@ export function executeAITurn({
 
   if (decision.type !== "action") {
 
-    onCompleteTurn?.();
+    onCompleteTurn?.({
+      actionStarted: false
+    });
 
     return;
 
@@ -116,7 +126,9 @@ export function executeAITurn({
       "IA não encontrou alvo."
     );
 
-    onCompleteTurn?.();
+    onCompleteTurn?.({
+      actionStarted: false
+    });
 
     return;
 
@@ -147,8 +159,6 @@ export function executeAITurn({
 
   ) => {
 
-    console.info("Chamando função recursiva de movimento e ataque da IA. Self:", currentSelf, "Target:", target);
-
     const inRange =
       isInAttackRange(
 
@@ -165,11 +175,14 @@ export function executeAITurn({
 
     if (inRange) {
       console.info("IA está em alcance para atacar. Atacando e completando turno.");
-      handleExecuteAction(
-        decision.choice
-      );
+      const actionStarted =
+        handleExecuteAction(
+          decision.choice
+        );
 
-      onCompleteTurn?.();
+      onCompleteTurn?.({
+        actionStarted
+      });
 
       return;
 
@@ -193,6 +206,21 @@ export function executeAITurn({
         updatedSelf
 
       ) => {
+        const didMove =
+          updatedSelf.position.col !== currentSelf.position.col ||
+          updatedSelf.position.row !== currentSelf.position.row;
+
+        if (!didMove) {
+          console.warn(
+            "IA não conseguiu avançar até o alvo."
+          );
+
+          onCompleteTurn?.({
+            actionStarted: false
+          });
+
+          return;
+        }
 
         /*
           Continua

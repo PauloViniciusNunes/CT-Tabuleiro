@@ -32,7 +32,6 @@ export function decideAction(context: AIContext) {
 
   console.log("CARD:", card);
 
-
   // gera ação completa
   const choice = generateActionChoice(
     context.self,

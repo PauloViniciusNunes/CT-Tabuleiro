@@ -47,54 +47,30 @@ export function chooseMovement({
     target.position.row;
 
   /*
-    Anda até ficar
-    adjacente ao alvo.
+    Um passo por chamada.
+    O fluxo procedural chama esta função novamente
+    depois que a grid renderiza o movimento.
   */
 
-  while (
-
+  if (
     Math.max(
-
       Math.abs(col - targetCol),
-
       Math.abs(row - targetRow)
-
-    ) > 1
-
+    ) <= 1
   ) {
+    return null;
+  }
 
-    /*
-      Horizontal.
-    */
+  if (col < targetCol) {
+    col++;
+  } else if (col > targetCol) {
+    col--;
+  }
 
-    if (col < targetCol) {
-
-      col++;
-
-    } else if (
-      col > targetCol
-    ) {
-
-      col--;
-
-    }
-
-    /*
-      Vertical.
-    */
-
-    if (row < targetRow) {
-
-      row++;
-
-    } else if (
-      row > targetRow
-    ) {
-
-      row--;
-
-    }
-
+  if (row < targetRow) {
+    row++;
+  } else if (row > targetRow) {
+    row--;
   }
 
   return {

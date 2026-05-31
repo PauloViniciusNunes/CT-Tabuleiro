@@ -81,6 +81,15 @@ const columnToNumber = (name: string): number => {
   return num;
 };
 
+const combatInfo = (message: string, data?: unknown) => {
+  if (data === undefined) {
+    console.info(`[COMBATE] ${message}`);
+    return;
+  }
+
+  console.info(`[COMBATE] ${message}`, data);
+};
+
 
 const teamGlowColors: Record<string, string> = {
   Red: "rgba(239, 68, 68, 0.6)",
@@ -104,11 +113,16 @@ const BoardPage: React.FC = () => {
   /* * */
 
   const [boardTokens, setBoardTokens] = useState<Token[]>([]);
+  const boardTokensRef = useRef<Token[]>([]);
   const [currentAI, setCurrentAI] = useState<Token | undefined>(undefined); 
   const [enemies, setEnemies] = useState<Token[]>([]);
   const [alies, setAlies] = useState<Token[]>([]);
   const [aiContext, setAiContext] = useState<AIContext | undefined>(undefined);
-  const [isAIThinking, setIsAIThinking] = useState(false);
+  const [, setIsAIThinking] = useState(false);
+
+  useEffect(() => {
+    boardTokensRef.current = boardTokens;
+  }, [boardTokens]);
 
   useEffect(() => {
     setCurrentAI(
@@ -332,6 +346,11 @@ const BoardPage: React.FC = () => {
   const [freeActionLock, setFreeActionLock] = useState<Record<string, string>>({});
   const [sidebarWidth, setSidebarWidth] = useState<number>(320); // inicial
   const [cardEntities, setCardEntities] = useState<CardEntityInstance[]>([]);
+  const cardEntitiesRef = useRef<CardEntityInstance[]>([]);
+
+  useEffect(() => {
+    cardEntitiesRef.current = cardEntities;
+  }, [cardEntities]);
 
   function decreaseCardEntityDuration(triggerId: string) {
     setCardEntities(prev => {
@@ -948,6 +967,11 @@ const BoardPage: React.FC = () => {
     activeEffects: {},
     actionHistory: [],
   });
+  const battleStateRef = useRef<BattleState>(battleState);
+
+  useEffect(() => {
+    battleStateRef.current = battleState;
+  }, [battleState]);
 
   /* ESTADOS DE COMBATE DINÂMICO */
   const reallocTurnLock = useRef(false);
@@ -958,7 +982,7 @@ const BoardPage: React.FC = () => {
       IDs vivos.
     */
     reallocTurnLock.current = true;
-    console.info("Recalculando ordem de turnos...");
+    
     const aliveTokenIds =
       boardTokens
         .filter(
@@ -1083,7 +1107,7 @@ const BoardPage: React.FC = () => {
       Tokens mortos.
     */
     tokenDeadLock.current = true;
-    console.info("Detectando tokens mortos...");
+    
     const deadTokens =
       boardTokens.filter(
 
@@ -1098,6 +1122,8 @@ const BoardPage: React.FC = () => {
     */
 
     if (deadTokens.length <= 0) {
+
+      tokenDeadLock.current = false;
 
       return;
 
@@ -1140,6 +1166,8 @@ const BoardPage: React.FC = () => {
 
       );
 
+      tokenDeadLock.current = false;
+
     };
 
   }, [boardTokens]);
@@ -1175,6 +1203,47 @@ const BoardPage: React.FC = () => {
   useEffect(() => {
     pendingAttackRef.current = pendingAttack;
   }, [pendingAttack])
+
+  useEffect(() => {
+    if (battleState.status !== "In Battle") return;
+
+    const livingIds = new Set(
+      boardTokens
+        .filter(token => (token.currentLife ?? 1) > 0)
+        .map(token => token.id)
+    );
+
+    if (
+      pendingAttack &&
+      (!livingIds.has(pendingAttack.attackerId) ||
+        !livingIds.has(pendingAttack.targetId))
+    ) {
+      setPendingAttack(null);
+      setPendingEsquivaRoll(null);
+      setIsInDefenseResolution(false);
+    }
+
+    if (
+      pendingFreeResponse &&
+      (!livingIds.has(pendingFreeResponse.responderId) ||
+        !livingIds.has(pendingFreeResponse.paralyzedId))
+    ) {
+      setPendingFreeResponse(null);
+      remainingExtraActions.current = null;
+    }
+
+    setTokensInOffensiveCard(prev =>
+      prev.filter(token => livingIds.has(token.id))
+    );
+
+    if (
+      pendingCardResolution &&
+      !livingIds.has(pendingCardResolution.id)
+    ) {
+      setInCardSelection(false);
+      setPendingCardResolution(null);
+    }
+  }, [boardTokens, battleState.status]);
 
   const [pendingEsquivaRoll, setPendingEsquivaRoll] = useState<RollResult | null>(null);
   const [lastMoveTime, setLastMoveTime] = useState<number>(0);
@@ -1314,6 +1383,10 @@ const BoardPage: React.FC = () => {
 
   const totalActionsReturn = useRef(0);
   function grantFreeActionNoReaction(nextActorId: string, nextDefenderId: string, paralasysType: ParalysisState, totalActions: number) {
+    combatInfo(`${nextActorId} fara resposta a ${nextDefenderId}`, {
+      paralysis: paralasysType,
+      actions: totalActions,
+    });
 
     if (paralasysType !== 'none') {
       console.log("🔴 ENTROU PARA DEFINIR O TOTAL DE AÇÕES DO TOKEN COMO: 2");
@@ -2328,7 +2401,11 @@ const BoardPage: React.FC = () => {
   // Auto advance turn
 
   useEffect(() => {
-    if (shouldAdvanceTurn && battleState.status === "In Battle" && !pendingAttack) {
+    if (
+      shouldAdvanceTurn &&
+      battleStateRef.current.status === "In Battle" &&
+      !pendingAttackRef.current
+    ) {
       setShouldAdvanceTurn(false);
       handleNextTurn();
     }
@@ -2338,6 +2415,7 @@ const BoardPage: React.FC = () => {
   useEffect(() => {
     if (postParalyse && postParalyse.allowedPostAtack) {
       console.log("!!> Está entrando aqui");
+      combatInfo(`${postParalyse.responderId} fara resposta a ${postParalyse.forcedId}`);
       setPendingFreeResponse({
         responderId: postParalyse.responderId,
         paralyzedId: postParalyse.forcedId,
@@ -2421,12 +2499,12 @@ const BoardPage: React.FC = () => {
 
   /* AI Methods */
   const aiTurnLock = useRef(false);
-  
+  const aiTurnTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
 
-  console.info("Entrando no useEffect de turno de IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current);
-
+  console.warn("[COMBATE] Entrando no useEffect de turno da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current,"TokenDead:", tokenDeadLock.current , "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
+  console.warn("[COMBATE]")
   if(battleState.status !== "In Battle") return;
 
   const current =
@@ -2436,9 +2514,17 @@ const BoardPage: React.FC = () => {
 
   if (!current) return;
   if (pendingFreeResponse) return;
+  if(pendingAttack) return;
+  console.info("[COMBATE] Verificações iniciais passadas, avaliando locks...");
   if (aiTurnLock.current) {
+    if (aiTurnTokenRef.current !== current.tokenId) {
+      aiTurnLock.current = false;
+      aiTurnTokenRef.current = null;
+    } else {
 
-    return;
+      return;
+
+    }
 
   }
 
@@ -2474,13 +2560,14 @@ const BoardPage: React.FC = () => {
   }
 
   if(reallocTurnLock.current && tokenDeadLock.current){
-    console.info("Turno de IA bloqueado por realloc ou morte de token.");
+    console.info("[COMBATE] Turno de IA bloqueado por realloc ou morte de token.");
     setIsAIThinking(false);
 
     return;
   }
 
-  console.info("Passou dos locks, IA vai agir. ID do token:", token.id);
+  console.info("[COMBATE] Passou dos locks, IA vai agir. Nome do token:", token.name);
+  combatInfo(`${token.name} esta pensando`);
 
   /*
     Contexto LOCAL
@@ -2522,6 +2609,8 @@ const BoardPage: React.FC = () => {
 
   aiTurnLock.current =
     true;
+  aiTurnTokenRef.current =
+    token.id;
 
   setIsAIThinking(true);
 
@@ -2533,15 +2622,21 @@ const BoardPage: React.FC = () => {
     setTimeout(() => {
 
       console.info("AI está executando ação. ID do token:", token.id);
+      combatInfo(`${token.id} iniciou turno IA`);
       executeAITurn({
 
         context,
         handleExecuteAction,
         moveToken: moveTokenOnBoard,
-        onCompleteTurn: () => {
+        onCompleteTurn: (result) => {
 
-            aiTurnLock.current =false;
-            setIsAIThinking(false);
+          aiTurnLock.current = false;
+          aiTurnTokenRef.current = null;
+          setIsAIThinking(false);
+
+          if (result?.actionStarted === false) {
+            handleNextTurn(true);
+          }
 
         }
 
@@ -2555,18 +2650,38 @@ const BoardPage: React.FC = () => {
 
   return () => {
 
+    console.warn(
+      "[COMBATE] CLEANUP EXECUTADO",
+      token.id,
+      battleState.currentTurnIndex
+    );
+
     clearTimeout(timeout);
 
+    if (aiTurnTokenRef.current === token.id) {
+
+      console.warn(
+        "[COMBATE] CLEANUP LIBEROU LOCK DA IA"
+      );
+
+      aiTurnLock.current = false;
+      aiTurnTokenRef.current = null;
+      setIsAIThinking(false);
+    }
   };
 
 }, [
   battleState.status,
   battleState.currentTurnIndex,
-  pendingFreeResponse,reallocTurnLock,tokenDeadLock
-
+  pendingFreeResponse,
+  reallocTurnLock,
+  tokenDeadLock,
+  battleState.accumulatedActions,
   ]); // AI Execute Action
 
   useEffect(() => {
+
+    console.warn("[COMBATE] Entrando no useEffect de reação da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current , "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
 
     if (!pendingAttack) return;
 
@@ -2620,6 +2735,7 @@ const BoardPage: React.FC = () => {
     setIsAIThinking(true);
 
     const timeout = setTimeout(() => {
+      combatInfo(`${defender.id} reagiu a ${pendingAttack.attackerId}`);
 
       executeAIReaction({
 
@@ -2645,9 +2761,11 @@ const BoardPage: React.FC = () => {
 
     return () => clearTimeout(timeout);
 
-  }, [pendingAttack,reallocTurnLock,tokenDeadLock]);
+  }, [pendingAttack,reallocTurnLock,tokenDeadLock]); // AI Reaction
 
   useEffect(() => {
+
+    console.warn("[COMBATE] Entrando no useEffect de resposta da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current , "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
 
     if (!pendingFreeResponse) return;
 
@@ -2686,8 +2804,9 @@ const BoardPage: React.FC = () => {
     setIsAIThinking(true);
 
     const timeout = setTimeout(() => {
+      combatInfo(`${responder.id} fara resposta a ${target.id}`);
 
-      executeAIResponseAction({
+      const actionStarted = executeAIResponseAction({
 
         self: responder,
 
@@ -2697,6 +2816,16 @@ const BoardPage: React.FC = () => {
 
       });
 
+      if (!actionStarted) {
+        remainingExtraActions.current = null;
+        setPendingFreeResponse(null);
+        setLastAllUsedResponse(prev => ({
+          ...prev,
+          [responder.id]: true
+        }));
+        setShouldAdvanceTurn(true);
+      }
+
       requestAnimationFrame(() => {
         setIsAIThinking(false);
       });
@@ -2705,9 +2834,11 @@ const BoardPage: React.FC = () => {
 
     return () => clearTimeout(timeout);
 
-  }, [pendingFreeResponse,reallocTurnLock,tokenDeadLock]);  
+  }, [pendingFreeResponse,reallocTurnLock,tokenDeadLock]);  // AI Response 
 
   useEffect(() => {
+
+    console.warn("[COMBATE] Entrando no useEffect de defesa da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current , "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
 
     if (!pendingEsquivaRoll) return;
 
@@ -2744,6 +2875,7 @@ const BoardPage: React.FC = () => {
     setIsAIThinking(true);
 
     const timeout = setTimeout(() => {
+      combatInfo(`${attacker.id} resolveu defesa contra ${pendingAttack.targetId}`);
 
       executeAIDefenseResolution({
 
@@ -2764,9 +2896,9 @@ const BoardPage: React.FC = () => {
   }, [
 
     pendingEsquivaRoll,
-    pendingAttack,reallocTurnLock,tokenDeadLock
+    pendingAttack,reallocTurnLock,tokenDeadLock,pendingFreeResponse
 
-  ]);  
+  ]);  // AI Defense Resolution
   /* * */
 
   const letters = Array.from({ length: cols }, (_, i) => getColumnName(i + 1));
@@ -2870,41 +3002,42 @@ const BoardPage: React.FC = () => {
 
 
   function moveTokenOnBoard(id: string, col: number, row: number) {
-    setBoardTokens(prevTokens => {
-      const updatedTokens = prevTokens.map(t =>
-        t.id === id
-          ? { ...t, position: { col, row } }
-          : t
-      );
+    const updatedTokens = boardTokensRef.current.map(t =>
+      t.id === id
+        ? { ...t, position: { col, row } }
+        : t
+    );
 
-      const updatedCards = cardEntities.map(card => {
-        const isTriggerFix =
-          card.pivotSettings.pivotType === "Trigger-Fix" &&
-          card.triggerId === id;
+    const updatedCards = cardEntitiesRef.current.map(card => {
+      const isTriggerFix =
+        card.pivotSettings.pivotType === "Trigger-Fix" &&
+        card.triggerId === id;
 
-        const isTokenFix =
-          card.pivotSettings.pivotType === "Token-Fix" &&
-          card.anchorTokenId === id;
+      const isTokenFix =
+        card.pivotSettings.pivotType === "Token-Fix" &&
+        card.anchorTokenId === id;
 
-        if (isTriggerFix || isTokenFix) {
-          return {
-            ...card,
-            position: { col, row }
-          };
-        }
+      if (isTriggerFix || isTokenFix) {
+        return {
+          ...card,
+          position: { col, row }
+        };
+      }
 
-        return card;
-      });
-
-      const reconciledTokens = reconcileCardEntityEffects(
-        updatedTokens,
-        updatedCards
-      );
-
-      setCardEntities(updatedCards);
-
-      return reconciledTokens;
+      return card;
     });
+
+    const reconciledTokens = reconcileCardEntityEffects(
+      updatedTokens,
+      updatedCards
+    );
+
+    boardTokensRef.current = reconciledTokens;
+    cardEntitiesRef.current = updatedCards;
+
+    setBoardTokens(reconciledTokens);
+    setCardEntities(updatedCards);
+    setMovedThisTurn(prev => ({ ...prev, [id]: true }));
   }
 
   function cellToPosition(cell: string) {
@@ -3081,6 +3214,8 @@ const BoardPage: React.FC = () => {
   const handleNextTurn = (isVoluntaryPass: boolean = false) => {
     console.log("-----------------------------------------------------------------------------------------------");
     console.log("➡️ ENTROU NO handleNextTurn");
+    const liveBattleState = battleStateRef.current;
+    const liveBoardTokens = boardTokensRef.current;
 
     // Já está avançando? Evita reentrância
     if (isAdvancingTurnRef.current) {
@@ -3089,19 +3224,19 @@ const BoardPage: React.FC = () => {
     }
 
     // Só funciona em batalha
-    if (battleState.status !== "In Battle") {
+    if (liveBattleState.status !== "In Battle") {
       console.log("⚠️ NOT IN BATTLE, ABORDANDO");
       return;
     }
 
     // Não pode avançar com resolução pendente
-    if (pendingAttack || isInDefenseResolution || pendingEsquivaRoll != null) {
+    if (pendingAttackRef.current || isInDefenseResolution || pendingEsquivaRoll != null) {
       console.log("⏸️ Há resolução de ataque/defesa pendente, abortando");
       return;
     }
 
-    const currentIdx = battleState.currentTurnIndex;
-    const currentTokenId = battleState.turnOrder[currentIdx]?.tokenId;
+    const currentIdx = liveBattleState.currentTurnIndex;
+    const currentTokenId = liveBattleState.turnOrder[currentIdx]?.tokenId;
 
     reduceTimeToRecharge(currentTokenId);
 
@@ -3112,20 +3247,21 @@ const BoardPage: React.FC = () => {
       return;
     }
 
-    const tokenName = boardTokens.find(t => t.id === currentTokenId)?.name ?? "Desconhecido";
+    const tokenName = liveBoardTokens.find(t => t.id === currentTokenId)?.name ?? "Desconhecido";
     console.log("🧭 FINALIZANDO TURNO DE:", tokenName);
+    combatInfo(`${currentTokenId} tentou passar turno`);
 
     // Se não é passe voluntário e ainda há ações, não pode auto-passar
-    const currentActions = battleState.accumulatedActions[currentTokenId] ?? 1;
-    if (!isVoluntaryPass && currentActions > 0 && !(lastAllUsedResponse[currentId] ?? false)) {
+    const currentActions = liveBattleState.accumulatedActions[currentTokenId] ?? 1;
+    if (!isVoluntaryPass && currentActions > 0 && !(lastAllUsedResponse[currentTokenId] ?? false)) {
       console.log("🚫 BLOQUEADO, AINDA RESTAM AÇÕES");
       return;
     }
 
     console.log("REMAINING EXTRA ACTIONS: ", (remainingExtraActions.current?.extraActions));
-    console.log("PEDDING ATACK: ", pendingAttack);
+    console.log("PEDDING ATACK: ", pendingAttackRef.current);
     console.log("PEDDING FREE RESPONSE: ", pendingFreeResponse);
-    if (!pendingAttack && !pendingFreeResponse && !((remainingExtraActions.current?.extraActions ?? 0) > 0)) {
+    if (!pendingAttackRef.current && !pendingFreeResponse && !((remainingExtraActions.current?.extraActions ?? 0) > 0)) {
       console.log("ESTÁ ENTRANDO NESSA CONDIÇÂO BIZARRA!");
     }
     // Inicia trava
@@ -3141,11 +3277,11 @@ const BoardPage: React.FC = () => {
       setLastTurnActed(prev => ({ ...prev, [currentTokenId]: actedNow }));
       setLastTurnMoved(prev => ({ ...prev, [currentTokenId]: movedNow }));
 
-      const nextIdx = (currentIdx + 1) % battleState.turnOrder.length;
-      const nextTokenId = battleState.turnOrder[nextIdx]?.tokenId;
+      const nextIdx = (currentIdx + 1) % liveBattleState.turnOrder.length;
+      const nextTokenId = liveBattleState.turnOrder[nextIdx]?.tokenId;
       decreaseCardEntityDuration(nextTokenId)
-      const nextTokenName = boardTokens.find(t => t.id === nextTokenId)?.name ?? "Desconhecido";
-      const nextToken = boardTokens.find(t => t.id === nextTokenId);
+      const nextTokenName = liveBoardTokens.find(t => t.id === nextTokenId)?.name ?? "Desconhecido";
+      const nextToken = liveBoardTokens.find(t => t.id === nextTokenId);
       console.log(`➡️ AVANÇANDO: idx ${currentIdx} -> ${nextIdx} | Próximo: ${nextTokenName}`);
 
       // Atualiza estado de batalha: índice, round e aplica efeitos de turno
@@ -3184,7 +3320,7 @@ const BoardPage: React.FC = () => {
 
         };
         applyCardEntityEffect()
-        return processTurnEffects(updated, boardTokens);
+        return processTurnEffects(updated, liveBoardTokens);
       });
 
       // Marca a posição inicial do PRÓXIMO token para rastrear movimento dentro do turno
@@ -3201,6 +3337,10 @@ const BoardPage: React.FC = () => {
       }
 
       console.log("✅ handleNextTurn CONCLUÍDO");
+      combatInfo(`${currentTokenId} passou turno`, {
+        nextTokenId,
+        round: battleStateRef.current.round,
+      });
     } finally {
       isAdvancingTurnRef.current = false;
       console.log("🔓 LOCK LIBERADO");
@@ -3277,6 +3417,7 @@ const BoardPage: React.FC = () => {
     remainingExtraActions.current = null; // Reset das ações extras no fim do turno
     maxSelectablePivots.current = 0;
     aiTurnLock.current = false;
+    aiTurnTokenRef.current = null;
     reallocTurnLock.current = false;
     tokenDeadLock.current = false;
 
@@ -3295,26 +3436,28 @@ const BoardPage: React.FC = () => {
     setIsAIThinking(false);
   };
 
-  const handleExecuteAction = (choice: ExecuteChoice) => {
-    const current = battleState.turnOrder[battleState.currentTurnIndex];
-    if (!current) return;
+  const handleExecuteAction = (choice: ExecuteChoice): boolean => {
+    const liveBattleState = battleStateRef.current;
+    const liveBoardTokens = boardTokensRef.current;
+    const current = liveBattleState.turnOrder[liveBattleState.currentTurnIndex];
+    if (!current) return false;
     const tokenId = current.tokenId;
 
-    const token = boardTokens.find((t) => t.id === tokenId);
-    const target = boardTokens.find((t) => t.id === choice.targetId);
+    const token = liveBoardTokens.find((t) => t.id === tokenId);
+    const target = liveBoardTokens.find((t) => t.id === choice.targetId);
 
     if (token && choice.actionType === "card_selection") {
       console.log("ENTROU NA OPÇÂO DE SELEÇÂO DE CARD!")
       setInCardSelection(true);
       setPendingCardResolution(token);
-      return;
+      return true;
     }
 
     if (token && choice.actionType === "mana_recover") {
 
       const usedActions = Math.max(
         1,
-        Math.min(choice.usedActions ?? 1, battleState.accumulatedActions[tokenId] ?? 1)
+        Math.min(choice.usedActions ?? 1, liveBattleState.accumulatedActions[tokenId] ?? 1)
       );
       const recovering = 3 * (Math.floor((((token.attributes.level - 10) / 4) + 4) / 2))
       setBoardTokens((prev) =>
@@ -3325,7 +3468,7 @@ const BoardPage: React.FC = () => {
         )
       );
 
-      const currentActions = battleState.accumulatedActions[tokenId] ?? 1;
+      const currentActions = liveBattleState.accumulatedActions[tokenId] ?? 1;
       const remainingActions = Math.max(0, currentActions - usedActions);
       setBattleState((prev) => ({
         ...prev,
@@ -3334,10 +3477,15 @@ const BoardPage: React.FC = () => {
       if (remainingActions <= 0) {
         setShouldAdvanceTurn(true);
       }
-      return;
+      return true;
     }
 
-    if (!token || !target) return;
+    if (!token || !target) return false;
+    combatInfo(`${tokenId} preparou ataque contra ${choice.targetId}`, {
+      attribute: choice.attribute,
+      actions: choice.usedActions ?? 1,
+      mana: choice.usedMana ?? 0,
+    });
 
     console.log(">>> ATRIBUTO USADO FOI: ", choice.attribute);
     console.log("Isso ta entrnaod aqui?");
@@ -3351,14 +3499,15 @@ const BoardPage: React.FC = () => {
         `${token.id} está fora do alcance para atacar ${target.name}. ` +
         `Distância: ${distance}, Alcance máximo: ${maxRange}`
       );
-      return;
+      combatInfo(`${tokenId} falhou ataque contra ${choice.targetId}: fora de alcance`);
+      return false;
     }
 
     // 2) Saneamento de custos (mesma lógica)
     const usedMana = Math.min(choice.usedMana ?? 0, token.currentMana ?? 0);
     const usedActions = Math.max(
       1,
-      Math.min(choice.usedActions ?? 1, battleState.accumulatedActions[tokenId] ?? 1)
+      Math.min(choice.usedActions ?? 1, liveBattleState.accumulatedActions[tokenId] ?? 1)
     );
     const wasCertainty = !!choice.usedCertaintyDie;
 
@@ -3429,7 +3578,7 @@ const BoardPage: React.FC = () => {
 
     // 6) Calcula ações restantes (mantém logs/estado)
     setDidActThisTurn((prev) => ({ ...prev, [tokenId]: true }));
-    const currentActions = battleState.accumulatedActions[tokenId] ?? 1;
+    const currentActions = liveBattleState.accumulatedActions[tokenId] ?? 1;
     const remainingActions = Math.max(0, currentActions - usedActions);
     setBattleState((prev) => ({
       ...prev,
@@ -3560,6 +3709,11 @@ const BoardPage: React.FC = () => {
 
 
     const elementUsed = usedMana > 0 ? token.tokenPrimaryElement ?? "neutro" : "neutro"
+    combatInfo(`${tokenId} atacou ${choice.targetId}`, {
+      total: attackTotalForHistory,
+      rawDamage,
+      reactionAllowed: isReactionAllowed,
+    });
     setPendingAttack({
       attackerId: tokenId,
       targetId: choice.targetId,
@@ -3589,16 +3743,20 @@ const BoardPage: React.FC = () => {
       const currentParalysis = getParalysis(choice.targetId);
       const nextState = nextParalysisAfterHit(currentParalysis, usedMana, (remainingExtraActions.current?.extraActions ?? 0));
       if (nextState !== currentParalysis) {
-        grantFreeActionNoReaction(currentId, choice.targetId, nextState, 1)
+        grantFreeActionNoReaction(tokenId, choice.targetId, nextState, 1)
       }
 
       setPendingAttack(null);
       setPendingEsquivaRoll(null);
       setIsInDefenseResolution(false);
-      return;
+      if (remainingActions <= 0) {
+        setShouldAdvanceTurn(true);
+      }
+      return true;
     }
 
     // 12) Caso possa reagir, não faz mais nada aqui — o ReactionPrompt será exibido pelo JSX
+    return true;
   };
 
   // Reação do defensor: Defesa (consistência) ou Esquiva (destreza)
@@ -3613,7 +3771,16 @@ const BoardPage: React.FC = () => {
     roll: RollResult,
     usedCertaintyDie: boolean
   ) => {
+    console.info("[VERIFICAÇÃO] handleReaction chamada antes de qualquer validação.")
     if (!pendingAttack) return;
+    console.info("[VERIFICAÇÃO] handleReaction chamado com:", {
+      reactionType,
+      usedMana,
+      usedActions,
+      roll,
+      usedCertaintyDie,
+      pendingAttack,
+    });
 
     const attackerId = pendingAttack.attackerId;
     const defenderId = pendingAttack.targetId;
@@ -3625,6 +3792,12 @@ const BoardPage: React.FC = () => {
     if (!defender) return;
 
     console.log("⚠️ ENTROU EM HANDLE REACTION DO OUTRO TOKEN");
+    combatInfo(`${defenderId} reagiu a ${attackerId}`, {
+      reactionType,
+      total: roll.total,
+      actions: usedActions,
+      mana: usedMana,
+    });
 
     // Saneamento de custos do defensor
     const availableActionsDef = battleState.accumulatedActions[defenderId] ?? 1;
@@ -3970,10 +4143,18 @@ const BoardPage: React.FC = () => {
     }
   };
 
-  const handleExecuteResponseAction = (attackerId: string, forcedTargetId: string, choice: ExecuteChoice) => {
+  const handleExecuteResponseAction = (attackerId: string, forcedTargetId: string, choice: ExecuteChoice): boolean => {
     const token = boardTokens.find((t) => t.id === attackerId);
     const target = boardTokens.find((t) => t.id === forcedTargetId);
-    if (!token || !target) return;
+    if (!token || !target) {
+      combatInfo(`${attackerId} falhou resposta a ${forcedTargetId}: token ausente`);
+      return false;
+    }
+    combatInfo(`${attackerId} iniciou resposta a ${forcedTargetId}`, {
+      attribute: choice.attribute,
+      actions: choice.usedActions ?? 1,
+      mana: choice.usedMana ?? 0,
+    });
 
 
     const coercedChoice = { ...choice, targetId: forcedTargetId };
@@ -3981,7 +4162,10 @@ const BoardPage: React.FC = () => {
 
     const isPhysicalAttack = ["forca", "destreza"].includes(coercedChoice.attribute);
     const attackType = isPhysicalAttack ? "fisico" : "magico";
-    if (!isInAttackRange(token, target, attackType)) return;
+    if (!isInAttackRange(token, target, attackType)) {
+      combatInfo(`${attackerId} falhou resposta a ${forcedTargetId}: fora de alcance`);
+      return false;
+    }
 
     // 2) Saneamento
     const usedMana = Math.min(coercedChoice.usedMana ?? 0, token.currentMana ?? 0);
@@ -4142,6 +4326,11 @@ const BoardPage: React.FC = () => {
     }
 
     const elementUsed = usedMana > 0 ? token.tokenPrimaryElement ?? "neutro" : "neutro";
+    combatInfo(`${attackerId} respondeu atacando ${forcedTargetId}`, {
+      total: attackTotalForHistory,
+      rawDamage,
+      reactionAllowed: isReactionAllowed,
+    });
     setPendingAttack({
       attackerId,
       targetId: forcedTargetId,
@@ -4220,7 +4409,8 @@ const BoardPage: React.FC = () => {
         console.log("> ENTROU NA FORÇAGEM DE PASSAR O TURNO");
         setLastAllUsedResponse(prev => ({
           ...prev,
-          [attackerId]: true
+          [attackerId]: true,
+          [forcedTargetId]: true
         }));
         setShouldAdvanceTurn(true);
         setPendingFreeResponse(null);
@@ -4231,7 +4421,7 @@ const BoardPage: React.FC = () => {
         setPendingFreeResponse(null);
       }
 
-      return;
+      return true;
     }
     else {
       console.warn("ENTROU AQUI!");
@@ -4239,6 +4429,8 @@ const BoardPage: React.FC = () => {
       setPendingFreeResponse(null);
       setParalysis(forcedTargetId, "none");
     }
+
+    return true;
 
   };
 
@@ -4253,6 +4445,12 @@ const BoardPage: React.FC = () => {
 
     const attackerId = pendingAttack.attackerId;
     const defenderId = pendingAttack.targetId;
+    combatInfo(`${attackerId} resolveu esquiva de ${defenderId}`, {
+      defenseTotal: pendingEsquivaRoll.total,
+      resolutionTotal: definicaoRoll.total,
+      actions: usedActions,
+      mana: usedMana,
+    });
 
     const attackerToken = boardTokens.find(t => t.id === attackerId);
     const defenderToken = boardTokens.find(t => t.id === defenderId);
@@ -4988,6 +5186,9 @@ const BoardPage: React.FC = () => {
   const currentToken = currentId
     ? boardTokens.find((t) => t.id === currentId)
     : undefined;
+  const isPlayerTurn =
+    battleState.status === "In Battle" &&
+    currentToken?.type === "player";
 
 
   const cellSize = 40 * zoom;
@@ -5365,10 +5566,11 @@ const BoardPage: React.FC = () => {
       </div>
 
       {/* Renderização do ActionForm de resposta imediata (modal central, sem pular) */}
-      {pendingFreeResponse && !isAIThinking && (remainingExtraActions.current?.extraActions ?? 0) > 0 && (() => {
+      {pendingFreeResponse && (remainingExtraActions.current?.extraActions ?? 0) > 0 && (() => {
         const responder = boardTokens.find(t => t.id === pendingFreeResponse.responderId);
         const target = boardTokens.find(t => t.id === pendingFreeResponse.paralyzedId);
         if (!responder || !target) return null;
+        if (responder.type !== "player") return null;
 
         // Segurança extra: se por algum motivo range mudou, não renderiza
         const hasPhys = isInAttackRange(responder, target, "fisico");
@@ -5478,7 +5680,7 @@ const BoardPage: React.FC = () => {
 
       </div>
       {/* ActionForm during battle */}
-      {battleState.status === "In Battle" && !isAIThinking && currentToken && !pendingAttack && !pendingFreeResponse && !inCardSelection && !((remainingExtraActions.current?.extraActions ?? 0) > 0) && tokensInOffensiveCard.length <= 0 && !isAmbientPivotSelection && (
+      {isPlayerTurn && currentToken && !pendingAttack && !pendingFreeResponse && !inCardSelection && tokensInOffensiveCard.length <= 0 && !isAmbientPivotSelection && (
         <div className="fixed bottom-4 left-4 z-30">
           <ActionForm
             token={currentToken}
@@ -5499,7 +5701,8 @@ const BoardPage: React.FC = () => {
 
 
       {/* ReactionPrompt */}
-      {pendingAttack && !isAIThinking &&
+      {pendingAttack &&
+        boardTokens.find((t) => t.id === pendingAttack.targetId)?.type === "player" &&
         pendingAttack.isReactionAllowed &&
         pendingAttack.pendingReactions.length > 0 &&
         !pendingEsquivaRoll && (
@@ -5638,10 +5841,12 @@ const BoardPage: React.FC = () => {
               setShouldAdvanceTurn(true);
             }}
           />
-        )}
+      )}
 
       {/* DefenseResolutionForm */}
-      {pendingEsquivaRoll !== null && !isAIThinking && pendingAttack && (
+      {pendingEsquivaRoll !== null &&
+        pendingAttack &&
+        boardTokens.find((t) => t.id === pendingAttack.attackerId)?.type === "player" && (
         <div className="fixed bottom-4 left-4 z-40">
           <DefenseResolutionForm
             attacker={boardTokens.find((t) => t.id === pendingAttack?.attackerId)!}
@@ -5682,7 +5887,7 @@ const BoardPage: React.FC = () => {
       )}
 
       {/* Card Form */}
-      {inCardSelection && !isAIThinking && (
+      {inCardSelection && pendingCardResolution?.type === "player" && (
         <>
           <CardForm
             tokenTrigger={pendingCardResolution as Token}
