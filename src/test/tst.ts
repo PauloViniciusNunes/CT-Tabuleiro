@@ -74,3 +74,4 @@ const vs = [f, v2,v3, v4]
 
 p = setTransformerRemove(p, v3,vs) // {1,2,3,4,6,7}
 console.log(p) // Apenas o 5 foi removido, pois em relação aos conjuntos em vs, apenas o 5 era o elemento exclusivo.
+console.log("Test Log");
