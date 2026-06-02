@@ -1,7 +1,5 @@
-
 function setTransformerAdd(v1: number[], v2: number[])
 {
-
     const s1: Set<number> = new Set(v1);
     const s2: Set<number> = new Set(v2);
 
@@ -40,7 +38,6 @@ function complemento<T>(
  */
 function setTransformerRemove(p: number[], I: number[], vi: number[][])
 {
-
     let sp: Set<number> = new Set(p);
     let si: Set<number> = new Set(I);
     
@@ -75,3 +72,4 @@ const vs = [f, v2,v3, v4]
 p = setTransformerRemove(p, v3,vs) // {1,2,3,4,6,7}
 console.log(p) // Apenas o 5 foi removido, pois em relação aos conjuntos em vs, apenas o 5 era o elemento exclusivo.
 console.log("Test Log");
+console.info("Teste do agente")
