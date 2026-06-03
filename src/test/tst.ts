@@ -57,6 +57,14 @@ function setTransformerRemove(p: number[], I: number[], vi: number[][])
 
 }
 
+function squareSetElements(set: Set<number>): Set<number> {
+  const squaredSet = new Set<number>();
+  for (const element of set) {
+    squaredSet.add(element * element);
+  }
+  return squaredSet;
+}
+
 let p = [2,3,4]
 let f = p // Valores originais de P
 
@@ -73,3 +81,8 @@ p = setTransformerRemove(p, v3,vs) // {1,2,3,4,6,7}
 console.log(p) // Apenas o 5 foi removido, pois em relação aos conjuntos em vs, apenas o 5 era o elemento exclusivo.
 console.log("Test Log");
 console.info("Teste do agente")
+
+// Teste da nova função
+const mySet = new Set([1, 2, 3]);
+const squaredSet = squareSetElements(mySet);
+console.log(squaredSet); // Deve imprimir: Set { 1, 4, 9 }
