@@ -1,12 +1,13 @@
 import { chooseCard } from "../core/chooseCard";
 import { generateActionChoice } from "../core/generateActionChoice";
+import type { AIRepertory } from "../types/aiContext";
 
 import type { Token } from "../../types/token";
 
 interface DecideResponseActionParams {
 
   self: Token;
-
+  aiRepertory: AIRepertory;
   forcedTarget: Token;
 
 }
@@ -14,6 +15,7 @@ interface DecideResponseActionParams {
 export function decideResponseAction({
 
   self,
+  aiRepertory,
   forcedTarget
 
 }: DecideResponseActionParams) {
@@ -23,6 +25,7 @@ export function decideResponseAction({
   const choice = generateActionChoice(
 
     self,
+    aiRepertory,
     forcedTarget,
     card
 

@@ -1,3 +1,5 @@
+import type { EngineContext } from "../types/BoardEngineContext";
+
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import SettingsDropdown from "../components/ui/SettingsDropdown";
 import Sidebar from "../components/ui/Sidebar";
@@ -10,16 +12,17 @@ import MapSelect from "../components/ui/MapSelect";
 import PresentItem from "../components/ui/PresentItem";
 import GenerateMaze from "../components/ui/GenerateMaze";
 import { spawnItemVFX } from "../types/elementoVFX";
-import { cartesianMirror } from "../components/mechanisms/doors";
+import type { PivotCandidate } from "../types/pivot";
+import type { OffensiveCardResponse } from "../types/card";
 
+import { playSomeSFX } from "../audio/playSomeSFX";
 
 import DefenseResolutionForm from "../components/ui/DefenseResolutionForm";
 import { calculateCardRoll, calculateDistance, isInAttackRange, sum } from "../utils/battleCalculations";
 import type { Token, TokenAttributes, TokenClass, TokenProficiencies } from "../types/token";
-import type { Item, ItemSlot } from "../types/item";
+import type { Item } from "../types/item";
 import { canDefenderReact, nextParalysisAfterHit } from '../utils/paralysis';
 import type { ParalysisState } from '../types/status';
-import type { TokenInventory } from "../types/token";
 
 import type { Position } from "../types/card";
 
@@ -40,7 +43,7 @@ import {
 } from "../utils/battleCalculations";
 import processTurnEffects from "../utils/battleEffects";
 
-import type { EffectType, TokenPrimaryElement, EffectMoment, TokenEffect, } from "../types/effects";
+import type { EffectType, TokenPrimaryElement, } from "../types/effects";
 import type { CardEntityInstance, Card } from "../types/card";
 import CardForm from "../components/ui/CardForm";
 import type { Target } from "../types/target";
@@ -58,8 +61,62 @@ import type { AIContext } from "../ai/types/aiContext";
 import { executeAIReaction } from "../ai/executeAIReaction";
 import { executeAIResponseAction } from "../ai/executeAIResponseAction";
 import { executeAIDefenseResolution } from "../ai/executeAIDefenseResolution";
+import { getAIRepertoryForToken } from "../ai/core/getAIRepertoryForToken";
 /* * */
 
+import { grantFreeActionNoReaction } from "../state/stateFreeAction";
+
+import { getParalysis, setParalysis } from "../state/stateParalysis";
+
+import { reduceTimeToRecharge, formatRechargeCardRecord, formatRechargeCardRecordReturn } from "../combat/combatRecharge";
+import { defineRemainingPrevisionAttacks, formatPrevisionAttackKey } from "../combat/combatPrevisions";
+
+import { getCellsInRadius } from "../geometry/radius";
+import { cellToPosition } from "../geometry/position";
+
+import { haveSpaceInInventory, addItemToInventory } from "../inventory/inventoryCapacity";
+import { swapItemInInventory } from "../inventory/inventorySwap";
+
+import { generatePairDoor } from "../entities/entitiesPorts";
+
+import {
+  applyTokenEffect,
+  applyEffectsCausality,
+} from "../effects/effectsApplication";
+
+import {
+  stepTokenEffect,
+} from "../effects/stepSystem";
+
+/* CARDS */
+
+import {
+  decreaseCardEntityDuration,
+  tokenHasCardEffect,
+  applyCardEffectToToken,
+  removeCardEffectsFromToken,
+  applyCardEntityEffectToToken,
+} from "../cards/cardEffects";
+
+import {
+  isTokenInCardInstanceRange,
+} from "../cards/cardQueries";
+
+import {
+  resolveCardEntityPosition,
+  getTokensInCardEntityRadius,
+} from "../cards/cardEntities";
+
+import {
+  resolveTriggerFixPivot,
+  addPivot,
+  resolvePivotPosition,
+} from "../cards/cardTriggers";
+import { AICombatPhase } from "../types/ai/AICombatPhase";
+import { AIStateMachine } from "../ai/state/AIStateMachine";
+import { runAIPhase } from "../types/ai/AIStateRunner";
+
+/** */
 const getColumnName = (num: number): string => {
   let name = "";
   while (num > 0) {
@@ -109,16 +166,19 @@ export const MusicContext = React.createContext<MusicContextType | null>(null);
 const BoardPage: React.FC = () => {
 
   const [introdutionAnimation, setIntroductionAnimation] = useState<boolean>(false);
-
+  const [zoom, setZoom] = useState(1);
+  const cellSize = 40 * zoom;
   /* * */
 
   const [boardTokens, setBoardTokens] = useState<Token[]>([]);
   const boardTokensRef = useRef<Token[]>([]);
-  const [currentAI, setCurrentAI] = useState<Token | undefined>(undefined); 
+  const [currentAI, setCurrentAI] = useState<Token | undefined>(undefined);
   const [enemies, setEnemies] = useState<Token[]>([]);
   const [alies, setAlies] = useState<Token[]>([]);
   const [aiContext, setAiContext] = useState<AIContext | undefined>(undefined);
   const [, setIsAIThinking] = useState(false);
+
+
 
   useEffect(() => {
     boardTokensRef.current = boardTokens;
@@ -197,61 +257,6 @@ const BoardPage: React.FC = () => {
 
     setIsMapSelectOpen(false);
   };
-
-  function generatePairDoor(primaryDoor: MapObject) {
-    if (
-      !primaryDoor.linkedMapId ||
-      !primaryDoor.linkedDoorId
-    ) return;
-
-    setMapas(prev =>
-      prev.map(mapa => {
-
-        // 🔥 encontrou mapa alvo
-        if (mapa.id !== primaryDoor.linkedMapId) {
-          return mapa;
-        }
-
-
-        // 🔥 posição espelhada
-        const [mirrorCol, mirrorRow] = cartesianMirror(
-          primaryDoor.position.col,
-          primaryDoor.position.row,
-
-          1,
-          mapa.cols,
-
-          1,
-          mapa.rows
-        );
-
-        // 🔥 cria porta correspondente
-        const pairDoor: MapObject = {
-          id: primaryDoor.linkedDoorId ?? "",
-
-          type: "door",
-
-          position: {
-            col: mirrorCol,
-            row: mirrorRow
-          },
-          itemRelative: null,
-          imgUrl: primaryDoor.imgUrl,
-
-          // 🔥 agora linka de volta
-          linkedMapId: selectedMapa?.id,
-
-          // 🔥 aponta para original
-          linkedDoorId: primaryDoor.id,
-        };
-
-        return {
-          ...mapa,
-          mapObjs: [...mapa.mapObjs, pairDoor]
-        };
-      })
-    );
-  }
 
   const handleCreateMapa = (mapName: string) => {
 
@@ -337,7 +342,7 @@ const BoardPage: React.FC = () => {
     );
   }, [rows, cols, backgroundImage, boardMapObjects, boardTokens]);
 
-  const [zoom, setZoom] = useState(1);
+
   const [didActThisTurn, setDidActThisTurn] = useState<Record<string, boolean>>({});
   const [shouldAdvanceTurn, setShouldAdvanceTurn] = useState(false);
   const [lastTurnActed, setLastTurnActed] = useState<Record<string, boolean>>({});
@@ -352,100 +357,6 @@ const BoardPage: React.FC = () => {
     cardEntitiesRef.current = cardEntities;
   }, [cardEntities]);
 
-  function decreaseCardEntityDuration(triggerId: string) {
-    setCardEntities(prev => {
-      // 1️⃣ decrementa duração
-      const updated = prev.map(c =>
-        c.triggerId === triggerId
-          ? { ...c, duration: c.duration - 1 }
-          : c
-      );
-
-      // 2️⃣ identifica entidades que acabaram
-      const expired = updated.filter(c => c.duration <= 0);
-
-      if (expired.length > 0) {
-        const expiredIds = expired.map(c => c.id);
-
-        // 3️⃣ remove efeitos causados por essas entidades
-        setBoardTokens(tokens =>
-          tokens.map(t => ({
-            ...t,
-            tokenEffects: t.tokenEffects?.filter(
-              e => !expiredIds.includes(e.cardResultantId ?? "")
-            )
-          }))
-        );
-      }
-
-      // 4️⃣ remove entidades expiradas do estado
-      return updated.filter(c => c.duration > 0);
-    });
-  }
-
-  function tokenHasCardEffect(token: Token, cardId: string): boolean | undefined {
-    return token.tokenEffects?.some(
-      eff =>
-        eff.isCardResultant === true &&
-        eff.cardResultantId === cardId
-    );
-  }
-
-  function applyCardEffectToToken(
-    token: Token,
-    card: CardEntityInstance
-  ): Token {
-    // ⛔ aliado
-    if (token.team === card.friendlyTeam) return token;
-
-    const currentEffects = token.tokenEffects ?? [];
-
-    // remove efeitos já aplicados por esta carta (evita duplicação)
-    const newEffects: TokenEffect[] = card.effectToApply
-      .filter(effect =>
-        !currentEffects.some(e =>
-          e.cardResultantId === card.id &&
-          e.effectType === effect
-        )
-      )
-      .map(effect => ({
-        duration: undefined,
-        intensity: 1,
-        effectType: effect,          // ✅ agora é unitário
-        elementResultant: "neutro",
-        effectMoment: "AllTurn",
-        isCardResultant: true,
-        cardResultantId: card.id
-      }));
-
-    if (newEffects.length === 0) return token;
-
-    return {
-      ...token,
-      tokenEffects: [
-        ...currentEffects,
-        ...newEffects
-      ]
-    };
-  }
-
-  function IsTokenInCardInstanceRange(token: Token, cardInstance: CardEntityInstance) {
-    const dx = Math.abs(token.position.col - cardInstance.position.col);
-    const dy = Math.abs(token.position.row - cardInstance.position.row);
-    const output = dx <= cardInstance.pivotSettings.range && dy <= cardInstance.pivotSettings.range;
-    return output;
-  }
-
-  function removeCardEffectsFromToken(token: Token, cardId: string): Token {
-    return {
-      ...token,
-      tokenEffects: token.tokenEffects?.filter(
-        eff =>
-          !eff.isCardResultant ||
-          eff.cardResultantId !== cardId
-      )
-    };
-  }
 
   function applyCardEntityEffect() {
     cardEntities.forEach((c) => {
@@ -467,6 +378,7 @@ const BoardPage: React.FC = () => {
         .forEach(t => {
           c.effectToApply.forEach(e => {
             applyTokenEffect(
+              engineContext,
               t,
               "neutro",
               e,
@@ -481,62 +393,6 @@ const BoardPage: React.FC = () => {
         });
     });
   }
-
-  function resolveTriggerFixPivot(triggerToken: Token) {
-    if (!armedCard || !triggerToken) return;
-
-    const instance: CardEntityInstance =
-    {
-      id: crypto.randomUUID(),
-      pivotSettings: armedCard.target?.pivotSettings!,
-      effectToApply: armedCard.effectToApply,
-      triggerId: triggerToken.id,
-      duration: armedCard.duration ?? Infinity,
-      position: { ...triggerToken.position }, // 🎯 nasce no trigger
-      friendlyTeam: triggerToken.team
-    };
-
-    const affectedTokens = getTokensInCardEntityRadius(
-      boardTokens,
-      instance.position,
-      instance.pivotSettings.range,
-      instance.triggerId
-    );
-
-    affectedTokens.forEach(t => {
-      applyCardEntityEffectToToken(instance, t);
-    });
-
-    setCardEntities(prev => [...prev, instance]);
-  }
-
-  function applyCardEntityEffectToToken(
-    cardEntity: CardEntityInstance,
-    targetToken: Token
-  ) {
-    // ⛔ aliado não sofre efeito
-    if (targetToken.team === cardEntity.friendlyTeam) return;
-
-    const triggerToken = boardTokens.find(t => t.id === cardEntity.triggerId);
-    const tokenProficiency = Math.ceil(
-      (((triggerToken?.attributes.level ?? 1) - 10) / 4) + 4
-    );
-
-    cardEntity.effectToApply.forEach(e => {
-      applyTokenEffect(
-        targetToken,
-        "neutro",
-        e,
-        undefined,
-        tokenProficiency,
-        "AllTurn",
-        true,
-        cardEntity.id
-      );
-    })
-
-  }
-
 
   const [prevReaction, setPrevReaction] = useState<Record<string, string>>({});
   const [lastAllUsedResponse, setLastAllUsedResponse] = useState<Record<string, boolean>>({});
@@ -572,284 +428,6 @@ const BoardPage: React.FC = () => {
 
   function removeItem(itemId: string) {
     setCreatedItems(prev => prev.filter((i) => i.id !== itemId))
-  }
-
-  function cardIds(cards: Card[] | null | undefined): string[] {
-    if (!cards) return [];
-    return cards.map(c => c.id);
-  }
-
-  function resolveCardsById(
-    ids: string[],
-    sources: (Card[] | null | undefined)[]
-  ): Card[] {
-    const map = new Map<string, Card>();
-
-    for (const src of sources) {
-      if (!src) continue;
-
-      for (const c of src)
-        map.set(c.id, c);
-    }
-
-    return ids
-      .map(id => map.get(id))
-      .filter(Boolean) as Card[];
-  }
-
-  function setTransformerAdd(
-    v1: string[],
-    v2: string[]
-  ): string[] {
-    return [
-      ...new Set([
-        ...v1,
-        ...v2
-      ])
-    ];
-  }
-
-  function equalsSets<T>(
-    A: Set<T>,
-    B: Set<T>
-  ): boolean {
-    if (A.size !== B.size)
-      return false;
-
-    for (const el of A)
-      if (!B.has(el))
-        return false;
-
-    return true;
-  }
-
-  function complemento<T>(
-    A: Set<T>,
-    B: Set<T>
-  ): Set<T> {
-    return new Set(
-      [...B].filter(
-        x => !A.has(x)
-      )
-    );
-  }
-
-  function setTransformerRemove(
-    p: string[],
-    I: string[],
-    vi: string[][]
-  ): string[] {
-    let sp =
-      new Set(p);
-
-    let si =
-      new Set(I);
-
-    const originalSi =
-      new Set(I);
-
-    for (const v of vi) {
-      const sc =
-        new Set(v);
-
-      if (
-        equalsSets(
-          originalSi,
-          sc
-        )
-      )
-        continue;
-
-      si =
-        complemento(
-          sc,
-          si
-        );
-    }
-
-    sp =
-      complemento(
-        si,
-        sp
-      );
-
-    return [...sp];
-  }
-
-  type KeysMatching<T, V> =
-    {
-      [K in keyof T]:
-      T[K] extends V
-      ? K
-      : never
-    }[keyof T];
-
-  type EquippedSlot =
-    NonNullable<
-      KeysMatching<
-        TokenInventory,
-        Item | undefined
-      >
-    >;
-
-  function getEquippedItemCardSets(
-    token: Token
-  ): Card[][] {
-    const slots: EquippedSlot[] =
-      [
-        "primaryHand",
-        "offHand",
-        "neck",
-        "ring",
-        "armor",
-      ];
-
-    return slots
-      .map(
-        slot =>
-          token.inventory[slot]?.habilityCards
-      )
-      .filter(
-        (cards): cards is Card[] =>
-          Boolean(cards)
-      );
-  }
-
-  function computeTokenCardsWithSets(
-    token: Token,
-    removedItem?: Item,
-    addedItem?: Item
-  ): Card[] {
-    let p =
-      cardIds(
-        token.tokenCards
-      );
-
-    const sources =
-      getEquippedItemCardSets(token);
-
-    // união dos items atuais
-    for (const src of sources) {
-      p =
-        setTransformerAdd(
-          p,
-          cardIds(src)
-        );
-    }
-
-    // adicionar novo item
-    if (
-      addedItem?.habilityCards
-    ) {
-      p =
-        setTransformerAdd(
-          p,
-          cardIds(
-            addedItem.habilityCards
-          )
-        );
-    }
-
-    // remover exclusivo
-    if (
-      removedItem?.habilityCards
-    ) {
-      const vi =
-        [
-          cardIds(
-            token.tokenCards
-          ),
-
-          ...sources.map(
-            cardIds
-          ),
-
-          cardIds(
-            removedItem.habilityCards
-          ),
-        ];
-
-      p =
-        setTransformerRemove(
-          p,
-          cardIds(
-            removedItem.habilityCards
-          ),
-          vi
-        );
-    }
-
-    return resolveCardsById(
-      p,
-      [
-        token.tokenCards,
-        ...sources,
-        addedItem?.habilityCards,
-        removedItem?.habilityCards
-      ]
-    );
-  }
-
-  function swapItemInInventory(
-    item: Item,
-    itemIndex: number,
-    tokenId: string,
-    setBoardTokens: React.Dispatch<React.SetStateAction<Token[]>>
-  ) {
-    if (item.slot === "inventory-only") return;
-
-    type EquippedSlot =
-      keyof Pick<
-        TokenInventory,
-        "primaryHand" | "offHand" | "neck" | "ring" | "armor"
-      >;
-
-    type EquippableItemSlot = Exclude<ItemSlot, "inventory-only">;
-
-    const slotMap: Record<EquippableItemSlot, EquippedSlot> = {
-      "primary-hand": "primaryHand",
-      "off-hand": "offHand",
-      neck: "neck",
-      ring: "ring",
-      armor: "armor",
-    };
-
-    const targetSlot = slotMap[item.slot];
-
-    setBoardTokens(prev =>
-      prev.map(t => {
-        if (t.id !== tokenId) return t;
-
-        const inventory = t.inventory;
-        const currentItems = inventory.commonSlot ?? [];
-
-        const removedItem = inventory[targetSlot];
-
-        const newCommonSlot = currentItems.filter((_, i) => i !== itemIndex);
-
-        if (removedItem) newCommonSlot.push(removedItem);
-
-        const updatedToken: Token = {
-          ...t,
-          inventory: {
-            ...inventory,
-            [targetSlot]: item,
-            commonSlot: newCommonSlot,
-          },
-        };
-
-        const newCards = computeTokenCardsWithSets(
-          updatedToken,
-          removedItem,
-          item
-        );
-
-        return {
-          ...updatedToken,
-          cards: newCards,
-        };
-      })
-    );
   }
 
   function handleEditToken(token: Token) {
@@ -911,9 +489,6 @@ const BoardPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  function playSomeSFX(ulr: string) {
-    new Audio(ulr).play()
-  }
 
   const [mapObjectCreateForm, setMapObjectCreateForm] = useState<boolean>(false);
 
@@ -982,7 +557,7 @@ const BoardPage: React.FC = () => {
       IDs vivos.
     */
     reallocTurnLock.current = true;
-    
+
     const aliveTokenIds =
       boardTokens
         .filter(
@@ -1033,7 +608,7 @@ const BoardPage: React.FC = () => {
 
       const currentTurn =
         prev.turnOrder[
-          prev.currentTurnIndex
+        prev.currentTurnIndex
         ];
 
       /*
@@ -1107,7 +682,7 @@ const BoardPage: React.FC = () => {
       Tokens mortos.
     */
     tokenDeadLock.current = true;
-    
+
     const deadTokens =
       boardTokens.filter(
 
@@ -1173,12 +748,11 @@ const BoardPage: React.FC = () => {
   }, [boardTokens]);
 
   useEffect(() => {
-    if(battleState.turnOrder.length <= 1 && battleState.status === "In Battle") {
+    if (battleState.turnOrder.length <= 1 && battleState.status === "In Battle") {
       handleEndBattle();
     }
   }, [battleState])
- /* * */
-
+  /* * */
 
 
   const [pendingAttack, setPendingAttack] = useState<{
@@ -1319,110 +893,13 @@ const BoardPage: React.FC = () => {
   const cardsNotRechargeds = useRef<Record<string, string[]>>({});
   const timeToRechargeCard = useRef<Record<string, number>>({});
 
-  function removeCardNotRecharge(currentId: string, valor: string) {
-    const index = cardsNotRechargeds.current[currentId].indexOf(valor);
-
-    if (index !== -1) {
-      cardsNotRechargeds.current[currentId].splice(index, 1);
-    }
-
-  }
-
-
-  function formatRechargeCardRecord(tokenId: string, cardId: string, recharge: number) {
-    const key = `${tokenId}->${cardId}`
-    timeToRechargeCard.current[key] = recharge
-  }
-
-  function formatRechargeCardRecordReturn(tokenId: string, cardId: string) {
-    const key = `${tokenId}->${cardId}`
-    return timeToRechargeCard.current[key]
-  }
-
-  function reduceTimeToRecharge(currentId: string) {
-    const record = timeToRechargeCard.current;
-
-    Object.keys(record).forEach((key) => {
-      if (key.includes(currentId)) {
-        const newValue = record[key] - 1;
-        const cardId = key.replace(`${currentId}->`, "")
-
-        if (newValue <= 0) {
-          delete record[key];
-          removeCardNotRecharge(currentId, cardId)
-        }
-        else {
-          record[key] = newValue;
-        }
-      }
-    });
-  }
-
-
-  function defineRemainingPrevisionAttacks(defenderId: string, attackerId: string, numbersActions: number) {
-    const formatedKey = `${defenderId}->${attackerId}`;
-
-    const current = remainingPrevisionAttacks.current[formatedKey] ?? 0;
-
-    remainingPrevisionAttacks.current[formatedKey] = Math.min(5, current + numbersActions);
-  }
-
-  function formatedPrevisionAttackKey(defenderId: string, attackerId: string) {
-    return `${defenderId}->${attackerId}`;
-  }
 
   const [controllEndResponse, setControllEndResponse] = useState<boolean>(false);
 
-  const getParalysis = (tokenId: string): ParalysisState =>
-    (tokenParalysis as Record<string, ParalysisState>)[tokenId] ?? 'none';
-
-  const setParalysis = (tokenId: string, state: ParalysisState) => {
-    setTokenParalysis((prev: Record<string, ParalysisState>) => ({ ...prev, [tokenId]: state }));
-  };
-
-
   const totalActionsReturn = useRef(0);
-  function grantFreeActionNoReaction(nextActorId: string, nextDefenderId: string, paralasysType: ParalysisState, totalActions: number) {
-    combatInfo(`${nextActorId} fara resposta a ${nextDefenderId}`, {
-      paralysis: paralasysType,
-      actions: totalActions,
-    });
-
-    if (paralasysType !== 'none') {
-      console.log("🔴 ENTROU PARA DEFINIR O TOTAL DE AÇÕES DO TOKEN COMO: 2");
-      setBattleState(prev => ({
-        ...prev,
-        accumulatedActions: {
-          ...prev.accumulatedActions,
-          [nextActorId]: Math.max(1, prev.accumulatedActions[nextActorId] + totalActions),
-        },
-      }));
-    }
-
-    setFreeActionLock(prev => ({ ...prev, [`${nextActorId}->${nextDefenderId}`]: totalActions.toString() }));
-    const responder = boardTokens.find(t => t.id === nextActorId);
-    const target = boardTokens.find(t => t.id === nextDefenderId);
-
-    remainingExtraActions.current = { attackerId: nextActorId, extraActions: totalActions };
-    totalActionsReturn.current = totalActions + 1;
-
-    setParalysis(nextDefenderId, paralasysType);
-
-    if (responder && target) {
-      const hasPhys = isInAttackRange(responder, target, "fisico");
-      const hasMag = isInAttackRange(responder, target, "magico");
-
-      if (hasPhys || hasMag) {
-        setPendingFreeResponse({ responderId: nextActorId, paralyzedId: nextDefenderId });
-      }
-    }
-  }
-
 
   const attributeTable = useRef<Record<string, Record<string, number>>>({});
   // USO: attributeTable.current["atlas"]["forca"] = 15;
-
-
 
   const elementToEffect: Record<TokenPrimaryElement, EffectType> = {
     neutro: "none",
@@ -1478,218 +955,6 @@ const BoardPage: React.FC = () => {
     ethereum: "etherizado"
   };
 
-  const buffOrDebuffToAttribute: Partial<Record<EffectType, string>> = {
-    forca_buff: "forca",
-    destreza_buff: "destreza",
-    consistencia_buff: "consistencia",
-    inteligencia_buff: "inteligencia",
-    sabedoria_buff: "sabedoria",
-    carisma_buff: "carisma",
-    forca_debuff: "forca",
-    destreza_debuff: "destreza",
-    consistencia_debuff: "consistencia",
-    inteligencia_debuff: "inteligencia",
-    sabedoria_debuff: "sabedoria",
-    carisma_debuff: "carisma",
-  }
-
-  function tokenHasEffects(token: Token, effects: EffectType[]): boolean {
-    const list = token.tokenEffects ?? [];
-    return effects.every(effect =>
-      list.some(e => e.effectType === effect)
-    );
-  }
-
-  type CombinationResult = | { remove: EffectType[]; add?: EffectType | EffectType[]; intensityMultiplier?: number; explosion?: boolean; areaRadius?: number; areaDamage?: number; areaEffect?: EffectType; areaElement?: TokenPrimaryElement; overlay?: string; gifPath?: string; } | null;
-  type EffectGrowthModel = "A" | "B";
-
-  const effectGrowthRules: Partial<Record<EffectType, EffectGrowthModel>> = {
-    envenenado: "A",     // stacking exponencial
-    queimando: "B",      // sempre reinicia baseado no ataque atual
-    eletrizado: "B",     // lógica híbrida
-    congelando: "B",
-    darkfire: "B",
-    preso: "B",
-    sangrando: "A",
-    eletrizado_dark: "B"
-    // ... etc
-  };
-
-  function getTokensInRadius(tokens: Token[], center: Token, radius: number) {
-    return tokens.filter(t => {
-      const dx = Math.abs(t.position.col - center.position.col);
-      const dy = Math.abs(t.position.row - center.position.row);
-      return dx <= radius && dy <= radius;
-    });
-  }
-
-  function applyAreaDamage(
-    center: Token,
-    radius: number,
-    baseDamage: number
-  ) {
-    setBoardTokens(prev =>
-      prev.map(t => {
-        const dx = Math.abs(t.position.col - center.position.col);
-        const dy = Math.abs(t.position.row - center.position.row);
-
-        if (dx <= radius && dy <= radius) {
-          // Aplica efeito de dano
-          return {
-            ...t,
-            currentLife: Math.max(0, (t.currentLife ?? 0) - baseDamage)
-          };
-        }
-
-        return t;
-      })
-    );
-  }
-
-  function applyAreaEffect(
-    center: Token,
-    radius: number,
-    effect: EffectType,
-    intensity: number,
-    duration: number,
-    resultantElement: TokenPrimaryElement
-  ) {
-    const affectedTokens = getTokensInRadius(boardTokens, center, radius);
-
-    affectedTokens.forEach(t => {
-      applyTokenEffect(
-        t,
-        resultantElement,
-        effect,
-        duration,
-        intensity,
-        "InTurn"
-      );
-    });
-  }
-
-  function resolveEffectCombinations(
-    token: Token,
-    incoming: EffectType
-  ): CombinationResult {
-
-    const has = (eff: EffectType[]) => tokenHasEffects(token, eff);
-
-    if (has([incoming])) {
-      return { remove: [incoming], add: incoming };
-    }
-
-    if (incoming === "explosao") {
-      return {
-        explosion: true,
-        remove: ["queimando"],
-        areaRadius: 1,
-        areaDamage: 10,
-        areaEffect: undefined,
-        overlay: "overlay-explosao-area",
-        gifPath: "/effects/explosion.gif"
-      };
-    }
-
-    if (incoming === "toxic_explosao") {
-      return {
-        explosion: true,
-        remove: ["envenenado"],
-        add: "darkfire",
-        areaRadius: 2,
-        areaDamage: 10,
-        areaEffect: "darkfire",
-        overlay: "overlay-explosao-area",
-        gifPath: "/effects/dark-poison-fire.gif"
-      };
-    }
-
-    // ======== EXEMPLOS EXISTENTES ========
-    //
-
-    if (has(["congelando"]) && incoming === "queimando")
-      return { remove: ["congelando", "queimando"] };
-
-    if (has(["queimando"]) && incoming === "congelando")
-      return { remove: ["queimando", "congelando"] };
-
-    if (has(["congelando"]) && incoming === "darkfire")
-      return { remove: ["congelando"], add: "darkfire" };
-
-    if (has(["sangrando"]) && incoming === "queimando")
-      return { remove: ["sangrando"], add: "queimando" };
-
-    if (has(["afogando"]) && incoming === "eletrizado")
-      return { remove: ["afogando"], add: "eletrizado", intensityMultiplier: 2 };
-
-    // ======== Efeitos com Buff/Debuff ========
-
-    if (incoming === "congelando") {
-      return { remove: ["none"], add: ["destreza_debuff", "congelando"] };
-    }
-    // ========= 💥 GENERALIZAÇÃO DO SISTEMA DE EXPLOSÃO =========
-
-    if (has(["queimando"]) && incoming === "eletrizado") {
-      return {
-        explosion: true,
-        remove: ["queimando"],
-        areaRadius: 1,
-        areaDamage: 10,
-        areaEffect: undefined,
-        overlay: "overlay-explosao-area",
-        gifPath: "/effects/explosion.gif"
-      };
-    }
-
-    if (has(["eletrizado"]) && incoming === "queimando") {
-      return {
-        explosion: true,
-        remove: ["eletrizado"],
-        areaRadius: 1,
-        areaDamage: 10,
-        areaEffect: undefined,
-        overlay: "overlay-explosao-area",
-        gifPath: "/effects/explosion.gif"
-      };
-    }
-
-    // ========= 🚀 NOVAS POSSIBILIDADES (SEM MEXER NO RESTO) =========
-
-
-    // fogo + veneno → chama tóxica
-    if (has(["envenenado"]) && incoming === "queimando") {
-      return {
-        explosion: true,
-        remove: ["envenenado"],
-        add: "darkfire",
-        areaRadius: 2,
-        areaDamage: 10,
-        areaEffect: "darkfire",
-        overlay: "overlay-explosao-area",
-        gifPath: "/effects/dark-poison-fire.gif"
-      };
-    }
-
-    // eletrizado + água → choque em corrente no raio 2
-    if (has(["afogando"]) && incoming === "eletrizado") {
-      return {
-        remove: ["afogando"],
-        add: "eletrizado",
-        intensityMultiplier: 2,
-        areaRadius: 2,
-        areaEffect: "eletrizado",
-        overlay: "overlay-shockwave"
-      };
-    }
-
-
-    //
-    // padrão
-    //
-    return null;
-  }
-
-
   function addLargeExplosionOverlay(
     tokenId: string,
     radius: number,
@@ -1739,213 +1004,6 @@ const BoardPage: React.FC = () => {
     }, 1000);
   }
 
-  function applyTokenEffect(
-    token: Token,
-    resultantElement: TokenPrimaryElement,
-    typeEffect: EffectType,
-    duration: number | undefined,
-    intensity: number,
-    effectMoment: EffectMoment,
-    effectIsCardInstace?: boolean,
-    cardInstanceId?: string,
-  ) {
-    // Garante estrutura
-    token.tokenEffects ??= [];
-
-
-    const combo = resolveEffectCombinations(token, typeEffect);
-
-    const buffEffects: EffectType[] = ["forca_buff", "destreza_buff", "consistencia_buff", "inteligencia_buff", "sabedoria_buff", "carisma_buff"];
-    const debuffEffects: EffectType[] = ["forca_debuff", "destreza_debuff", "consistencia_debuff", "inteligencia_debuff", "sabedoria_debuff", "carisma_debuff"];
-
-    const adds = combo?.add ? Array.isArray(combo.add) ? combo.add : [combo.add] : [typeEffect];
-    const buffDebuffMultiplier = 3;
-    for (const effType of adds) {
-      if (buffEffects.includes(effType)) {
-        if (buffOrDebuffToAttribute[effType]) {
-          attributeTable.current[token.id][buffOrDebuffToAttribute[effType]] = (attributeTable.current[token.id][buffOrDebuffToAttribute[effType]] ?? 0) + buffDebuffMultiplier * intensity;
-
-          switch (buffOrDebuffToAttribute[effType]) {
-            case "forca":
-              token.ocassionalAddition.forca = (token.ocassionalAddition.forca ?? 0) + buffDebuffMultiplier * intensity;
-              break;
-            case "destreza":
-              token.ocassionalAddition.destreza = (token.ocassionalAddition.destreza ?? 0) + buffDebuffMultiplier * intensity;
-              break;
-            case "consistencia":
-              token.ocassionalAddition.consistencia = (token.ocassionalAddition.consistencia ?? 0) + buffDebuffMultiplier * intensity;
-              break;
-            case "inteligencia":
-              token.ocassionalAddition.inteligencia = (token.ocassionalAddition.inteligencia ?? 0) + buffDebuffMultiplier * intensity;
-              break;
-            case "sabedoria":
-              token.ocassionalAddition.sabedoria = (token.ocassionalAddition.sabedoria ?? 0) + buffDebuffMultiplier * intensity;
-              break;
-            case "carisma":
-              token.ocassionalAddition.carisma = (token.ocassionalAddition.carisma ?? 0) + buffDebuffMultiplier * intensity;
-              break;
-            default:
-              break;
-          }
-
-        }
-
-      }
-
-      if (debuffEffects.includes(effType)) {
-
-        if (buffOrDebuffToAttribute[effType]) {
-          attributeTable.current[token.id][buffOrDebuffToAttribute[effType]] = (attributeTable.current[token.id][buffOrDebuffToAttribute[effType]] ?? 0) - buffDebuffMultiplier * intensity;
-
-          switch (buffOrDebuffToAttribute[effType]) {
-            case "forca":
-              token.ocassionalAddition.forca = (token.ocassionalAddition.forca ?? 0) - buffDebuffMultiplier * intensity;
-              break;
-            case "destreza":
-              token.ocassionalAddition.destreza = (token.ocassionalAddition.destreza ?? 0) - buffDebuffMultiplier * intensity;
-              break;
-            case "consistencia":
-              token.ocassionalAddition.consistencia = (token.ocassionalAddition.consistencia ?? 0) - buffDebuffMultiplier * intensity;
-              break;
-            case "inteligencia":
-              token.ocassionalAddition.inteligencia = (token.ocassionalAddition.inteligencia ?? 0) - buffDebuffMultiplier * intensity;
-              break;
-            case "sabedoria":
-              token.ocassionalAddition.sabedoria = (token.ocassionalAddition.sabedoria ?? 0) - buffDebuffMultiplier * intensity;
-              break;
-            case "carisma":
-              token.ocassionalAddition.carisma = (token.ocassionalAddition.carisma ?? 0) - buffDebuffMultiplier * intensity;
-              break;
-            default:
-              break;
-          }
-
-        }
-
-      }
-    }
-
-    if (combo?.explosion) {
-      console.log("💥 Combo gerou explosão!");
-
-      // remover efeitos envolvidos na reação
-      if (combo.remove) {
-        token.tokenEffects = token.tokenEffects.filter(
-          eff => !combo.remove!.includes(eff.effectType)
-        );
-      }
-
-      // dispara explosão
-      triggerExplosion(token, intensity, combo);
-      return;
-    }
-
-
-    // Remove efeitos que devem sair
-    if (combo?.remove?.length) {
-      token.tokenEffects = token.tokenEffects.filter(
-        eff => !combo.remove.includes(eff.effectType)
-      );
-    }
-
-    // Caso combinação diga que o efeito resultante muda
-    let effectsToApply: EffectType[];
-
-    if (combo?.add) {
-      effectsToApply = Array.isArray(combo.add) ? combo.add : [combo.add];
-    } else {
-      effectsToApply = [typeEffect];
-    }
-
-
-    // Se combinação anulou sem adicionar nada → sair
-    if (combo && combo.add === undefined && combo.remove?.length) {
-      return;
-    }
-
-    // Aplica multiplicador direto da combinação
-    if (combo?.intensityMultiplier) {
-      intensity *= combo.intensityMultiplier;
-    }
-
-    // ===============================
-    // 2. Determinar modelo de progressão (A, B, C)
-    // ===============================
-
-    const permanentEffects: TokenPrimaryElement[] = ["darkfire", "darkelectric"];
-    const effectDuration = permanentEffects.includes(resultantElement) ? undefined : duration ?? 8;
-    const uniqueEffects = Array.from(new Set(effectsToApply));
-
-    for (const eff of uniqueEffects) {
-
-      const existing = token.tokenEffects.find(e => e.effectType === eff);
-
-      let finalIntensity = intensity;
-
-      if (existing) {
-        const model = effectGrowthRules[eff] ?? "B";
-        if (model === "A") finalIntensity = existing.intensity * 2;
-      }
-
-      // remove antes
-      token.tokenEffects = token.tokenEffects.filter(e => e.effectType !== eff);
-
-      // aplica uma ÚNICA vez
-      token.tokenEffects.push({
-        isCardResultant: effectIsCardInstace,
-        cardResultantId: cardInstanceId,
-        duration: effectDuration,
-        intensity: finalIntensity,
-        effectType: eff,
-        elementResultant: resultantElement,
-        effectMoment,
-      });
-
-      token.tokenEffects = token.tokenEffects.filter(
-        (e, i, arr) =>
-          arr.findIndex(x => x.effectType === e.effectType) === i
-      );
-
-    }
-
-    /* 
-    for (const eff of effectsToApply)
-    {
-      token.tokenEffects.push({
-        duration: effectDuration,
-        intensity,
-        effectType: eff,
-        elementResultant: resultantElement,
-        effectMoment
-      });    
-    }
-    */
-  }
-
-  function triggerExplosion(centerToken: Token, baseIntensity: number, combo: CombinationResult) {
-    const radius = 1; // pode ser variável
-    const damage = baseIntensity * (combo?.areaDamage ?? 1); // explosão = dano amplificado
-
-    console.log(`💥 EXPLOSÃO disparada no token ${centerToken.name}`);
-
-    // 1) Dano em área
-    applyAreaDamage(centerToken, radius, damage);
-
-    // 2) Possível aplicação de efeitos em área
-    applyAreaEffect(
-      centerToken,
-      radius,
-      combo?.areaEffect ?? "none",
-      Math.ceil(baseIntensity / 2),
-      4,
-      combo?.areaElement ?? "neutro"
-    );
-
-    // 3) Overlay visual
-    addLargeExplosionOverlay(centerToken.id, radius, cellSize, combo?.overlay ?? "overlay-explosao-area", combo?.gifPath ?? "/effects/explosion.gif");
-  }
-
-
   /* Seleção de Pivot, ambient */
   const [previewCells, setPreviewCells] = useState<Set<string>>(new Set());
 
@@ -1960,12 +1018,6 @@ const BoardPage: React.FC = () => {
       return next;
     });
   }
-
-
-  type PivotCandidate =
-    | { type: "cell"; position: Position }
-    | { type: "token"; tokenId: string }
-    | { type: "trigger" };
 
   const [isAmbientPivotSelection, setIsAmbientPivotSelection] = useState(false);
   const [tokenInAmbientPivotSelection, setTokenInAmbientPivotSelection] = useState<string>("");
@@ -1983,146 +1035,6 @@ const BoardPage: React.FC = () => {
 
   /* * */
 
-  function stepTokenEffect(token: Token) {
-    if (!token.tokenEffects) return;
-
-    const updatedEffects = token.tokenEffects
-      .map(effect => {
-
-        const durationDecrement = effect.duration === undefined ? undefined : effect.duration - 1;
-
-        const buffEffects: EffectType[] = ["forca_buff", "destreza_buff", "consistencia_buff", "inteligencia_buff", "sabedoria_buff", "carisma_buff"];
-        const debuffEffects: EffectType[] = ["forca_debuff", "destreza_debuff", "consistencia_debuff", "inteligencia_debuff", "sabedoria_debuff", "carisma_debuff"];
-
-        if (buffEffects.includes(effect.effectType) && durationDecrement !== undefined && durationDecrement <= 0) {
-          if (buffOrDebuffToAttribute[effect.effectType]) {
-            const attr = buffOrDebuffToAttribute[effect.effectType];
-
-            if (attr !== undefined) {
-              switch (attr) {
-                case "forca":
-                  token.ocassionalAddition.forca =
-                    (token.ocassionalAddition.forca ?? 0) -
-                    attributeTable.current[token.id][attr];
-                  break;
-
-                case "destreza":
-                  token.ocassionalAddition.destreza =
-                    (token.ocassionalAddition.destreza ?? 0) -
-                    attributeTable.current[token.id][attr];
-                  break;
-
-                case "consistencia":
-                  token.ocassionalAddition.consistencia =
-                    (token.ocassionalAddition.consistencia ?? 0) -
-                    attributeTable.current[token.id][attr];
-                  break;
-
-                case "inteligencia":
-                  token.ocassionalAddition.inteligencia =
-                    (token.ocassionalAddition.inteligencia ?? 0) -
-                    attributeTable.current[token.id][attr];
-                  break;
-
-                case "sabedoria":
-                  token.ocassionalAddition.sabedoria =
-                    (token.ocassionalAddition.sabedoria ?? 0) -
-                    attributeTable.current[token.id][attr];
-                  break;
-
-                case "carisma":
-                  token.ocassionalAddition.carisma =
-                    (token.ocassionalAddition.carisma ?? 0) -
-                    attributeTable.current[token.id][attr];
-                  break;
-              }
-
-              attributeTable.current[token.id][attr] = (attributeTable.current[token.id][attr] ?? 0) - 2 * effect.intensity;;
-            }
-          }
-        }
-
-        if (debuffEffects.includes(effect.effectType) && durationDecrement !== undefined && durationDecrement <= 0) {
-          if (buffOrDebuffToAttribute[effect.effectType]) {
-            const attr = buffOrDebuffToAttribute[effect.effectType];
-
-            if (attr !== undefined) {
-              switch (attr) {
-                case "forca":
-                  token.ocassionalAddition.forca =
-                    (token.ocassionalAddition.forca ?? 0) -
-                    attributeTable.current[token.id][attr];
-                  break;
-
-                case "destreza":
-                  token.ocassionalAddition.destreza =
-                    (token.ocassionalAddition.destreza ?? 0) -
-                    attributeTable.current[token.id][attr];
-                  break;
-
-                case "consistencia":
-                  token.ocassionalAddition.consistencia =
-                    (token.ocassionalAddition.consistencia ?? 0) -
-                    attributeTable.current[token.id][attr];
-                  break;
-
-                case "inteligencia":
-                  token.ocassionalAddition.inteligencia =
-                    (token.ocassionalAddition.inteligencia ?? 0) -
-                    attributeTable.current[token.id][attr];
-                  break;
-
-                case "sabedoria":
-                  token.ocassionalAddition.sabedoria =
-                    (token.ocassionalAddition.sabedoria ?? 0) -
-                    attributeTable.current[token.id][attr];
-                  break;
-
-                case "carisma":
-                  token.ocassionalAddition.carisma =
-                    (token.ocassionalAddition.carisma ?? 0) -
-                    attributeTable.current[token.id][attr];
-                  break;
-              }
-
-
-              attributeTable.current[token.id][attr] = (attributeTable.current[token.id][attr] ?? 0) + 2 * effect.intensity;
-              console.log(">>> REVERSO DA OCASIONAL DEU: ", attributeTable.current[token.id][attr]);
-            }
-          }
-        }
-
-        return effect.duration === undefined ? effect : { ...effect, duration: durationDecrement };
-      })
-      .filter(effect => effect.duration === undefined || effect.duration > 0);
-
-
-    // AQUI: você precisa persistir a mudança
-    setBoardTokens(prev =>
-      prev.map(t =>
-        t.id === token.id
-          ? { ...t, tokenEffects: updatedEffects }
-          : t
-      )
-    );
-  }
-
-  function applyEffectsCausality(token: Token) {
-
-    if (!token.tokenEffects) return;
-
-    token.tokenEffects.map(effect => {
-      if (["queimando", "corroendo", "afogando", "darkfire", "eletrizado", "eletrizado_dark", "envenenado", "sangrando"].includes(effect.effectType)) {
-        setBoardTokens((prev) =>
-          prev.map((t) =>
-            t.id === token.id
-              ? { ...t, currentLife: Math.max(0, (t.currentLife ?? 0) - (effect.elementResultant === token.tokenPrimaryDisvantege ? 2 * (effect.intensity) : effect.intensity)) }
-              : t
-          )
-        );
-      }
-    });
-  }
   // Zoom & delete
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -2150,60 +1062,6 @@ const BoardPage: React.FC = () => {
 
   const [presentedItem, setPresentedItem] = useState<Item | null>(null);
 
-  function haveSpaceInInventory(tokenId: string) // Função válida únicamente quando há apenas um token com ID único
-  {
-    const token = boardTokens.find((t) => t.id === tokenId);
-
-    if (!token) return false;
-
-    const totalSpace = token.inventory.inventoryDimensions.cols * token.inventory.inventoryDimensions.rows;
-
-    // É garantido que 'token.inventory.commonSlot?.length' será um number por causa do fluxo, porei o TS sempre avisa.
-    return totalSpace - (token.inventory.commonSlot?.length ?? 0) > 0;
-  }
-
-  function addItemToInventory(
-    tokenId: string,
-    item: Item,
-    setBoardTokens: React.Dispatch<React.SetStateAction<Token[]>>
-  ) {
-
-
-
-    setBoardTokens(prev => {
-      return prev.map(t => {
-        if (t.id !== tokenId) return t;
-
-        const inventory = t.inventory;
-
-        const currentItems = inventory.commonSlot
-          ? [...inventory.commonSlot] // garante nova referência
-          : [];
-
-        const totalSpace =
-          inventory.inventoryDimensions.cols *
-          inventory.inventoryDimensions.rows;
-
-        if (currentItems.length >= totalSpace) return t;
-
-        let updatedCommonSlot = [...currentItems];
-        updatedCommonSlot.push(item);
-
-        return {
-          ...t,
-          inventory: {
-            ...inventory,
-            commonSlot: updatedCommonSlot,
-          },
-        };
-      });
-    });
-
-    setTimeout(() => {
-
-    }, 100);
-
-  }
 
   useEffect(() => {
     console.log("SELECTED:", selectedTokenId);
@@ -2335,7 +1193,7 @@ const BoardPage: React.FC = () => {
 
       if (hasWall) return;
 
-      if (chest && haveSpaceInInventory(selectedTokenId)) {
+      if (chest && haveSpaceInInventory(engineContext, selectedTokenId)) {
         const item = chest.itemRelative;
 
 
@@ -2343,9 +1201,9 @@ const BoardPage: React.FC = () => {
           setPresentedItem(item);
 
           addItemToInventory(
+            engineContext,
             selectedTokenId,
             item,
-            setBoardTokens
           );
 
           setBoardMapObjects(prev =>
@@ -2376,8 +1234,6 @@ const BoardPage: React.FC = () => {
     cols,
     rows
   ]);
-
-
 
   const [inventoryOpen, setInventoryOpen] = useState<boolean>(false);
 
@@ -2439,14 +1295,6 @@ const BoardPage: React.FC = () => {
   }, [showDefenseResolution, pendingAttack]);
 
 
-  // Calcula ações apenas quando um novo token ENTRA seu turno
-  // ⬅️ ÚNICO useEffect CORRETO
-  // Calcula ações apenas quando um novo token ENTRA seu turno
-  // ⬅️ ÚNICO useEffect CORRETO
-
-  // Coloque este ref junto dos outros useRef no topo do componente
-
-
   useEffect(() => {
     if (battleState.status !== "In Battle") return;
     if (pendingEsquivaRoll != null) return;
@@ -2501,187 +1349,256 @@ const BoardPage: React.FC = () => {
   const aiTurnLock = useRef(false);
   const aiTurnTokenRef = useRef<string | null>(null);
 
+  const aiStateMachine = useRef( new AIStateMachine( AICombatPhase.IDLE ) );
+
+  const [aiPhase, setAIPhase] =
+      useState<AICombatPhase>(
+          AICombatPhase.IDLE
+      );
+
   useEffect(() => {
 
-  console.warn("[COMBATE] Entrando no useEffect de turno da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current,"TokenDead:", tokenDeadLock.current , "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
-  console.warn("[COMBATE]")
-  if(battleState.status !== "In Battle") return;
+      if (pendingFreeResponse) {
+          setAIPhase(AICombatPhase.RESPONSE);
+          return;
+      }
 
-  const current =
-    battleState.turnOrder[
+      if (pendingEsquivaRoll && pendingAttack) {
+          setAIPhase(AICombatPhase.DEFENSE);
+          return;
+      }
+
+      if (
+          pendingAttack &&
+          pendingAttack.isReactionAllowed
+      ) {
+          setAIPhase(AICombatPhase.REACTION);
+          return;
+      }
+
+      if (
+          battleState.status === "In Battle"
+      ) {
+          setAIPhase(AICombatPhase.TURN);
+          return;
+      }
+
+      setAIPhase(AICombatPhase.IDLE);
+
+  }, [
+      pendingAttack,
+      pendingFreeResponse,
+      pendingEsquivaRoll,
+      battleState.status
+  ]);
+
+  useEffect(() => {
+
+      runAIPhase(
+          aiPhase,
+          {
+              turn: () => console.error("TURN"),
+
+              reaction: () => console.error("REACTION"),
+
+              response: () => console.error("RESPONSE"),
+
+              defense: () => console.error("DEFENSE"),
+          }
+      );
+
+  }, [aiPhase]);
+
+  useEffect(() => {
+
+    console.warn("[COMBATE] Entrando no useEffect de turno da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current, "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
+    console.warn("[COMBATE]")
+    if (battleState.status !== "In Battle") return;
+
+    const current =
+      battleState.turnOrder[
       battleState.currentTurnIndex
-    ];
+      ];
 
-  if (!current) return;
-  if (pendingFreeResponse) return;
-  if(pendingAttack) return;
-  console.info("[COMBATE] Verificações iniciais passadas, avaliando locks...");
-  if (aiTurnLock.current) {
-    if (aiTurnTokenRef.current !== current.tokenId) {
-      aiTurnLock.current = false;
-      aiTurnTokenRef.current = null;
-    } else {
+    if (!current) return;
+    if (pendingFreeResponse) return;
+    if (pendingAttack) return;
+    console.info("[COMBATE] Verificações iniciais passadas, avaliando locks...");
+    if (aiTurnLock.current) {
+      if (aiTurnTokenRef.current !== current.tokenId) {
+        aiTurnLock.current = false;
+        aiTurnTokenRef.current = null;
+      } else {
+
+        return;
+
+      }
+
+    }
+
+    /*
+      Busca token do turno.
+    */
+
+    const token =
+      boardTokens.find(
+        t => t.id === current.tokenId
+      );
+
+    if (!token) return;
+
+    /*
+      Apenas IA.
+    */
+
+    if (token.type !== "ia") {
+
+      setIsAIThinking(false);
 
       return;
 
     }
 
-  }
+    // Status de combate temporário
+    const currentActions = battleState.accumulatedActions[token.id] ?? 1;
+    const currentMana = token.currentMana ?? 0;
+    const currentCars = token.cards;
 
-  /*
-    Busca token do turno.
-  */
+    const aiRepertory = getAIRepertoryForToken(token, currentActions, currentMana, currentCars);
 
-  const token =
-    boardTokens.find(
-      t => t.id === current.tokenId
-    );
+    if (token.currentLife === 0) {
 
-  if (!token) return;
+      setIsAIThinking(false);
 
-  /*
-    Apenas IA.
-  */
+      return;
 
-  if (token.type !== "ia") {
+    }
 
-    setIsAIThinking(false);
+    if (reallocTurnLock.current && tokenDeadLock.current) {
+      console.info("[COMBATE] Turno de IA bloqueado por realloc ou morte de token.");
+      setIsAIThinking(false);
 
-    return;
+      return;
+    }
 
-  }
+    console.info("[COMBATE] Passou dos locks, IA vai agir. Nome do token:", token.name);
+    combatInfo(`${token.name} esta pensando`);
 
-  if(token.currentLife === 0){
+    /*
+      Contexto LOCAL
+      sincronizado com
+      o turno atual.
+    */
 
-    setIsAIThinking(false);
+    const context = {
 
-    return;
+      self: token,
 
-  }
+      allies:
+        boardTokens.filter(
 
-  if(reallocTurnLock.current && tokenDeadLock.current){
-    console.info("[COMBATE] Turno de IA bloqueado por realloc ou morte de token.");
-    setIsAIThinking(false);
+          t =>
 
-    return;
-  }
+            t.team === token.team &&
+            t.id !== token.id
 
-  console.info("[COMBATE] Passou dos locks, IA vai agir. Nome do token:", token.name);
-  combatInfo(`${token.name} esta pensando`);
+        ),
 
-  /*
-    Contexto LOCAL
-    sincronizado com
-    o turno atual.
-  */
+      enemies:
+        boardTokens.filter(
 
-  const context = {
+          t =>
 
-    self: token,
+            t.team !== token.team
 
-    allies:
-      boardTokens.filter(
+        ),
 
-        t =>
+      currentTurn:
+        battleState.currentTurnIndex
 
-          t.team === token.team &&
-          t.id !== token.id
+    };
 
-      ),
+    /*
+      Lock.
+    */
 
-    enemies:
-      boardTokens.filter(
+    aiTurnLock.current =
+      true;
+    aiTurnTokenRef.current =
+      token.id;
 
-        t =>
+    setIsAIThinking(true);
 
-          t.team !== token.team
+    /*
+      Delay de pensamento.
+    */
 
-      ),
+    const timeout =
+      setTimeout(() => {
 
-    currentTurn:
-      battleState.currentTurnIndex
+        console.info("AI está executando ação. ID do token:", token.id);
+        combatInfo(`${token.id} iniciou turno IA`);
+        executeAITurn({
 
-  };
+          context,
+          aiRepertory,
 
-  /*
-    Lock.
-  */
+          handleExecuteAction,
+          moveToken: moveTokenOnBoard,
+          onCompleteTurn: (result) => {
 
-  aiTurnLock.current =
-    true;
-  aiTurnTokenRef.current =
-    token.id;
+            aiTurnLock.current = false;
+            aiTurnTokenRef.current = null;
+            setIsAIThinking(false);
 
-  setIsAIThinking(true);
+            if (result?.actionStarted === false) {
+              handleNextTurn(true);
+            }
 
-  /*
-    Delay de pensamento.
-  */
-
-  const timeout =
-    setTimeout(() => {
-
-      console.info("AI está executando ação. ID do token:", token.id);
-      combatInfo(`${token.id} iniciou turno IA`);
-      executeAITurn({
-
-        context,
-        handleExecuteAction,
-        moveToken: moveTokenOnBoard,
-        onCompleteTurn: (result) => {
-
-          aiTurnLock.current = false;
-          aiTurnTokenRef.current = null;
-          setIsAIThinking(false);
-
-          if (result?.actionStarted === false) {
-            handleNextTurn(true);
           }
 
-        }
+        });
 
-      });
+      }, 500);
 
-    }, 500);
+    /*
+      Cleanup.
+    */
 
-  /*
-    Cleanup.
-  */
-
-  return () => {
-
-    console.warn(
-      "[COMBATE] CLEANUP EXECUTADO",
-      token.id,
-      battleState.currentTurnIndex
-    );
-
-    clearTimeout(timeout);
-
-    if (aiTurnTokenRef.current === token.id) {
+    return () => {
 
       console.warn(
-        "[COMBATE] CLEANUP LIBEROU LOCK DA IA"
+        "[COMBATE] CLEANUP EXECUTADO",
+        token.id,
+        battleState.currentTurnIndex
       );
 
-      aiTurnLock.current = false;
-      aiTurnTokenRef.current = null;
-      setIsAIThinking(false);
-    }
-  };
+      clearTimeout(timeout);
 
-}, [
-  battleState.status,
-  battleState.currentTurnIndex,
-  pendingFreeResponse,
-  reallocTurnLock,
-  tokenDeadLock,
-  battleState.accumulatedActions,
+      if (aiTurnTokenRef.current === token.id) {
+
+        console.warn(
+          "[COMBATE] CLEANUP LIBEROU LOCK DA IA"
+        );
+
+        aiTurnLock.current = false;
+        aiTurnTokenRef.current = null;
+        setIsAIThinking(false);
+      }
+    };
+
+  }, [
+    battleState.status,
+    battleState.currentTurnIndex,
+    pendingFreeResponse,
+    reallocTurnLock,
+    tokenDeadLock,
+    battleState.accumulatedActions,
   ]); // AI Execute Action
 
   useEffect(() => {
 
-    console.warn("[COMBATE] Entrando no useEffect de reação da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current , "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
+    console.warn("[COMBATE] Entrando no useEffect de reação da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current, "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
 
     if (!pendingAttack) return;
 
@@ -2694,11 +1611,11 @@ const BoardPage: React.FC = () => {
 
     if (!defender) return;
 
-    if (defender.type !== "ia"){
+    if (defender.type !== "ia") {
       setIsAIThinking(false);
       return;
     };
-    if(defender.currentLife === 0){
+    if (defender.currentLife === 0) {
 
       setIsAIThinking(false);
 
@@ -2706,31 +1623,31 @@ const BoardPage: React.FC = () => {
 
     }
 
-    if(reallocTurnLock.current && tokenDeadLock.current){
+    if (reallocTurnLock.current && tokenDeadLock.current) {
       console.info("Reação de IA bloqueada por realloc ou morte de token.");
       setIsAIThinking(false);
 
       return;
     }
 
-      const attackAttribute =
-        pendingAttack.attackAttribute;
+    const attackAttribute =
+      pendingAttack.attackAttribute;
 
-      if (
-        attackAttribute !== "forca" &&
-        attackAttribute !== "destreza" &&
-        attackAttribute !== "inteligencia" &&
-        attackAttribute !== "sabedoria"
-      ) {
+    if (
+      attackAttribute !== "forca" &&
+      attackAttribute !== "destreza" &&
+      attackAttribute !== "inteligencia" &&
+      attackAttribute !== "sabedoria"
+    ) {
 
-        console.warn(
-          "Atributo inválido para reação da IA:",
-          attackAttribute
-        );
+      console.warn(
+        "Atributo inválido para reação da IA:",
+        attackAttribute
+      );
 
-        return;
+      return;
 
-      }
+    }
 
     setIsAIThinking(true);
 
@@ -2746,7 +1663,7 @@ const BoardPage: React.FC = () => {
 
         availableActions:
           battleState.accumulatedActions[
-            defender.id
+          defender.id
           ] ?? 1,
 
         handleReaction
@@ -2761,11 +1678,11 @@ const BoardPage: React.FC = () => {
 
     return () => clearTimeout(timeout);
 
-  }, [pendingAttack,reallocTurnLock,tokenDeadLock]); // AI Reaction
+  }, [pendingAttack, reallocTurnLock, tokenDeadLock]); // AI Reaction
 
   useEffect(() => {
 
-    console.warn("[COMBATE] Entrando no useEffect de resposta da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current , "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
+    console.warn("[COMBATE] Entrando no useEffect de resposta da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current, "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
 
     if (!pendingFreeResponse) return;
 
@@ -2781,12 +1698,12 @@ const BoardPage: React.FC = () => {
 
     if (!responder || !target) return;
 
-    if (responder.type !== "ia"){ 
+    if (responder.type !== "ia") {
       setIsAIThinking(false);
       return
     };
 
-    if(responder.currentLife === 0){
+    if (responder.currentLife === 0) {
 
       setIsAIThinking(false);
 
@@ -2794,7 +1711,7 @@ const BoardPage: React.FC = () => {
 
     }
 
-    if(reallocTurnLock.current && tokenDeadLock.current){
+    if (reallocTurnLock.current && tokenDeadLock.current) {
       console.info("Resposta de IA bloqueada por realloc ou morte de token.");
       setIsAIThinking(false);
 
@@ -2803,6 +1720,12 @@ const BoardPage: React.FC = () => {
 
     setIsAIThinking(true);
 
+    const actions = battleState.accumulatedActions[responder.id] ?? 1;
+    const mana = responder.currentMana ?? 0;
+    const cards = responder.cards;
+
+    const aiRepertory = getAIRepertoryForToken(responder, actions, mana, cards);
+
     const timeout = setTimeout(() => {
       combatInfo(`${responder.id} fara resposta a ${target.id}`);
 
@@ -2810,6 +1733,7 @@ const BoardPage: React.FC = () => {
 
         self: responder,
 
+        aiRepertory,
         forcedTarget: target,
 
         handleExecuteResponseAction
@@ -2834,11 +1758,11 @@ const BoardPage: React.FC = () => {
 
     return () => clearTimeout(timeout);
 
-  }, [pendingFreeResponse,reallocTurnLock,tokenDeadLock]);  // AI Response 
+  }, [pendingFreeResponse, reallocTurnLock, tokenDeadLock]);  // AI Response 
 
   useEffect(() => {
 
-    console.warn("[COMBATE] Entrando no useEffect de defesa da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current , "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
+    console.warn("[COMBATE] Entrando no useEffect de defesa da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current, "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
 
     if (!pendingEsquivaRoll) return;
 
@@ -2851,12 +1775,12 @@ const BoardPage: React.FC = () => {
 
     if (!attacker) return;
 
-    if (attacker.type !== "ia"){ 
+    if (attacker.type !== "ia") {
       setIsAIThinking(false);
       return
     }
 
-    if(attacker.currentLife === 0){
+    if (attacker.currentLife === 0) {
 
       setIsAIThinking(false);
 
@@ -2864,7 +1788,7 @@ const BoardPage: React.FC = () => {
 
     }
 
-    if(reallocTurnLock.current && tokenDeadLock.current){
+    if (reallocTurnLock.current && tokenDeadLock.current) {
       console.info("Turno de IA bloqueado por realloc ou morte de token.");
       setIsAIThinking(false);
 
@@ -2896,7 +1820,7 @@ const BoardPage: React.FC = () => {
   }, [
 
     pendingEsquivaRoll,
-    pendingAttack,reallocTurnLock,tokenDeadLock,pendingFreeResponse
+    pendingAttack, reallocTurnLock, tokenDeadLock, pendingFreeResponse
 
   ]);  // AI Defense Resolution
   /* * */
@@ -2945,28 +1869,6 @@ const BoardPage: React.FC = () => {
     setBoardTokens((prev) => [...prev, instance]);
   };
 
-  function resolveCardEntityPosition(
-    card: CardEntityInstance,
-    tokens: Token[]
-  ): Position | null {
-    if (card.pivotSettings.pivotType === "Cell-Fix") {
-      return card.position;
-    }
-
-    if (card.pivotSettings.pivotType === "Trigger-Fix") {
-      const trigger = tokens.find(t => t.id === card.triggerId);
-      return trigger?.position ?? null;
-    }
-
-    if (card.pivotSettings.pivotType === "Token-Fix") {
-      const anchor = tokens.find(t => t.id === card.anchorTokenId);
-      return anchor?.position ?? null;
-    }
-
-    return null;
-  }
-
-
   function reconcileCardEntityEffects(
     tokens: Token[],
     cards: CardEntityInstance[]
@@ -2983,7 +1885,7 @@ const BoardPage: React.FC = () => {
 
         const virtualCard = { ...card, position: pivotPosition };
 
-        const isInside = IsTokenInCardInstanceRange(updatedToken, virtualCard);
+        const isInside = isTokenInCardInstanceRange(updatedToken, virtualCard);
         const hasEffect = tokenHasCardEffect(updatedToken, card.id);
 
         if (isInside && !hasEffect) {
@@ -2999,7 +1901,75 @@ const BoardPage: React.FC = () => {
     });
   }
 
+  const engineContext = useMemo<EngineContext>(
+    () => ({
+      boardTokens,
+      setBoardTokens,
 
+      cardEntities,
+      setCardEntities,
+
+      cellSize,
+
+      attributeTable,
+
+      remainingPrevisionAttacks,
+      timeToRechargeCard,
+      cardsNotRechargeds,
+
+      mapas,
+      setMapas,
+
+      selectedMapa,
+      setSelectedMapa,
+
+      tokenParalysis,
+      setTokenParalysis,
+
+      battleState,
+      setBattleState,
+
+      freeActionLock,
+      setFreeActionLock,
+
+      remainingExtraActions,
+      totalActionsReturn,
+
+      pendingFreeResponse,
+      setPendingFreeResponse,
+
+      armedCard,
+
+      pendingCardResolution,
+
+      selectedPivots,
+      setSelectedPivots,
+    }),
+    [
+      boardTokens,
+
+      cardEntities,
+
+      cellSize,
+
+      mapas,
+      selectedMapa,
+
+      tokenParalysis,
+
+      battleState,
+
+      freeActionLock,
+
+      pendingFreeResponse,
+
+      armedCard,
+
+      pendingCardResolution,
+
+      selectedPivots,
+    ]
+  );
 
   function moveTokenOnBoard(id: string, col: number, row: number) {
     const updatedTokens = boardTokensRef.current.map(t =>
@@ -3040,35 +2010,7 @@ const BoardPage: React.FC = () => {
     setMovedThisTurn(prev => ({ ...prev, [id]: true }));
   }
 
-  function cellToPosition(cell: string) {
 
-    const alpha = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
-      'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-    ] // Convenção do Alfabeto
-
-    let letters = [];
-    let number: string | number = "";
-
-    for (const char of cell) {
-      if (Number.isNaN(Number(char))) {
-        letters.push(char);
-      }
-      else {
-        number += char; // Conseguir y
-      }
-    }
-
-    number = Number(number)
-    letters.reverse()
-
-    let c = 0;
-    for (let i = 0; i < letters.length; i++) {
-      c += (26 ** i) * (alpha.indexOf(letters[i]) + 1)  // Conseguir x
-    }
-
-    const position = { row: number, col: c }
-    return position;
-  }
 
   const handleCellClick = (
     letter: string,
@@ -3208,9 +2150,6 @@ const BoardPage: React.FC = () => {
     }
   };
 
-
-
-  // Next turn
   const handleNextTurn = (isVoluntaryPass: boolean = false) => {
     console.log("-----------------------------------------------------------------------------------------------");
     console.log("➡️ ENTROU NO handleNextTurn");
@@ -3238,7 +2177,7 @@ const BoardPage: React.FC = () => {
     const currentIdx = liveBattleState.currentTurnIndex;
     const currentTokenId = liveBattleState.turnOrder[currentIdx]?.tokenId;
 
-    reduceTimeToRecharge(currentTokenId);
+    reduceTimeToRecharge(engineContext, currentTokenId);
 
     // battleState.accumulatedActions[ battleState.turnOrder[battleState.currentTurnIndex]?.tokenId;] ?? 1
 
@@ -3279,7 +2218,7 @@ const BoardPage: React.FC = () => {
 
       const nextIdx = (currentIdx + 1) % liveBattleState.turnOrder.length;
       const nextTokenId = liveBattleState.turnOrder[nextIdx]?.tokenId;
-      decreaseCardEntityDuration(nextTokenId)
+      decreaseCardEntityDuration(engineContext, nextTokenId)
       const nextTokenName = liveBoardTokens.find(t => t.id === nextTokenId)?.name ?? "Desconhecido";
       const nextToken = liveBoardTokens.find(t => t.id === nextTokenId);
       console.log(`➡️ AVANÇANDO: idx ${currentIdx} -> ${nextIdx} | Próximo: ${nextTokenName}`);
@@ -3315,8 +2254,8 @@ const BoardPage: React.FC = () => {
             });
           }
 
-          applyEffectsCausality(nextToken);
-          stepTokenEffect(nextToken);
+          applyEffectsCausality(nextToken, engineContext);
+          stepTokenEffect(engineContext, nextToken);
 
         };
         applyCardEntityEffect()
@@ -3346,7 +2285,7 @@ const BoardPage: React.FC = () => {
       console.log("🔓 LOCK LIBERADO");
     }
   };
-  
+
   // End battle
   const handleEndBattle = () => {
     setBattleState({
@@ -3679,7 +2618,7 @@ const BoardPage: React.FC = () => {
     }
 
     // 10) Agenda reações com o dano “travado” (fora de qualquer if de mana)
-    const defenderParalysis = getParalysis(choice.targetId);
+    const defenderParalysis = getParalysis(engineContext, choice.targetId);
     if (defenderParalysis !== "none") {
       console.log("ESTADO DE PARALISIA DE UM TOKEN ESTÁ COMO: ", defenderParalysis);
     }
@@ -3740,10 +2679,10 @@ const BoardPage: React.FC = () => {
         )
       );
 
-      const currentParalysis = getParalysis(choice.targetId);
+      const currentParalysis = getParalysis(engineContext, choice.targetId);
       const nextState = nextParalysisAfterHit(currentParalysis, usedMana, (remainingExtraActions.current?.extraActions ?? 0));
       if (nextState !== currentParalysis) {
-        grantFreeActionNoReaction(tokenId, choice.targetId, nextState, 1)
+        grantFreeActionNoReaction(engineContext, tokenId, choice.targetId, nextState, 1)
       }
 
       setPendingAttack(null);
@@ -3910,7 +2849,7 @@ const BoardPage: React.FC = () => {
       if (!pendingAttack) return;
 
       if (pendingAttack.attackRoll > roll.total) {
-        defineRemainingPrevisionAttacks(attackerId, defenderId, 1);
+        defineRemainingPrevisionAttacks(engineContext, attackerId, defenderId, 1);
       }
 
       setBattleState((prev) => ({
@@ -3958,7 +2897,7 @@ const BoardPage: React.FC = () => {
         }
 
         if (isInAttackRange(token, targetToken, 'fisico')) {
-          grantFreeActionNoReaction(defenderId, attackerId, "paralisia", 1);
+          grantFreeActionNoReaction(engineContext, defenderId, attackerId, "paralisia", 1);
         }
 
       }
@@ -3981,7 +2920,7 @@ const BoardPage: React.FC = () => {
         }
 
         if (isInAttackRange(token, targetToken, 'fisico')) {
-          grantFreeActionNoReaction(attackerId, defenderId, "paralisia", 1);
+          grantFreeActionNoReaction(engineContext, defenderId, attackerId, "paralisia", 1);
         }
       }
 
@@ -4015,10 +2954,10 @@ const BoardPage: React.FC = () => {
       if (!pendingAttack) return;
 
       if (roll.total > pendingAttack.attackRoll) {
-        grantFreeActionNoReaction(defenderId, attackerId, "paralisia", 1);
+        grantFreeActionNoReaction(engineContext, defenderId, attackerId, "paralisia", 1);
       }
       else if (roll.total < pendingAttack.attackRoll) {
-        grantFreeActionNoReaction(attackerId, defenderId, "paralisia", 3);
+        grantFreeActionNoReaction(engineContext, defenderId, attackerId, "paralisia", 3);
       }
 
       setBattleState((prev) => ({
@@ -4075,7 +3014,7 @@ const BoardPage: React.FC = () => {
 
       if (pendingAttack && pendingAttack.attackAttribute === 'forca' && roll.total > pendingAttack.attackRoll) {
         console.log("⚠️ TOKEN SETADO COMO 'NÃO PODE REAGIR'");
-        grantFreeActionNoReaction(defenderId, attackerId, "paralisia", 1);
+        grantFreeActionNoReaction(engineContext, defenderId, attackerId, "paralisia", 1);
       }
       if (!pendingAttack) return;
 
@@ -4110,7 +3049,7 @@ const BoardPage: React.FC = () => {
 
         const intesityCalculus = Math.ceil(((attackerToken?.attributes.level ?? 1) - 10) / 4 + 4);
 
-        if (defenderToken) applyTokenEffect(defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
+        if (defenderToken) applyTokenEffect(engineContext, defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
 
         spawnItemVFX(attackerId, defenderId, (pendingAttack.usedItem === null ? undefined : pendingAttack.usedItem), boardTokens, setBoardVfxElements, playSomeSFX)
         playSomeSFX("public/sfx/impact.mp3");
@@ -4123,7 +3062,7 @@ const BoardPage: React.FC = () => {
         );
 
         if (pendingAttack.usedMana > 0) {
-          grantFreeActionNoReaction(attackerId, defenderId, "paralisia_rapida", 1);
+          grantFreeActionNoReaction(engineContext, attackerId, defenderId, "paralisia_rapida", 1);
         }
       }
 
@@ -4312,7 +3251,7 @@ const BoardPage: React.FC = () => {
       });
     }
 
-    const defenderParalysis = getParalysis(forcedTargetId);
+    const defenderParalysis = getParalysis(engineContext, forcedTargetId);
     const reactionPermittedByParalysis = canDefenderReact(usedMana, defenderParalysis);
     const isReactionAllowed = reactionPermittedByParalysis;
 
@@ -4348,14 +3287,14 @@ const BoardPage: React.FC = () => {
 
 
 
-    const currentParalysis = getParalysis(forcedTargetId);
+    const currentParalysis = getParalysis(engineContext, forcedTargetId);
     const nextState = nextParalysisAfterHit(currentParalysis, usedMana, (remainingExtraActions.current.extraActions ?? 0));
     console.log("QUAL PRÓXIMO ESTADO DE PARALISIA?: ", nextState);
     console.log("CALCULANDO ESSE MALDITO REMAINING ACTIONS: ", remainingExtraActions.current.extraActions);
     console.log("QUANTO QUE TÁ O BENDITO ACCUMULATED ACTIONS HEIN?: ", battleState.accumulatedActions[attackerId]);
 
     if (nextState === "paralisia_rapida" && (remainingExtraActions.current.extraActions ?? 0) <= 0) {
-      grantFreeActionNoReaction(attackerId, forcedTargetId, nextState, 1);
+      grantFreeActionNoReaction(engineContext, attackerId, forcedTargetId, nextState, 1);
     }
 
 
@@ -4372,12 +3311,12 @@ const BoardPage: React.FC = () => {
       if (rawDamage > 0) {
 
         const intesityCalculus = Math.ceil(((token?.attributes.level ?? 1) - 10) / 4 + 4);
-        if (target && usedMana > 0) applyTokenEffect(target, token.tokenPrimaryElement ?? "neutro", elementToEffect[token.tokenPrimaryElement ?? "neutro"], 8, intesityCalculus, "InTurn");
+        if (target && usedMana > 0) applyTokenEffect(engineContext, target, token.tokenPrimaryElement ?? "neutro", elementToEffect[token.tokenPrimaryElement ?? "neutro"], 8, intesityCalculus, "InTurn");
 
       }
 
       if (nextState !== currentParalysis) {
-        setParalysis(forcedTargetId, nextState);
+        setParalysis(engineContext, forcedTargetId, nextState);
       }
 
       const allowedNextAtackFlag = nextState === "paralisia_rapida" || nextState === "paralisia";
@@ -4389,10 +3328,10 @@ const BoardPage: React.FC = () => {
 
       if (!allowedNextAtackFlag) {
         setPostParalyse(null);
-        setParalysis(forcedTargetId, 'none');
+        setParalysis(engineContext, forcedTargetId, 'none');
       }
       else {
-        setParalysis(forcedTargetId, nextState);
+        setParalysis(engineContext, forcedTargetId, nextState);
       }
 
       const lockKey = `${attackerId}->${forcedTargetId}`;
@@ -4427,7 +3366,7 @@ const BoardPage: React.FC = () => {
       console.warn("ENTROU AQUI!");
       remainingExtraActions.current = null;
       setPendingFreeResponse(null);
-      setParalysis(forcedTargetId, "none");
+      setParalysis(engineContext, forcedTargetId, "none");
     }
 
     return true;
@@ -4503,7 +3442,7 @@ const BoardPage: React.FC = () => {
     const esquivaSuccessful = defenderEsquiva >= atacanteDefinicao;
 
     if (esquivaSuccessful) {
-      grantFreeActionNoReaction(defenderId, attackerId, "paralisia", 1);
+      grantFreeActionNoReaction(engineContext, defenderId, attackerId, "paralisia", 1);
     }
 
     const finalDamage = esquivaSuccessful ? 0 : pendingAttack.rawDamage;
@@ -4514,7 +3453,7 @@ const BoardPage: React.FC = () => {
 
       const intesityCalculus = Math.ceil(((attackerToken?.attributes.level ?? 1) - 10) / 4 + 4);
 
-      if (defenderToken) applyTokenEffect(defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
+      if (defenderToken) applyTokenEffect(engineContext, defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
       spawnItemVFX(attackerId, defenderId, pendingAttack.usedItem, boardTokens, setBoardVfxElements, playSomeSFX);
       playSomeSFX("public/sfx/impact.mp3");
       setBoardTokens((prev) =>
@@ -4528,10 +3467,10 @@ const BoardPage: React.FC = () => {
 
 
     if (finalDamage > 0 && pendingAttack) {
-      const current = getParalysis(defenderId);
+      const current = getParalysis(engineContext, defenderId);
       const nextState = nextParalysisAfterHit(current, pendingAttack.usedMana, (remainingExtraActions.current?.extraActions ?? 0));
       if (nextState !== current) {
-        grantFreeActionNoReaction(attackerId, defenderId, nextState, 1);
+        grantFreeActionNoReaction(engineContext, attackerId, defenderId, nextState, 1);
       }
     }
 
@@ -4683,6 +3622,7 @@ const BoardPage: React.FC = () => {
           affectedTargets.forEach(t => {
             card.effectToApply.forEach(e => {
               applyTokenEffect(
+                engineContext,
                 t,
                 "neutro",
                 e,
@@ -4714,6 +3654,7 @@ const BoardPage: React.FC = () => {
           affectedTargets.forEach(t => {
             card.effectToApply.forEach(e => {
               applyTokenEffect(
+                engineContext,
                 t,
                 "neutro",
                 e,
@@ -4744,6 +3685,7 @@ const BoardPage: React.FC = () => {
         affectedTargets.forEach(t => {
           card.effectToApply.forEach(e => {
             applyTokenEffect(
+              engineContext,
               t,
               "neutro",
               e,
@@ -4774,11 +3716,11 @@ const BoardPage: React.FC = () => {
       if (cardsNotRechargeds.current[currentId] === undefined) {
         cardsNotRechargeds.current[currentId] = []
         cardsNotRechargeds.current[currentId].push(card.id)
-        formatRechargeCardRecord(currentId, card.id, card.recharge as number);
+        formatRechargeCardRecord(engineContext, currentId, card.id, card.recharge as number);
       }
       else if (!(cardsNotRechargeds.current[currentId].includes(card.id))) {
         cardsNotRechargeds.current[currentId].push(card.id)
-        formatRechargeCardRecord(currentId, card.id, card.recharge as number);
+        formatRechargeCardRecord(engineContext, currentId, card.id, card.recharge as number);
       }
     }
     /* * */
@@ -4821,17 +3763,7 @@ const BoardPage: React.FC = () => {
     }
   }
 
-  type OffensiveCardResponse = {
-    usedCard: Card,
-    rawCardResult: number,
-    rawTestResult: number,
-    usedMana: number;
-    usedActions: number;
-    usedCertainDie: boolean;
-    defenseRollResult: RollResult;
-    token: Token;
-    previewAction: boolean;
-  };
+
 
   const handleOffensiveCardResponse = ({
     usedCard,
@@ -4877,6 +3809,7 @@ const BoardPage: React.FC = () => {
           if (testSucess) {
             usedCard.effectToApply.forEach(e => {
               applyTokenEffect(
+                engineContext,
                 token,
                 "neutro",
                 e,
@@ -4900,6 +3833,7 @@ const BoardPage: React.FC = () => {
           else {
             usedCard.effectToApply.forEach(e => {
               applyTokenEffect(
+                engineContext,
                 token,
                 "neutro",
                 e,
@@ -4938,6 +3872,8 @@ const BoardPage: React.FC = () => {
           else {
             usedCard.effectToApply.forEach((e) => {
               applyTokenEffect(
+                engineContext,
+
                 token,
                 "neutro",
                 e,
@@ -4962,7 +3898,7 @@ const BoardPage: React.FC = () => {
         }
       }
       else {
-        const formatedKey = formatedPrevisionAttackKey(token.id, triggerOffensiveTokenId?.id!);
+        const formatedKey = formatPrevisionAttackKey(token.id, triggerOffensiveTokenId?.id!);
         remainingPrevisionAttacks.current[formatedKey] -= 1
       }
 
@@ -4997,57 +3933,8 @@ const BoardPage: React.FC = () => {
       token: Token;
     };
 
-  function addPivot(pivot: PivotCandidate) {
-    setSelectedPivots(prev => {
-      const next = [...prev, pivot];
-      return next;
-    });
-  }
-
   function registerCardEntities(instances: CardEntityInstance[]) {
     setCardEntities(prev => [...prev, ...instances]);
-  }
-
-  function resolvePivotPosition(pivot: PivotCandidate): Position {
-    if (pivot.type === "cell") {
-      return pivot.position;
-    }
-
-    if (pivot.type === "token") {
-      const token = boardTokens.find(t => t.id === pivot.tokenId);
-      if (!token) throw new Error("Token pivot não encontrado");
-      return token.position;
-    }
-
-    if (pivot.type === "trigger") {
-      if (!pendingCardResolution) {
-        throw new Error("Trigger-Fix sem token disparador");
-      }
-      return pendingCardResolution.position;
-    }
-
-    throw new Error("Pivot inválido");
-  }
-
-
-  function getCellsInRadius(
-    center: Position,
-    radius: number,
-    gridCells: Position[]
-  ): Position[] {
-    return gridCells.filter(cell => {
-      const dx = Math.abs(cell.col - center.col);
-      const dy = Math.abs(cell.row - center.row);
-      return dx <= radius && dy <= radius;
-    });
-  }
-
-  function getTokensInCardEntityRadius(tokens: Token[], position: Position, range: number, triggerId: string) {
-    return tokens.filter(t => {
-      const dx = Math.abs(t.position.col - position.col);
-      const dy = Math.abs(t.position.row - position.row);
-      return dx <= range && dy <= range && t.id !== triggerId;
-    });
   }
 
   function confirmAmbientPivots() {
@@ -5079,7 +3966,7 @@ const BoardPage: React.FC = () => {
     const pivotType = armedCard.target.pivotSettings?.pivotType;
 
     if (pivotType === "Trigger-Fix") {
-      resolveTriggerFixPivot(triggerToken!);
+      resolveTriggerFixPivot(engineContext, triggerToken!);
       return;
     }
 
@@ -5092,7 +3979,7 @@ const BoardPage: React.FC = () => {
       triggerId: tokenInAmbientPivotSelection,
       anchorTokenId: pivot.type === "token" ? pivot.tokenId : undefined,
       duration: armedCard.duration ?? Infinity,
-      position: resolvePivotPosition(pivot),
+      position: resolvePivotPosition(engineContext, pivot),
       friendlyTeam: triggerToken?.team,
     }));
 
@@ -5105,7 +3992,7 @@ const BoardPage: React.FC = () => {
       );
 
       affectedTokens.forEach(t => {
-        applyCardEntityEffectToToken(c, t);
+        applyCardEntityEffectToToken(engineContext, c, t);
       });
     });
 
@@ -5144,10 +4031,7 @@ const BoardPage: React.FC = () => {
 
         addPreviewCells(cells);
 
-        addPivot({
-          type: "cell",
-          position: pivot,
-        });
+        addPivot(engineContext, { type: "cell", position: pivot });
 
         return;
       }
@@ -5163,7 +4047,7 @@ const BoardPage: React.FC = () => {
         addPreviewCells(cells);
         setSelectedCell(null); // não há célula selecionada aqui
 
-        addPivot({
+        addPivot(engineContext, {
           type: "token",
           tokenId: token.id,
         });
@@ -5172,7 +4056,7 @@ const BoardPage: React.FC = () => {
       }
 
       if (pivotType === "Trigger-Fix") {
-        addPivot({ type: "trigger" });
+        addPivot(engineContext, { type: "trigger" });
         return;
       }
     }
@@ -5190,43 +4074,39 @@ const BoardPage: React.FC = () => {
     battleState.status === "In Battle" &&
     currentToken?.type === "player";
 
-
-  const cellSize = 40 * zoom;
-
-
   return (
     <div className="relative flex w-full min-h-screen bg-gray-900 text-white overflow-x-hidden">
       <div className="relative flex-1 p-6" style={{ maxWidth: sidebarOpen ? `calc(100vw - ${sidebarWidth}px)` : "100vw" }}>
         {/* Controls */}
-          {battleState.status !== "In Battle" &&  (
-            <div className="absolute flex items-center gap-4 bg-gray-900 z-20 rounded-md p-2" style={{ top: 6, left: 6 }}>
-              <SettingsDropdown
-                rows={rows}
-                cols={cols}
-                onChangeRows={(v) => setRows(Number(v))}
-                onChangeCols={(v) => setCols(Number(v))}
-                onChangeBackgroundImage={setBackgroundImage}
-              />
-              <div className="ml-4 font-semibold text-green-400 whitespace-nowrap">
-                {selectedCell ? `Célula selecionada: ${selectedCell}` : "Nenhuma célula selecionada"}
-              </div>
-              <div className="ml-4 font-semibold text-blue-400 whitespace-nowrap">
-                Zoom: {Math.round(zoom * 100)}%
-              </div>
-              <button
-                onClick={() => setIsMapSelectOpen(true)}
-                className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-sm"
-              >
-                Mapas
-              </button>
-              <button
-                onClick={() => setGenerateMazeOpen(true)}
-                className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-sm"
-              >
-                Gerar Labirinto
-              </button>
+        {battleState.status !== "In Battle" && (
+          <div className="absolute flex items-center gap-4 bg-gray-900 z-20 rounded-md p-2" style={{ top: 6, left: 6 }}>
+            <SettingsDropdown
+              rows={rows}
+              cols={cols}
+              onChangeRows={(v) => setRows(Number(v))}
+              onChangeCols={(v) => setCols(Number(v))}
+              onChangeBackgroundImage={setBackgroundImage}
+            />
+            <div className="ml-4 font-semibold text-green-400 whitespace-nowrap">
+              {selectedCell ? `Célula selecionada: ${selectedCell}` : "Nenhuma célula selecionada"}
             </div>
-          )}
+            <div className="ml-4 font-semibold text-blue-400 whitespace-nowrap">
+              Zoom: {Math.round(zoom * 100)}%
+            </div>
+            <button
+              onClick={() => setIsMapSelectOpen(true)}
+              className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-sm"
+            >
+              Mapas
+            </button>
+            <button
+              onClick={() => setGenerateMazeOpen(true)}
+              className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-sm"
+            >
+              Gerar Labirinto
+            </button>
+          </div>
+        )}
         {/* VIEWPORT */}
         <div
           className="w-full h-full overflow-hidden cursor-grab"
@@ -5443,7 +4323,7 @@ const BoardPage: React.FC = () => {
                                     ? "grayscale brightness-50 opacity-70"
                                     : "",
 
-                                  getParalysis(tok.id) !== "none"
+                                  getParalysis(engineContext, tok.id) !== "none"
                                     ? "animate-white-blink"
                                     : "",
 
@@ -5691,14 +4571,13 @@ const BoardPage: React.FC = () => {
             isResponseAttack={(defenderId, usedMana) => {
               const lockKey = `${currentId}->${defenderId}`;
               const hasLock = !!freeActionLock[lockKey];
-              const permittedByParalysis = canDefenderReact(usedMana, getParalysis(defenderId));
+              const permittedByParalysis = canDefenderReact(usedMana, getParalysis(engineContext, defenderId));
               return hasLock || !permittedByParalysis;
             }}
             restrictedMode={false}
           />
         </div>
       )}
-
 
       {/* ReactionPrompt */}
       {pendingAttack &&
@@ -5720,7 +4599,7 @@ const BoardPage: React.FC = () => {
             isReactionAllowed={pendingAttack.isReactionAllowed}
 
             disabledReason={!pendingAttack.isReactionAllowed ? "Reação bloqueada (Paralisia/ação livre)." : undefined}
-            prevActions={remainingPrevisionAttacks.current[formatedPrevisionAttackKey(pendingAttack.targetId, pendingAttack.attackerId)]}
+            prevActions={remainingPrevisionAttacks.current[formatPrevisionAttackKey(pendingAttack.targetId, pendingAttack.attackerId)]}
             onSkip={() => {
               if (!pendingAttack) return;
 
@@ -5733,10 +4612,10 @@ const BoardPage: React.FC = () => {
               );
 
               // transição Paralisia → Paralisia Rápida (se ataque usou mana)
-              const current = getParalysis(pendingAttack.targetId);
+              const current = getParalysis(engineContext, pendingAttack.targetId);
 
               const nextState = nextParalysisAfterHit(current, pendingAttack.usedMana, (remainingExtraActions.current?.extraActions ?? 0));
-              if (nextState !== current) setParalysis(pendingAttack.targetId, nextState);
+              if (nextState !== current) setParalysis(engineContext, pendingAttack.targetId, nextState);
 
               // finalizar fluxo
               setPendingAttack(null);
@@ -5745,7 +4624,7 @@ const BoardPage: React.FC = () => {
               setShouldAdvanceTurn(true);
             }}
             onPrev={() => {
-              const formatedKey = formatedPrevisionAttackKey(pendingAttack.targetId, pendingAttack.attackerId);
+              const formatedKey = formatPrevisionAttackKey(pendingAttack.targetId, pendingAttack.attackerId);
 
               if (remainingPrevisionAttacks.current[formatedKey] > 0) {
                 const currentActions = remainingPrevisionAttacks.current[formatedKey]
@@ -5798,7 +4677,7 @@ const BoardPage: React.FC = () => {
 
               if (pendingAttack.attackAttribute === "forca") {
 
-                if (defenderToken) applyTokenEffect(defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
+                if (defenderToken) applyTokenEffect(engineContext, defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
                 spawnItemVFX(attackerToken!.id, defenderToken!.id, (pendingAttack.usedItem === null ? undefined : pendingAttack.usedItem), boardTokens, setBoardVfxElements, playSomeSFX)
                 playSomeSFX("public/sfx/impact.mp3");
                 setBoardTokens((prev) =>
@@ -5812,12 +4691,12 @@ const BoardPage: React.FC = () => {
               }
 
               if (pendingAttack.attackAttribute === "inteligencia") {
-                defineRemainingPrevisionAttacks(pendingAttack.attackerId, pendingAttack.targetId, 1);
+                defineRemainingPrevisionAttacks(engineContext, pendingAttack.attackerId, pendingAttack.targetId, 1);
               }
 
-              const current = getParalysis(pendingAttack.targetId);
+              const current = getParalysis(engineContext, pendingAttack.targetId);
               const nextState = nextParalysisAfterHit(current, pendingAttack.usedMana, (remainingExtraActions.current?.extraActions ?? 0));
-              if (nextState !== current) setParalysis(pendingAttack.targetId, nextState);
+              if (nextState !== current) setParalysis(engineContext, pendingAttack.targetId, nextState);
 
               if (pendingAttack.attackAttribute === "sabedoria") {
                 setBattleState((prev) => ({
@@ -5828,11 +4707,11 @@ const BoardPage: React.FC = () => {
                   ...prev,
                   accumulatedActions: { ...prev.accumulatedActions, [pendingAttack.targetId]: 1 },
                 }));
-                grantFreeActionNoReaction(pendingAttack.attackerId, pendingAttack.targetId, "paralisia", 1);
+                grantFreeActionNoReaction(engineContext, pendingAttack.attackerId, pendingAttack.targetId, "paralisia", 1);
               }
 
               if (pendingAttack.attackAttribute === "destreza") {
-                grantFreeActionNoReaction(pendingAttack.attackerId, pendingAttack.targetId, "paralisia", 3);
+                grantFreeActionNoReaction(engineContext, pendingAttack.attackerId, pendingAttack.targetId, "paralisia", 3);
               }
 
               setPendingAttack(null);
@@ -5841,50 +4720,50 @@ const BoardPage: React.FC = () => {
               setShouldAdvanceTurn(true);
             }}
           />
-      )}
+        )}
 
       {/* DefenseResolutionForm */}
       {pendingEsquivaRoll !== null &&
         pendingAttack &&
         boardTokens.find((t) => t.id === pendingAttack.attackerId)?.type === "player" && (
-        <div className="fixed bottom-4 left-4 z-40">
-          <DefenseResolutionForm
-            attacker={boardTokens.find((t) => t.id === pendingAttack?.attackerId)!}
-            defenderName={
-              boardTokens.find((t) => t.id === pendingAttack?.targetId)?.name ||
-              "Desconhecido"
-            }
-            reactionResult={pendingEsquivaRoll?.total ?? null}
-            availableActions={
-              battleState.accumulatedActions[pendingAttack.attackerId] ?? 1
-            }
-            onResolve={(usedActions, rollResult, usedMana) => {  // ⬅️ receber usedMana
-              handleDefenseResolution(usedActions, rollResult, usedMana);
-            }}
-
-            onCancel={() => {
-              if (pendingAttack) {
-                setBoardTokens((prev) =>
-                  prev.map((t) =>
-                    t.id === pendingAttack.targetId
-                      ? {
-                        ...t,
-                        currentLife: Math.max(
-                          0,
-                          (t.currentLife ?? 0) - pendingAttack.rawDamage
-                        ),
-                      }
-                      : t
-                  )
-                );
+          <div className="fixed bottom-4 left-4 z-40">
+            <DefenseResolutionForm
+              attacker={boardTokens.find((t) => t.id === pendingAttack?.attackerId)!}
+              defenderName={
+                boardTokens.find((t) => t.id === pendingAttack?.targetId)?.name ||
+                "Desconhecido"
               }
-              setPendingEsquivaRoll(null);
-              setPendingAttack(null);
-              setShouldAdvanceTurn(true);
-            }}
-          />
-        </div>
-      )}
+              reactionResult={pendingEsquivaRoll?.total ?? null}
+              availableActions={
+                battleState.accumulatedActions[pendingAttack.attackerId] ?? 1
+              }
+              onResolve={(usedActions, rollResult, usedMana) => {  // ⬅️ receber usedMana
+                handleDefenseResolution(usedActions, rollResult, usedMana);
+              }}
+
+              onCancel={() => {
+                if (pendingAttack) {
+                  setBoardTokens((prev) =>
+                    prev.map((t) =>
+                      t.id === pendingAttack.targetId
+                        ? {
+                          ...t,
+                          currentLife: Math.max(
+                            0,
+                            (t.currentLife ?? 0) - pendingAttack.rawDamage
+                          ),
+                        }
+                        : t
+                    )
+                  );
+                }
+                setPendingEsquivaRoll(null);
+                setPendingAttack(null);
+                setShouldAdvanceTurn(true);
+              }}
+            />
+          </div>
+        )}
 
       {/* Card Form */}
       {inCardSelection && pendingCardResolution?.type === "player" && (
@@ -5900,7 +4779,7 @@ const BoardPage: React.FC = () => {
               ] ?? 1
             }
             availableMana={currentToken?.currentMana ?? 0}
-            cardTimeToRecharge={(card) => formatRechargeCardRecordReturn((pendingCardResolution as Token).id, card.id)}
+            cardTimeToRecharge={(card) => formatRechargeCardRecordReturn(engineContext, (pendingCardResolution as Token).id, card.id)}
             availableCardsIds={cardsNotRechargeds.current[(pendingCardResolution as Token).id]}
             onClose={() => setInCardSelection(false)}
             onConfirm={(card, target) => handleCardResolution(currentId, target as Target, card)}
@@ -5923,7 +4802,7 @@ const BoardPage: React.FC = () => {
             cardResult={offensiveCardScore}
             testResult={offensiveCardTestScore}
             defenderToken={defenderToken}
-            defenderTokenPrevActions={remainingPrevisionAttacks.current[formatedPrevisionAttackKey(defenderToken.id, pendingCardResolution!.id)]}
+            defenderTokenPrevActions={remainingPrevisionAttacks.current[formatPrevisionAttackKey(defenderToken.id, pendingCardResolution!.id)]}
             tokenBattlePosition={(attr) => searchTokenPosition(defenderToken.id, attr)}
             onExecute={(choice) => {
               handleOffensiveCardResponse(choice, pendingCardResolution)
@@ -6001,7 +4880,7 @@ const BoardPage: React.FC = () => {
           selectedMapa={selectedMapa}
           createdItems={createdItems}
           onClose={() => setMapObjectCreateForm(false)}
-          generatePairDoor={generatePairDoor}
+          generatePairDoor={(door) => generatePairDoor(engineContext, door)}
           setBoardMapObjects={setBoardMapObjects}
         />
       )

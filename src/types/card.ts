@@ -1,6 +1,7 @@
 import type { Pivot, Target } from "./target"
 import type { EffectType } from "./effects";
-import type { TokenTeam } from "./token";
+import type { Token, TokenTeam } from "./token";
+import type { RollResult } from "./battle";
 
 
 export type CardCausality = "Direct-Damage" | "Only-Effect-Application" | "Offensive" | "Defensive" | "Cure";
@@ -53,3 +54,15 @@ export type CardEntityInstance =
     position: Position;
     friendlyTeam?: TokenTeam;
 }
+
+export type OffensiveCardResponse = {
+    usedCard: Card,
+    rawCardResult: number,
+    rawTestResult: number,
+    usedMana: number;
+    usedActions: number;
+    usedCertainDie: boolean;
+    defenseRollResult: RollResult;
+    token: Token;
+    previewAction: boolean;
+  };

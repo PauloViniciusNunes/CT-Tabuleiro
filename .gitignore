@@ -25,3 +25,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.aider*
+.codex
+.agents
+
+QWEN.md
+PROJECT_CONTEXT.md

@@ -1,5 +1,5 @@
 import type { Card } from "./card";
-import type { TokenAttributes } from "./token"
+import type { TokenAttributes, TokenInventory } from "./token"
 
 
 export type ItemSlot   = "primary-hand" | "off-hand" | "neck" | "ring" | "armor" | "inventory-only";
@@ -26,3 +26,19 @@ export type Item =
     vfxUrl?: string[];
     sfxUrl?: string;
 }
+
+type KeysMatching<T, V> =
+    {
+      [K in keyof T]:
+      T[K] extends V
+      ? K
+      : never
+    }[keyof T];
+
+export type EquippedSlot =
+    NonNullable<
+      KeysMatching<
+        TokenInventory,
+        Item | undefined
+      >
+    >;

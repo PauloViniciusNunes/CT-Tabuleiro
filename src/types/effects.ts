@@ -85,14 +85,12 @@ export type EffectType = typeof EFFECT_TYPES[number];
 
 export type EffectMoment = "InTurn" | "AllTurn" | "Area"
 
-
-
-export type TokenPrimaryElement = 
+export type TokenPrimaryElement =
   "neutro" |
-  "fogo"  |
+  "fogo" |
   "terra" |
   "vento" |
-  "agua"  |
+  "agua" |
   "darkfire" |
   "arcano" |
   "acido" |
@@ -143,11 +141,27 @@ export type TokenPrimaryElement =
 export type TokenPrimaryDisvantage = TokenPrimaryElement | "none";
 
 export type TokenEffect = {
-    duration: number | undefined,
-    elementResultant: TokenPrimaryElement,
-    effectType: EffectType,
-    intensity: number,
-    effectMoment: EffectMoment,
-    isCardResultant?: boolean, // Adicionado
-    cardResultantId?: string,  // Adicionado
+  duration: number | undefined,
+  elementResultant: TokenPrimaryElement,
+  effectType: EffectType,
+  intensity: number,
+  effectMoment: EffectMoment,
+  isCardResultant?: boolean, // Adicionado
+  cardResultantId?: string,  // Adicionado
 }
+
+export type CombinationResult = | { remove: EffectType[]; add?: EffectType | EffectType[]; intensityMultiplier?: number; explosion?: boolean; areaRadius?: number; areaDamage?: number; areaEffect?: EffectType; areaElement?: TokenPrimaryElement; overlay?: string; gifPath?: string; } | null;
+
+export type EffectGrowthModel = "A" | "B";
+
+export const effectGrowthRules: Partial<Record<EffectType, EffectGrowthModel>> = {
+  envenenado: "A",     // stacking exponencial
+  queimando: "B",      // sempre reinicia baseado no ataque atual
+  eletrizado: "B",     // lógica híbrida
+  congelando: "B",
+  darkfire: "B",
+  preso: "B",
+  sangrando: "A",
+  eletrizado_dark: "B"
+  // ... etc
+};

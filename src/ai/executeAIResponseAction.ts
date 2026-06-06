@@ -1,11 +1,13 @@
 import { decideResponseAction } from "./response/decideResponseAction";
-
+import type { AIRepertory } from "./types/aiContext";
 import type { Token } from "../types/token";
 import type { ExecuteChoice } from "../types/executeChoice";
 
 interface ExecuteAIResponseActionParams {
 
   self: Token;
+
+  aiRepertory: AIRepertory;
 
   forcedTarget: Token;
 
@@ -20,6 +22,7 @@ interface ExecuteAIResponseActionParams {
 export function executeAIResponseAction({
 
   self,
+  aiRepertory,
   forcedTarget,
   handleExecuteResponseAction
 
@@ -28,6 +31,7 @@ export function executeAIResponseAction({
   const decision = decideResponseAction({
 
     self,
+    aiRepertory,
     forcedTarget
 
   });

@@ -1,10 +1,11 @@
-import type { AIContext } from "./types/aiContext";
+import type { AIContext, AIRepertory } from "./types/aiContext";
 
 import { chooseTarget } from "./core/chooseTarget";
 import { chooseCard } from "./core/chooseCard";
 import { generateActionChoice } from "./core/generateActionChoice";
 
-export function decideAction(context: AIContext) {
+
+export function decideAction(context: AIContext, aiRepertory: AIRepertory) {
 
   console.log("AI CONTEXT:", context);
 
@@ -35,6 +36,7 @@ export function decideAction(context: AIContext) {
   // gera ação completa
   const choice = generateActionChoice(
     context.self,
+    aiRepertory,
     target,
     card
   );

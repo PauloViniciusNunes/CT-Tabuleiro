@@ -18,10 +18,12 @@ import { isInAttackRange }
 import { executeAIMovement }
   from "./executeAIMovement";
 
+import { type AIRepertory } from "./types/aiContext";
+
 interface ExecuteAITurnParams {
 
   context: AIContext;
-
+  aiRepertory: AIRepertory;
   handleExecuteAction: (
     choice: ExecuteChoice
   ) => boolean;
@@ -43,6 +45,7 @@ interface ExecuteAITurnParams {
 export function executeAITurn({
 
   context,
+  aiRepertory,
   handleExecuteAction,
   moveToken,
   onCompleteTurn
@@ -76,7 +79,7 @@ export function executeAITurn({
   */
 
   const decision =
-    decideAction(context);
+    decideAction(context, aiRepertory);
 
   if (!decision) {
 

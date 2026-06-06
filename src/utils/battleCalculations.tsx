@@ -12,6 +12,10 @@ import TokenEditForm from "../components/ui/TokenEditForm";
 
 export type ResultType = "fail" | "normal" | "success" | "critical" | "total";
 
+export function randomInt(min: number, max: number): number {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 export const sum = (values: number[]) =>
   values.reduce((a, b) => a + b, 0);
 

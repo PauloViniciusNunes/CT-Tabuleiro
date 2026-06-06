@@ -13,3 +13,422 @@ Próximas atualizações
 
 
 OBS: A instância de token tem um novo id, que não corresponde ao ID de create tokens
+
+
+
+
+=========================================================
+CT-TABULEIRO
+REFATORAÇÃO DO BOARDPAGE.TSX
+CHECKLIST DE DESACOPLAMENTO
+=========================================================
+
+OBJETIVO:
+[ ] Transformar BoardPage.tsx em um Orquestrador
+[ ] Remover regras de negócio do componente
+[ ] Reduzir acoplamento
+[ ] Preparar arquitetura para escalabilidade
+[ ] Preparar IA para Máquina de Estados
+[ ] Organizar imports por domínio
+
+=========================================================
+FASE 0 - HIGIENIZAÇÃO INICIAL
+=========================================================
+
+[ ] Comentarizar e organizar imports do BoardPage
+[ ] Separar imports por domínio
+[ ] Separar imports por camadas
+[ ] Remover imports mortos
+[ ] Mapear dependências ocultas
+
+=========================================================
+FASE 1 - DOMÍNIO DE CARDS
+=========================================================
+
+Destino:
+src/cards
+
+Objetivo:
+Remover toda autoridade de Cards do BoardPage.
+
+-------------------------
+Card Effects
+-------------------------
+
+[ ] decreaseCardEntityDuration()
+[ ] tokenHasCardEffect()
+[ ] applyCardEffectToToken()
+[ ] removeCardEffectsFromToken()
+[ ] applyCardEntityEffect()
+[ ] applyCardEntityEffectToToken()
+
+-------------------------
+Card Queries
+-------------------------
+
+[ ] isTokenInCardInstanceRange()
+[ ] cardIds()
+[ ] resolveCardsById()
+
+-------------------------
+Card Entities
+-------------------------
+
+[ ] resolveCardEntityPosition()
+[ ] reconcileCardEntityEffects()
+[ ] registerCardEntities()
+[ ] getTokensInCardEntityRadius()
+
+-------------------------
+Card Triggers
+-------------------------
+
+[ ] resolveTriggerFixPivot()
+[ ] addPivot()
+[ ] resolvePivotPosition()
+
+=========================================================
+FASE 2 - GEOMETRIA E UTILITÁRIOS MATEMÁTICOS
+=========================================================
+
+Destino:
+src/geometry
+src/utils
+
+Objetivo:
+Remover cálculos genéricos do BoardPage.
+
+-------------------------
+Sets
+-------------------------
+
+[ ] setTransformerAdd()
+[ ] equalsSets()
+
+[ ] complemento()
+      -> Renomear para setComplement()
+
+[ ] setTransformerRemove()
+
+-------------------------
+Posicionamento
+-------------------------
+
+[ ] cellToPosition()
+
+-------------------------
+Radius
+-------------------------
+
+[ ] getCellsInRadius()
+
+=========================================================
+FASE 3 - INVENTÁRIO
+=========================================================
+
+Destino:
+src/inventory
+
+Objetivo:
+Toda lógica de inventário fora do BoardPage.
+
+-------------------------
+Equipamentos
+-------------------------
+
+[ ] getEquippedItemCardSets()
+[ ] computeTokenCardsWithSets()
+
+-------------------------
+Troca de Itens
+-------------------------
+
+[ ] swapItemInInventory()
+
+-------------------------
+Capacidade
+-------------------------
+
+[ ] haveSpaceInInventory()
+[ ] addItemToInventory()
+
+=========================================================
+FASE 4 - ÁUDIO
+=========================================================
+
+Destino:
+src/audio
+
+Objetivo:
+Centralizar reprodução de sons.
+
+-------------------------
+SFX
+-------------------------
+
+[ X ] playSomeSFX()
+
+=========================================================
+FASE 5 - COMBATE
+=========================================================
+
+Destino:
+src/combat
+
+Objetivo:
+Desacoplar mecânicas de combate.
+
+-------------------------
+Recharge
+-------------------------
+
+[ ] formatRechargeCardRecord()
+[ ] formatRechargeCardRecordReturn()
+[ ] reduceTimeToRechargeOP()
+
+-------------------------
+Predictions
+-------------------------
+
+[ ] defineRemainingPrevisionAttacks()
+
+[ ] formatedPrevisionAttackKey()
+      -> Renomear para formatPrevisionAttackKey()
+
+=========================================================
+FASE 6 - STATUS E ESTADOS
+=========================================================
+
+Destino:
+src/state
+
+Objetivo:
+Centralizar estados temporários.
+
+-------------------------
+Paralisia
+-------------------------
+
+[ ] getParalysis()
+[ ] setParalysis()
+
+-------------------------
+Ações Livres
+-------------------------
+
+[ ] grantFreeActionNoReaction()
+
+=========================================================
+FASE 7 - ENGINE DE EFEITOS
+=========================================================
+
+Destino:
+src/effects
+
+Objetivo:
+Criar um motor de efeitos independente.
+
+-------------------------
+Queries
+-------------------------
+
+[ X ] tokenHasEffects()
+[ X ] getTokensInRadius()
+
+-------------------------
+Aplicação
+-------------------------
+
+[ x ] applyAreaDamage()
+[ x ] applyAreaEffect()
+[ x ] applyTokenEffect()
+
+-------------------------
+Combinações
+-------------------------
+
+[ x ] resolveEffectCombinations()
+
+-------------------------
+Causalidade
+-------------------------
+
+[ x ] applyEffectsCausality()
+
+-------------------------
+Step System
+-------------------------
+
+[ ] stepTokenEffect()
+
+=========================================================
+FASE 8 - EXPLOSÕES E VFX
+=========================================================
+
+Destino:
+src/effects/explosions
+
+Objetivo:
+Isolar eventos visuais.
+
+-------------------------
+Explosões
+-------------------------
+
+[ ] addLargeExplosionOverlay()
+[ ] triggerExplosion()
+
+=========================================================
+FASE 9 - MECÂNICAS DE MAPA
+=========================================================
+
+Destino:
+src/entities
+
+Objetivo:
+Retirar lógica estrutural do BoardPage.
+
+-------------------------
+Portas
+-------------------------
+
+[ ] generatePairDoor()
+
+=========================================================
+FASE 10 - TIPOS DESACOPLADOS
+=========================================================
+
+Destino:
+src/types
+
+Objetivo:
+Remover tipos internos do BoardPage.
+
+-------------------------
+AI
+-------------------------
+
+[ ] Criar AILocksContainer
+
+[ ] Criar AICombatPhase
+
+[ ] Mover OffensiveCardResponse
+      (já existe, apenas desacoplar)
+
+=========================================================
+FASE 11 - MÁQUINA DE ESTADOS DA IA
+=========================================================
+
+Destino:
+src/ai/state
+
+Objetivo:
+Eliminar dependência de múltiplos useEffects.
+
+-------------------------
+Infraestrutura
+-------------------------
+
+[ ] Criar enum AICombatPhase
+
+[ ] Criar estado atual da IA
+
+[ ] Criar transições de estado
+
+-------------------------
+Estados
+-------------------------
+
+[ ] TURN
+
+[ ] REACTION
+
+[ ] RESPONSE
+
+[ ] DEFENSE
+
+[ ] IDLE
+
+-------------------------
+Execução
+-------------------------
+
+[ ] Refatorar executeAITurn()
+
+[ ] Refatorar executeAIReaction()
+
+[ ] Refatorar executeAIResponseAction()
+
+[ ] Refatorar executeAIDefenseResolution()
+
+=========================================================
+FASE 12 - LIMPEZA FINAL DO BOARDPAGE
+=========================================================
+
+Objetivo:
+Transformar BoardPage em um controlador.
+
+-------------------------
+Checklist
+-------------------------
+
+[ ] Remover regras de negócio
+
+[ ] Remover cálculos matemáticos
+
+[ ] Remover sistema de efeitos
+
+[ ] Remover sistema de cards
+
+[ ] Remover sistema de inventário
+
+[ ] Remover sistema de IA
+
+[ ] Remover sistema de áudio
+
+[ ] Revisar imports
+
+[ ] Revisar useEffects
+
+[ ] Revisar dependências
+
+[ ] Revisar nomenclaturas
+
+[ ] Revisar responsabilidades
+
+=========================================================
+META FINAL
+=========================================================
+
+BoardPage:
+- Apenas UI
+- Apenas Estado React
+- Apenas Orquestração
+
+Domínios:
+- Cards
+- Effects
+- Combat
+- Inventory
+- Audio
+- Geometry
+- State
+- AI
+
+Total de funções previstas para remoção:
+[ ] 42+ Funções
+
+Status Geral:
+[ ] Fase 0
+[ ] Fase 1
+[ ] Fase 2
+[ ] Fase 3
+[ ] Fase 4
+[ ] Fase 5
+[ ] Fase 6
+[ ] Fase 7
+[ ] Fase 8
+[ ] Fase 9
+[ ] Fase 10
+[ ] Fase 11
+[ ] Fase 12
