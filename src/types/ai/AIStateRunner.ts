@@ -3,27 +3,24 @@ import { AICombatPhase } from "./AICombatPhase";
 export function runAIPhase(
     phase: AICombatPhase,
     callbacks: {
-        turn: () => void;
-        reaction: () => void;
-        response: () => void;
-        defense: () => void;
+        turn: () => void | (() => void);
+        reaction: () => void | (() => void);
+        response: () => void | (() => void);
+        defense: () => void | (() => void);
     }
 ) {
+    console.error(`[RUN AI PHASE] Fase chamada será: ${phase}`);
     switch (phase) {
         case AICombatPhase.TURN:
-            callbacks.turn();
-            break;
+            return callbacks.turn();
 
         case AICombatPhase.REACTION:
-            callbacks.reaction();
-            break;
+            return callbacks.reaction();
 
         case AICombatPhase.RESPONSE:
-            callbacks.response();
-            break;
+            return callbacks.response();
 
         case AICombatPhase.DEFENSE:
-            callbacks.defense();
-            break;
+            return callbacks.defense();
     }
 }

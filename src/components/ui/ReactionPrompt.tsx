@@ -1,33 +1,30 @@
 // /src/components/ui/ReactionPrompt.tsx
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import * as RadioGroup from "@radix-ui/react-radio-group";
 import * as Switch from "@radix-ui/react-switch";
 import { cva, type VariantProps } from "class-variance-authority";
-import { Shield, Swords, Zap, XCircle, CheckCircle2, Brain, Book } from "lucide-react";
+import { Shield, Zap, XCircle, Brain, Book, CardSim, Sparkles } from "lucide-react";
+import { GiCardRandom } from "react-icons/gi";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { GiDiceTwentyFacesTwenty } from "react-icons/gi";
 import type { Token } from "../../types/token";
 import type { RollResult } from "../../types/battle";
 import { calculateMedianRoll } from "../../utils/battleCalculations";
+
+import LEFTARROW from "../../assets/buttons/LEFTARROW.svg"
+import RIGHTARROW from "../../assets/buttons/RIGHTARROW.svg"
+import PANNEL2 from "../../assets/hud/PANNEL2.svg"
+
 import { type ResultType } from "../../utils/battleCalculations";
 import { type Item } from "../../types/item";
 import {
-  calculateDistance,
-  isInAttackRange,
   calculateActionRoll,
 } from "../../utils/battleCalculations";
+import type { Card } from "../../types/card";
 
-type ReactionAttr = "destreza" | "consistencia" | "inteligencia" | "sabedoria";
+type ReactionAttr = "destreza" | "consistencia" | "inteligencia" | "sabedoria" | "card";
 
 type ActorLike = Token & { reactionType: ReactionAttr };
-
-interface RadioCardProps {
-  value: string;
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  selected: boolean;
-}
 
 export interface ReactionPromptProps {
   // Forma nova (normalizada)
@@ -38,6 +35,7 @@ export interface ReactionPromptProps {
   availableActions: number;
   availableMana?: number;
   certaintyDieCharges?: number;
+  tokenCards: Card[] | undefined;
   isLoading?: boolean;
   onConfirm?: (payload: {
     attribute: ReactionAttr;
@@ -75,7 +73,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary:
-          "bg-purple-600 text-white hover:bg-purple-700 focus:ring-purple-400 focus:ring-offset-gray-900",
+          "bg-blue-600 text-white hover:bg-blue-700 focus:ring-purple-400 focus:ring-offset-gray-900",
         ghost:
           "bg-transparent text-gray-200 hover:bg-gray-700/50 focus:ring-gray-400 focus:ring-offset-gray-900",
         danger:
@@ -102,10 +100,10 @@ const attributeDescriptions: Record<string, string> = {
 };
 
 const reactionOptionsByActionType: Record<string, ReactionAttr[]> = {
-  destreza: ["destreza"],
-  forca: ["destreza", "consistencia"],
-  inteligencia: ["inteligencia"],
-  sabedoria: ["sabedoria"],
+  destreza: ["destreza", "card"],
+  forca: ["destreza", "consistencia", "card"],
+  inteligencia: ["inteligencia", "card"],
+  sabedoria: ["sabedoria", "card"],
 };
 
 const radioOptions = {
@@ -130,6 +128,11 @@ const radioOptions = {
       "Teste contra Desnortear. Se falhar, suas ações são entregues ao adversário.",
     icon: <Book className="h-4 w-4 text-purple-500" />,
   },
+  card: {
+    title: "Card",
+    description: "Utilizar uma habilidade especial para se defender.",
+    icon: <CardSim className="h-4 w-4 text-orange-500" />
+  }
 } as const;
 
 
@@ -153,10 +156,10 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
 });
 
 const fieldLabel =
-  "mb-1 block text-xs font-medium uppercase tracking-wide text-gray-300";
+  "block text-xs text-gray-400 mb-1";
 const inputBase =
   "w-full rounded border p-2 text-sm focus:outline-none focus:ring-1 transition-colors";
-const inputOk = "bg-gray-700 border-gray-600 text-white focus:ring-purple-400";
+const inputOk = "bg-black/70 border-black text-white focus:ring-purple-400";
 const inputError = "bg-red-900 border-red-600 text-red-100 focus:ring-red-400";
 const hint = "mt-1 text-[11px] leading-snug text-gray-400";
 const warn = "mt-1 text-[11px] leading-snug text-amber-300";
@@ -167,6 +170,7 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
     defenderName,
     attackerId,
     diretionalActionType,
+    tokenCards,
     diretionalActionValue,
     availableActions,
     availableMana,
@@ -204,6 +208,7 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
   const resolvedAvailableMana = actor?.currentMana ?? availableMana ?? 0;
   const resolvedCertainty =
     actor?.certaintyDiceRemaining ?? certaintyDieCharges ?? 0;
+  const haveDefenseCards: boolean = ((tokenCards?.filter((c) => c.causalityType === "Defensive"))?.length ?? 0) > 0
 
   // Estado local
   const [selectedAttribute, setSelectedAttribute] =
@@ -212,8 +217,50 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
   const [usedMana, setUsedMana] = useState<number>(0);
   const [useCertaintyDie, setUseCertaintyDie] = useState<boolean>(false);
 
+  const actionOptions = [
+    {
+      value: "destreza",
+      label: "Destreza",
+      icon: <Zap className="inline-block" />,
+      color: "text-yellow-400",
+    },
+
+    {
+      value: "consistencia",
+      label: "Consistência",
+      icon: <Shield className="inline-block" />,
+      color: "text-cyan-500",
+    },
+
+    {
+      value: "sabedoria",
+      label: "Desnortear",
+      icon: <Book className="inline-block" />,
+      color: "text-purple-400",
+    },
+    {
+      value: "inteligencia",
+      label: "Previnir",
+      icon: <Brain className="inline-block" />,
+      color: "text-pink-400",
+    },
+    {
+      value: "card",
+      label: "Cards",
+      icon: <GiCardRandom className="inline-block text-xl" />,
+      color: "text-orange-400",
+    },
+  ];  
+
+
   useEffect(() =>
   {
+    if(selectedAttribute === "card")
+    {
+      setResultType("total");
+      return;
+    }
+
     const preview = calculateMedianRoll(
       usedActions, 
       usedMana, 
@@ -276,6 +323,37 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
 
   const allowedOptions = reactionOptionsByActionType[diretionalActionType ?? ""] ?? [];
 
+  const filteredOptions = actionOptions.filter((a) => allowedOptions.includes(a.value as ReactionAttr))
+  const currentIndex =
+    Math.max(
+      0,
+      filteredOptions.findIndex(
+        a => a.value === selectedAttribute
+      )
+    );  
+
+  function nextAction()
+  {
+    const next =
+      (currentIndex + 1) %
+      filteredOptions.length;
+
+    setSelectedAttribute(
+      filteredOptions[next].value as ReactionAttr
+    );
+  }
+
+  function prevAction()
+  {
+    const prev =
+      (currentIndex - 1 + filteredOptions.length) %
+      filteredOptions.length;
+
+    setSelectedAttribute(
+      filteredOptions[prev].value as ReactionAttr
+    );
+  }  
+
   useEffect(() => {
     // Se não há nenhuma opção válida → limpa
     if (allowedOptions.length === 0) {
@@ -312,6 +390,7 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
     if (!selectedAttribute) return;
     if (!hasEnoughActions || !hasEnoughMana) return;
     if (useCertaintyDie && !canUseCertaintyDie) return;
+    console.info("Selected Attribute: ", selectedAttribute)
 
     // Preferência: forma nova
     if (onConfirm) {
@@ -327,21 +406,33 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
     const positionPReaction = (selectedAttribute === "destreza" && diretionalActionType === "destreza") ? 2 : 1;
 
     if (onReact && actor) {
-      const params = {
-        tokenId: actor.id,
-        Q: usedActions,
-        P: positionPReaction,
-        A: actor.attributes[selectedAttribute!],
-        PF: actor.proficiencies[selectedAttribute!]
-          ? Math.ceil((actor.attributes.level - 10) / 4 + 4)
-          : 0,
-        O: itemCoerentAdd ? (selectedItem?.ocasionalAdd ?? 0) : 0,
-        N: usedMana > 0 ? 1 : 0,
-        L: actor.attributes.level,
-        M: usedMana,
-      };
 
-      const rollResult = calculateActionRoll(params);
+      let rollResult: RollResult =
+      {
+        rawRolls:[0], 
+        total: 0,
+        usedMana:0, 
+        CRI: 0       
+      };
+      
+      if(selectedAttribute !== "card")
+      {
+        const params = {
+          tokenId: actor.id,
+          Q: usedActions,
+          P: positionPReaction,
+          A: actor.attributes[selectedAttribute!],
+          PF: actor.proficiencies[selectedAttribute!]
+            ? Math.ceil((actor.attributes.level - 10) / 4 + 4)
+            : 0,
+          O: itemCoerentAdd ? (selectedItem?.ocasionalAdd ?? 0) : 0,
+          N: usedMana > 0 ? 1 : 0,
+          L: actor.attributes.level,
+          M: usedMana,
+        };
+
+        rollResult = calculateActionRoll(params);
+      }
 
       onReact(
         actor.id,
@@ -357,102 +448,121 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
 
   const resultColor =
     resultType === "fail"
-      ? "bg-red-500 border-red-600"
+      ? "text-red-600"
       : resultType === "normal"
-      ? "bg-yellow-400 border-yellow-500"
+      ? "text-yellow-500"
       : resultType === "success"
-      ? "bg-green-500 border-green-600"
+      ? "text-green-600"
       : resultType === "critical"
-      ? "bg-blue-500 border-blue-600"
-      : "bg-purple-500 border-purple-600";
+      ? "text-blue-600"
+      : "text-purple-600";
 
   return (
     <div>
       {displayForm && (<div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
         {/* Backdrop para cobrir sidebar e conteúdo */}
         <div className="absolute inset-0 backdrop-blur-md" />
-
+        {/* Painel */}
+            <img
+              src={PANNEL2}
+              alt=""
+              className="
+                absolute
+                inset-0
+                w-[470px]
+                left-1/2 -translate-x-1/2
+                top-1/2 -translate-y-1/2
+                object-fill
+                pointer-events-none
+                z-0
+              "
+            />
         {/* Card centralizado */}
-        <div className="relative z-10 w-full max-w-md rounded-lg border-1 border-gray-600 bg-gray-800 p-4 text-gray-100 shadow-2xl">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-purple-500" />
-              <h3 className="text-sm font-bold text-purple-500">
-                Reação de {resolvedName} para {attackerId ? `ataque de ${attackerId}` : "ataque"}
+        <div className="relative z-10 w-full max-w-md rounded-lg p-4 text-gray-100 shadow-2xl">
+          
+          <div className="absolute left-1/2 -translate-x-1/2 -translate-y-18 flex items-center justify-between w-full">
+            <div className="flex items-center justify-center gap-2 w-full">
+              <h3 className="text-sm font-bold  uppercase">
+                Reação de {resolvedName}
               </h3>
             </div>
-            <span className="text-[11px] text-gray-400">
-              Ações: {maxAvailableActions} • Mana: {Math.max(0, resolvedAvailableMana)}
-            </span>
           </div>
 
           {/* Result Preview */}
           <div
-            className={`mb-4 grid grid-cols-3 gap-2 rounded border-2 p-2 text-center ${resultColor}`}
+            className={`mb-4 grid grid-cols-2 gap-2 rounded border p-2 text-center border-2 border-blue-700 bg-blue-900/70`}
           >
             <div>
-              <p className="text-[11px] uppercase opacity-80">Dano</p>
+              <p className="text-[11px] uppercase opacity-80 font-semibold">Teste</p>
               <p className="text-lg font-bold">{diretionalActionValue}</p>
             </div>
             <div>
-              <p className="text-[11px] uppercase opacity-80">Previsão</p>
-              <p className="text-lg font-bold">{previewDefenseRoll}</p>
+              <p className="text-[11px] uppercase opacity-80 font-semibold">Previsão</p>
+              <p className={`text-lg font-bold ${resultColor}`}>{previewDefenseRoll}</p>
             </div>
           </div>
 
           <div className="mb-4">
-            <span className="text-xs text-gray-300">Atributo de reação</span>
-            <RadioGroup.Root
-              className="mt-2 grid grid-cols-2 gap-2"
-              value={selectedAttribute ?? ""}
-              onValueChange={(v: string) => setSelectedAttribute(v as ReactionAttr)}
-              disabled={isLoading}
-            >
-              {allowedOptions.map((attr) => (
-                <RadioCard
-                  key={attr}
-                  value={attr}
-                  title={radioOptions[attr].title}
-                  description={radioOptions[attr].description}
-                  icon={radioOptions[attr].icon}
-                  selected={selectedAttribute === attr}
-                />
-              ))}
-            </RadioGroup.Root>
+            <span className="text-xm font-semibold text-blue-500 ">Atributo de reação</span>
+            <div className="flex items-center justify-between bg-black/50 border border-cyan-600 rounded-lg px-4 py-3 z-1 mb-4">
 
-            <p className="mt-2 text-xs text-gray-400">
-              {reactionTypeLabel} — {attributeDescriptions[selectedAttribute ?? ""] ?? ""}
-            </p>
+              <button
+                type="button"
+                onClick={prevAction}
+                className="relative w-[20px] h-[20px] text-gray-400 hover:text-white text-xl"
+              >
+                <img
+                    src={LEFTARROW}
+                    alt=""
+                    className="
+                      absolute
+                      inset-0
+                      w-full
+                      scale-180
+                      object-fill
+                      pointer-events-none
+                      z-5
+                    "
+                  />   
+                                    
+              </button>
+
+              <div
+                className={`font-semibold flex items-center gap-2
+                  ${filteredOptions[currentIndex].color}
+                `}
+              >
+                {filteredOptions[currentIndex].icon}
+                {filteredOptions[currentIndex].label}
+              </div>
+
+              <button
+                type="button"
+                onClick={nextAction}
+                className="relative w-[20px] h-[20px] text-gray-400 hover:text-white text-xl"
+              >
+                <img
+                    src={RIGHTARROW}
+                    alt=""
+                    className="
+                      absolute
+                      inset-0
+                      w-full
+                      scale-180
+                      object-fill
+                      pointer-events-none
+                      z-5
+                    "
+                  />                        
+              </button>
+
+            </div>            
           </div>
 
           {/* Item */}
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">
-              Item
-            </label>
 
-            <select
-              value={selectedItem?.id ?? ""}
-              onChange={(e) => {
-                const item =
-                  availableItems.find(i => i.id === e.target.value) ?? null;
 
-                setSelectedItem(item);
-              }}
-
-              className={`w-full p-2 rounded ${itemCoerentAdd ? "bg-gray-700" : "bg-red-700"} text-white border ${itemCoerentAdd ? "border-gray-600" : "border-red-600"} border-gray-600 text-sm`}
-            >
-              <option value="">Nenhum item</option>
-
-              {availableItems.map(item => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-2">
             <div>
               <label className={fieldLabel}>Ações usadas</label>
               <input
@@ -515,48 +625,83 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
               <p className={hint}>Disponível: {Math.max(0, resolvedAvailableMana)}</p>
             </div>
 
-            <div className="flex flex-col">
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">
+                Item
+              </label>
+
+              <select
+                value={selectedItem?.id ?? ""}
+                onChange={(e) => {
+                  const item =
+                    availableItems.find(i => i.id === e.target.value) ?? null;
+
+                  setSelectedItem(item);
+                }}
+
+                className={`w-full p-2 rounded bg-black/70 text-white border border-black text-sm`}
+              >
+                <option value="">Nenhum item</option>
+
+                {availableItems.map(item => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </div>                
+            
+            <div>
               <label className={fieldLabel}>Dado Certo</label>
-              <div className="flex items-center gap-3 rounded border border-gray-700 bg-gray-900/40 p-2">
-                <Switch.Root
-                  className={[
-                    "relative h-6 w-11 cursor-pointer rounded-full outline-none",
-                    useCertaintyDie ? "bg-emerald-500" : "bg-gray-600",
-                    !canUseCertaintyDie || isLoading ? "opacity-50" : "",
-                  ].join(" ")}
+
+              <label
+                className={[
+                  inputBase,
+                  "flex items-center gap-3 cursor-pointer",
+                  canUseCertaintyDie ? inputOk : inputError,
+                  (!canUseCertaintyDie || isLoading) ? "opacity-60 cursor-not-allowed" : "",
+                ].join(" ")}
+              >
+                <input
+                  type="checkbox"
                   checked={useCertaintyDie && canUseCertaintyDie}
-                  onCheckedChange={(checked: boolean) =>
-                    setUseCertaintyDie(!!checked && canUseCertaintyDie)
+                  onChange={(e) =>
+                    setUseCertaintyDie(e.target.checked && canUseCertaintyDie)
                   }
                   disabled={!canUseCertaintyDie || isLoading}
-                  id="certainty-die"
-                >
-                  <Switch.Thumb
-                    className={[
-                      "block h-5 w-5 translate-x-0.5 rounded-full bg-white transition-transform",
-                      useCertaintyDie && canUseCertaintyDie
-                        ? "translate-x-[22px]"
-                        : "translate-x-0.5",
-                    ].join(" ")}
-                  />
-                </Switch.Root>
-                <div className="flex flex-col">
-                  <span className="text-xs text-gray-200">Usar Dado Certo</span>
-                  <span className="text-[11px] text-gray-400">
-                    Cargas: {resolvedCertainty}
-                  </span>
-                </div>
-              </div>
+                  className="h-4 w-4 accent-emerald-500"
+                />
+
+                <span className="text-sm text-white">
+                  Usar Dado Certo
+                </span>
+              </label>
+
               {!canUseCertaintyDie && (
                 <p className={warn}>Sem cargas de Dado Certo restantes.</p>
               )}
+
               <p className={hint}>
-                Ao usar, a rolagem de reação considera sucesso garantido conforme sua regra de jogo.
+                Cargas: {resolvedCertainty}
               </p>
             </div>
+
           </div>
 
-          <div className="mt-5 flex items-center justify-end gap-2">
+          <div className="absolute left-1/2 -translate-x-1/2 w-full mt-5 flex items-center justify-center gap-2">
+            <Button
+              onClick={handleConfirm}
+              disabled={
+                isLoading ||
+                !selectedAttribute ||
+                !hasEnoughActions ||
+                !hasEnoughMana ||
+                (useCertaintyDie && !canUseCertaintyDie)
+              }
+              className="gap-2"
+            >
+              Confirmar reação
+            </Button>            
             <Button
               variant="ghost"
               onClick={onCancel}
@@ -578,20 +723,7 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
                 </Button>
               )
             }
-            <Button
-              onClick={handleConfirm}
-              disabled={
-                isLoading ||
-                !selectedAttribute ||
-                !hasEnoughActions ||
-                !hasEnoughMana ||
-                (useCertaintyDie && !canUseCertaintyDie)
-              }
-              className="gap-2"
-            >
-              <GiDiceTwentyFacesTwenty className="h-4 w-4" />
-              Confirmar reação
-            </Button>
+
           </div>
         </div>
       </div>)}

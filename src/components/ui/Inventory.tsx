@@ -3,12 +3,18 @@ import type { Token, TokenInventory } from "../../types/token";
 import { useState, useEffect, useRef } from "react";
 import type { Item, ItemRarity, ItemSlot } from "../../types/item";
 import { DollarSign, ChevronRight, ChevronLeft } from "lucide-react";
+import { xpProgressionByLevel } from "../../utils/battleCalculations";
+import type { Target } from "../../types/target";
+import type { BattleState } from "../../types/battle";
 
 export interface InventoryUIProps
 {
     token: Token,
+    boardTokens: Token[],
+    battleState: BattleState,
     onClose: (t: boolean) => void;
     swap: (i: Item, n: number) => void;
+    useArtifice: (item: Item, index: number, target: Target) => void,
 }
 
 const PARTICLE_RARITIES = [
@@ -106,11 +112,7 @@ export function useRarityParticles(
   }, [canvas, rarity, textEl]);
 }
 
-export function xpProgressionByLevel(lvl: number) {
-  return Math.ceil(100 * Math.pow(lvl, 1.4));
-}
-
-const InventoryUI: React.FC<InventoryUIProps> = ({ token, onClose, swap}) => {
+const InventoryUI: React.FC<InventoryUIProps> = ({ token, boardTokens,battleState, onClose, swap, useArtifice}) => {
   const inventory = token.inventory;
   const { rows, cols } = inventory.inventoryDimensions;
   const [hoveredItem, setHoveredItem] = useState<Item | null>(null);
@@ -157,8 +159,6 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, onClose, swap}) => {
   const currentXP = token.attributes.xp;
   const maxXP = xpProgressionByLevel(token.attributes.level);
   const percent = Math.min((currentXP / maxXP) * 100, 100);
-
-
 
   function numberDisplayFormat(coins: number)
   {
@@ -210,14 +210,6 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, onClose, swap}) => {
     ]
 
     const coinHouses  = stringCoin.length;
-
-    // 500
-
-    // 12000 -> 12 K -> 2
-    // 12100 -> 12.1 K -> 2 e 1
-    // 500000 -> 500 K -> 3
-    // 500100 -> 500.1 K
-
     const posfixIndex = Math.floor((coinHouses - 1) / 3) - 1;
 
     const housesToDisplay = ((coinHouses -1) % 3) + 1
@@ -255,10 +247,93 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, onClose, swap}) => {
   }
 
   const totalSlots = rows * cols;
- 
+
+  const restTokens = boardTokens.filter((t) => t.id !== token.id)
+  const targets = useRef<Target>({
+    type: "Self",
+    pivot: null,
+    pivotSettings: undefined,
+    numbersTarget: 1,
+    tokenTarget: null,
+  });
+  const [selectedTargets, setSelectedTargets] = useState<Token[]>([]);
+  const [selectedTargetId, setSelectedTargetId] = useState<string>("");
+  const [selectedArtificeItem, setSelectedArtificeItem] = useState<Item | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number>(0);
+  const [openTargetSelection, setOpenTargetSelection] = useState(false);
+
+  useEffect(() => {
+    console.info("Item Selecionado: ", selectedArtificeItem, "Nome da Habilidade: ", selectedArtificeItem?.artficeSettings.cardDispach?.name, "Tipo de Alvo: ", selectedArtificeItem?.artficeSettings.cardDispach?.target.type)
+  }, [selectedArtificeItem])
+
   useEffect(() => {
     console.info("INVENTORY RENDER:", token.inventory.commonSlot);
   }, [token]);
+
+  useEffect(() => {
+
+    if (
+      selectedArtificeItem?.artficeSettings.cardDispach?.target.type !== "Target"
+    )
+      return;
+
+    const validTargets =
+      restTokens.filter(
+        t => t.team !== token.team
+      );
+
+    if (validTargets.length <= 0)
+      return;
+
+    const firstTarget =
+      validTargets[0];
+
+    setSelectedTargetId(
+      firstTarget.id
+    );
+
+    targets.current = {
+      type: "Target",
+      tokenTarget: [firstTarget],
+      numbersTarget: 1,
+      pivot: null,
+      pivotSettings: undefined,
+    };
+
+    console.info("[TARGET] Current: ", targets.current)
+
+  }, [
+    selectedArtificeItem,
+    token.team,
+  ]);  
+
+  useEffect(() => {
+
+    if (
+      !selectedArtificeItem?.artficeSettings.cardDispach
+    )
+      return;
+
+    const card =
+      selectedArtificeItem.artficeSettings.cardDispach;
+
+    if (card.target.type !== "Multi-Target")
+      return;
+
+    targets.current = {
+      type: "Multi-Target",
+      tokenTarget: selectedTargets,
+      numbersTarget:
+        card.target.numbersTarget ?? 1,
+      pivot: null,
+      pivotSettings: undefined,
+    };
+
+  }, [
+    selectedTargets,
+    selectedArtificeItem,
+  ]);  
+
 
   useRarityParticles(
     canvasRef.current,
@@ -273,6 +348,7 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, onClose, swap}) => {
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60" />
 
+      {!openTargetSelection && (
       <div className="relative z-10 w-full max-w-md rounded-lg border-2 border-blue-900 bg-gray-800 p-4 text-gray-100 shadow-2xl">
         
         <div className="flex flex-row justify-between">
@@ -417,7 +493,12 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, onClose, swap}) => {
                       onContextMenu={(e) => {
                         e.preventDefault();
                         if(!item) return;
-                        swap(item, index);
+                        if(item.isArtifice && battleState.status === "In Battle") {
+                          setSelectedArtificeItem(item);
+                          setSelectedIndex(index);
+                          setOpenTargetSelection(true)
+                        }
+                        if(!item.isArtifice) swap(item, index);
                       }}
                     >
                       {item ? (
@@ -530,68 +611,194 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, onClose, swap}) => {
         </div>
 
       </div>
+      )
+      }
 
-      {hoveredItem && (
-      <div
-        className="fixed z-[200] pointer-events-none
-                  bg-blue-900/90 border border-black
-                  rounded p-3 shadow-xl text-xs text-gray-100"
-        style={{
-          left: mousePos.x + 12,
-          top: mousePos.y + 12,
-          maxWidth: 220,
-        }}
-      >
-        <div className="relative inline-block rounded">
-          <canvas ref={canvasRef} className="rarity-canvas" />
 
-          <p
-            ref={nameRef}
-            className={`item-name rarity-${hoveredItem.rarity}`}
-          >
-            {hoveredItem.name}
-          </p>
-        </div>
+      {hoveredItem && !openTargetSelection && (
+        <div
+          className="fixed z-[200] pointer-events-none
+                    bg-blue-900/90 border border-black
+                    rounded p-3 shadow-xl text-xs text-gray-100"
+          style={{
+            left: mousePos.x + 12,
+            top: mousePos.y + 12,
+            maxWidth: 220,
+          }}
+        >
+          <div className="relative inline-block rounded">
+            <canvas ref={canvasRef} className="rarity-canvas" />
 
-        <p className="text-gray-400 italic">
-          “{hoveredItem.desc}”
-        </p>
+            <p
+              ref={nameRef}
+              className={`item-name rarity-${hoveredItem.rarity}`}
+            >
+              {hoveredItem.name}
+            </p>
+          </div>
 
-        {/* Informações */}
-        <div className="mt-2 space-y-1">
-          <p> 
-            <span className="font-semibold">Raridade:</span>{" "}
-            <span className={`font-semibold font-serif rarity-${hoveredItem.rarity}`}>{rarityTraduction[hoveredItem.rarity]}</span>
-          </p>
-          <p>
-            <span className="font-semibold">Bônus:</span>{" "}
-            +{hoveredItem.ocasionalAdd}{" "}
-            {hoveredItem.atributeToOcasionalAdd}
+          <p className="text-gray-400 italic">
+            “{hoveredItem.desc}”
           </p>
 
-          {hoveredItem.habilityCards?.length ? (
-            <div>
-              <p className="font-semibold mt-1">Habilidades:</p>
-              <ul className="list-disc list-inside">
-                {hoveredItem.habilityCards.map(c => (
-                  <li key={c.id}>{c.name}</li>
-                ))}
-              </ul>
+          {/* Informações */}
+          <div className="mt-2 space-y-1">
+            <p> 
+              <span className="font-semibold">Raridade:</span>{" "}
+              <span className={`font-semibold font-serif rarity-${hoveredItem.rarity}`}>{rarityTraduction[hoveredItem.rarity]}</span>
+            </p>
+            <p>
+              <span className="font-semibold">Bônus:</span>{" "}
+              +{hoveredItem.ocasionalAdd}{" "}
+              {hoveredItem.atributeToOcasionalAdd}
+            </p>
+
+            {hoveredItem.habilityCards?.length ? (
+              <div>
+                <p className="font-semibold mt-1">Habilidades:</p>
+                <ul className="list-disc list-inside">
+                  {hoveredItem.habilityCards.map(c => (
+                    <li key={c.id}>{c.name}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {hoveredItem.craftable ? (
+              <p className="font-semibold mt-1">Material</p>
+            ): null}
+
+            <div className="flex flex-row items-center gap-1">
+              <span className="font-semibold mt-1">Venda:</span>{" "}
+              <DollarSign className="w-3 h-3 text-yellow-400 relative top-[2px]" />
+              <span className="font-semibold mt-1">{numberDisplayFormat(hoveredItem.value)}</span>
             </div>
-          ) : null}
-
-          {hoveredItem.craftable ? (
-            <p className="font-semibold mt-1">Material</p>
-          ): null}
-
-          <div className="flex flex-row items-center gap-1">
-            <span className="font-semibold mt-1">Venda:</span>{" "}
-            <DollarSign className="w-3 h-3 text-yellow-400 relative top-[2px]" />
-            <span className="font-semibold mt-1">{numberDisplayFormat(hoveredItem.value)}</span>
           </div>
         </div>
-      </div>
-    )}
+      )}
+
+      {openTargetSelection && (
+        <div className="relative z-10 w-full max-w-md rounded-lg border-2 border-blue-900 bg-gray-800 p-4 text-gray-100 shadow-2xl">
+          {selectedArtificeItem && selectedArtificeItem.artficeSettings.cardDispach?.target.type === "Target" && (
+            <div>
+            <select 
+            className="bg-gray-700 w-full p-1 font-semibold"
+            value={selectedTargetId}
+            onChange={(e) => {
+
+              const id = e.target.value;
+              setSelectedTargetId(id);                            
+
+              const tokens = restTokens.find(t => t.id === e.target.value);
+
+              if(!tokens) return;
+
+              targets.current = {
+                type: "Target",
+                tokenTarget: [tokens],
+                numbersTarget: 1,
+                pivot: null,
+                pivotSettings: undefined,
+              }
+
+            }}>
+
+              {restTokens.filter(t => t.team !== token.team).map((t) => (
+                <option value={t.id} key={t.id}>
+                  {t.name}
+                </option>
+              ))}
+
+            </select>
+
+            <button
+              onClick={() => {
+                useArtifice(selectedArtificeItem, selectedIndex, targets.current);
+                onClose(false);
+              }}
+              className="px-6 py-2 bg-orange-600 hover:bg-orange-500 rounded text-white text-sm font-bold disabled:opacity-40 cursor-pointer"
+            >
+              Usar Card
+            </button>   
+            </div>         
+          )}
+          {selectedArtificeItem && selectedArtificeItem.artficeSettings.cardDispach && selectedArtificeItem.artficeSettings.cardDispach.target.type === "Multi-Target" && (
+            <div className="bg-gray-700/50 w-full text-sm rounded p-2 space-y-1">
+              {restTokens.filter(t => t.team !== token.team).map((t) => {
+                const checked = selectedTargets.includes(t);
+
+                return (
+                  <label
+                    key={t.id}
+                    className={`flex items-center gap-2 p-2 rounded cursor-pointer
+                      ${checked ? "bg-orange-600/30" : "hover:bg-gray-600/40"}
+                    `}
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-orange-500"
+                      checked={checked}
+                      onChange={(e) => {
+                        setSelectedTargets((prev) => {
+                          if (e.target.checked) {
+                            if (prev.length >= (selectedArtificeItem.artficeSettings.cardDispach?.target.numbersTarget ?? 1)) return prev;
+                            return [...prev, t];
+                          }
+                          return prev.filter((tok) => tok.id !== t.id);
+                        });
+                      }}
+                    />
+                    <span>{t.name}</span>
+                    
+                  </label>
+                );
+              })}
+              <button
+                onClick={() => {           
+                  useArtifice(selectedArtificeItem, selectedIndex, targets.current);
+                  onClose(false);
+                }}
+                className="px-6 py-2 bg-orange-600 hover:bg-orange-500 rounded text-white text-sm font-bold disabled:opacity-40 cursor-pointer"
+              >
+                Usar Card
+            </button> 
+            </div>            
+          )}
+          {selectedArtificeItem && selectedArtificeItem.artficeSettings.cardDispach && selectedArtificeItem.artficeSettings.cardDispach.target.type === "Ambient" && (
+            <div className="relative z-10 w-full max-w-md rounded-lg border-2 border-blue-900 bg-gray-800 p-4 text-gray-100 shadow-2xl">
+              <button
+              onClick={() => {
+                targets.current = {
+                  type: "Ambient",
+                  tokenTarget: null,
+                  numbersTarget: selectedArtificeItem.artficeSettings.cardDispach?.entityQuantity ?? 1,
+                  pivot: null,
+                  pivotSettings: undefined,
+                };                
+                useArtifice(selectedArtificeItem, selectedIndex, targets.current);
+                onClose(false);
+              }}
+              className="px-6 py-2 bg-orange-600 hover:bg-orange-500 rounded text-white text-sm font-bold disabled:opacity-40 cursor-pointer"
+            >
+              Usar Card
+            </button> 
+            </div>
+          )}
+          {selectedArtificeItem && selectedArtificeItem.artficeSettings.cardDispach && selectedArtificeItem.artficeSettings.cardDispach.target.type === "Ambient" && (
+            <div>
+              <button
+              onClick={() => {             
+                useArtifice(selectedArtificeItem, selectedIndex, targets.current);
+                onClose(false);
+              }}
+              className="px-6 py-2 bg-orange-600 hover:bg-orange-500 rounded text-white text-sm font-bold disabled:opacity-40 cursor-pointer"
+            >
+              Usar Card
+            </button>               
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );

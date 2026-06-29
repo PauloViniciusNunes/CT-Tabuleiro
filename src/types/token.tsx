@@ -69,7 +69,9 @@ export interface BossInterfaceColors {
 }
 
 export interface Token {
+  createId: string;
   id: string;
+  lastDamagerId: string | undefined;
   name: string;
   type: TokenType;
   imageUrl: string;
@@ -77,8 +79,7 @@ export interface Token {
   ocassionalAddition: TokenOccasionalAddition;
   proficiencies: TokenProficiencies;
   class: TokenClass;
-  
-  tokenCards: Card[];
+    tokenCards: Card[];
   cards: Card[]; // AQUI
 
   inventory: TokenInventory;
@@ -88,6 +89,7 @@ export interface Token {
 
   bodytobodyRange: number;      // Alcance de ataque físico (padrão: 1)
   magicalRange: number;          // Alcance de ataque mágico (padrão: 6)
+  pendingXPAllocating: number;
 
   currentLife?: number;
   maxLife?: number;

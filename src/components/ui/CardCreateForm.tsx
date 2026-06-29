@@ -1,5 +1,5 @@
 import React, { useEffect, useEffectEvent, useState, type ChangeEvent, type ChangeEventHandler, type FormEvent } from "react";
-import { type CardCausality, type Card, type CardDuration, type SpellCircle, type SpellType } from "../../types/card";
+import { type CardCausality, type Card, type CardDuration, type SpellCircle, type SpellType, type NonDefensiveCardCausality } from "../../types/card";
 import { type PivotType, type TargetType } from "../../types/target";
 import { EFFECT_TYPES, type EffectType } from "../../types/effects";
 
@@ -28,6 +28,7 @@ export const CardCreate: React.FC<CardCreateProps> = ({
   const [description, setDescription] = useState("");
   const [causality, setCausality] = useState("");
   const [causalityType, setCausalityType] = useState<CardCausality>("Offensive");
+  const [defenseReplicate, setDefenseReplicate] = useState<NonDefensiveCardCausality>("Offensive");
   const [actionsRequired, setActionsRequired] = useState(1);
   const [typeTarget, setTypeTarget] = useState<string>("");
   const [numbersTarget, setNumbersTarget] = useState<number>(1);
@@ -182,6 +183,7 @@ export const CardCreate: React.FC<CardCreateProps> = ({
       desc: description.trim(),
       causality: causality.trim(),
       causalityType: causalityType,
+      defenseReplicate: defenseReplicate,
       spellCircle: spellCircle,
       spellType: spellType,
       entityQuantity: numbersEntity,
@@ -383,6 +385,32 @@ export const CardCreate: React.FC<CardCreateProps> = ({
               <span className=" ml-2 text-sm">É parcialmente offensivo?</span>
             </div>
           )
+          }
+          
+          {
+            causalityType === "Defensive" && (
+              <div>
+                <p className="font-semibold text-sm mt-3 mb-1">Como atua o Card Defensivo?:</p>
+                <select
+                  value={defenseReplicate}
+                  onChange={(e) =>
+                    setDefenseReplicate(e.target.value as NonDefensiveCardCausality)
+                  }
+                  className="p-2 rounded bg-gray-700 border border-gray-600 w-full"
+                >
+                  {[
+                    "Direct-Damage" , 
+                    "Only-Effect-Application" , 
+                    "Offensive" , 
+                    "Cure",
+                    ].map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )
           }
         </fieldset>
 

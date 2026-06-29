@@ -1,6 +1,6 @@
 import type { EngineContext } from "../types/BoardEngineContext";
 
-import React, { useMemo, useState, useEffect, useRef } from "react";
+import React, { useMemo, useState, useEffect, useRef, useActionState } from "react";
 import SettingsDropdown from "../components/ui/SettingsDropdown";
 import Sidebar from "../components/ui/Sidebar";
 import StatusBars from "../components/ui/StatusBars";
@@ -14,11 +14,16 @@ import GenerateMaze from "../components/ui/GenerateMaze";
 import { spawnItemVFX } from "../types/elementoVFX";
 import type { PivotCandidate } from "../types/pivot";
 import type { OffensiveCardResponse } from "../types/card";
+import type { AllocatedPoints } from "../types/battle";
+
+
+import BLUEDOT from "../assets/dot/BLUEDOT.png"
+import REDDOT from "../assets/dot/REDDOT.svg"
 
 import { playSomeSFX } from "../audio/playSomeSFX";
 
 import DefenseResolutionForm from "../components/ui/DefenseResolutionForm";
-import { calculateCardRoll, calculateDistance, isInAttackRange, sum } from "../utils/battleCalculations";
+import { calculateCardRoll, calculateDistance, isInAttackRange, sum, xpProgressionByLevel } from "../utils/battleCalculations";
 import type { Token, TokenAttributes, TokenClass, TokenProficiencies } from "../types/token";
 import type { Item } from "../types/item";
 import { canDefenderReact, nextParalysisAfterHit } from '../utils/paralysis';
@@ -33,6 +38,7 @@ import type {
   InitiativeData,
   RollResult,
   ActionChoice,
+  ActionInformation
 } from "../types/battle";
 
 import type { ExecuteChoice } from "../types/executeChoice";
@@ -50,6 +56,7 @@ import type { Target } from "../types/target";
 import OffensiveCardResolution from "../components/ui/OffensiveCardResolution";
 import type { ActionRollParams } from "../types/battle";
 import InventoryUI from "../components/ui/Inventory";
+import SkillPanel from "../components/ui/SkillPannel";
 import { type MusicContextType } from "../components/context/MusicContext";
 import type { MapObject } from "../types/mapObject";
 import CreateMapObject from "../components/ui/CreateMapObject";
@@ -76,6 +83,7 @@ import { cellToPosition } from "../geometry/position";
 
 import { haveSpaceInInventory, addItemToInventory } from "../inventory/inventoryCapacity";
 import { swapItemInInventory } from "../inventory/inventorySwap";
+import { useArtificeItem } from "../inventory/inventoryUseArtifice";
 
 import { generatePairDoor } from "../entities/entitiesPorts";
 
@@ -171,6 +179,121 @@ const BoardPage: React.FC = () => {
   /* * */
 
   const [boardTokens, setBoardTokens] = useState<Token[]>([]);
+  const [pendingLevelUpTokens, setPendingLevelUpTokens] = useState<Token[]>([]);
+  const [currentLevelUpToken, setCurrentLevelUpToken] = useState<Token | null>(null);
+
+  function handleCloseSkillPanel()
+  {
+    setCurrentLevelUpToken(null);
+
+    setPendingLevelUpTokens(prev =>
+      prev.slice(1)
+    );
+  }
+
+  function pointsPerLevel(level: number)
+  {
+    return Math.ceil(
+      Math.pow(level, 0.75)
+    );
+  }
+
+  function getLevelUpResult(token: Token)
+  {
+    let xp =
+      (token.attributes.xp ?? 0) +
+      (token.pendingXPAllocating ?? 0);
+
+    let level =
+      token.attributes.level;
+
+    let points = 0;
+
+    while (
+      xp >= xpProgressionByLevel(level)
+    )
+    {
+      xp -= xpProgressionByLevel(level);
+
+      level++;
+
+      points += pointsPerLevel(level);
+    }
+
+    return {
+      newLevel: level,
+      remainingXP: xp,
+      pointsToAllocate: points,
+    };
+  }
+
+  function handleConfirmLevelUp(
+    allocatedPoints: AllocatedPoints
+  )
+  {
+    if (!currentLevelUpToken)
+      return;
+
+    const result =
+      getLevelUpResult(currentLevelUpToken);
+
+    setCreatedTokens(prev =>
+      prev.map(token => {
+
+        if (
+          token.createId !==
+          currentLevelUpToken.createId
+        )
+          return token;
+
+        return {
+          ...token,
+
+          attributes: {
+            ...token.attributes,
+
+            level: result.newLevel,
+
+            forca:
+              token.attributes.forca +
+              allocatedPoints.forca,
+
+            destreza:
+              token.attributes.destreza +
+              allocatedPoints.destreza,
+
+            consistencia:
+              token.attributes.consistencia +
+              allocatedPoints.consistencia,
+
+            inteligencia:
+              token.attributes.inteligencia +
+              allocatedPoints.inteligencia,
+
+            sabedoria:
+              token.attributes.sabedoria +
+              allocatedPoints.sabedoria,
+
+            carisma:
+              token.attributes.carisma +
+              allocatedPoints.carisma,
+          },
+
+          xp: result.remainingXP,
+
+          pendingXPAllocating: 0,
+        };
+      })
+    );
+
+  setCurrentLevelUpToken(null);
+
+  setPendingLevelUpTokens(prev =>
+    prev.slice(1)
+  );
+}
+
+  const [showLevelUpPanel, setShowLevelUpPanel] = useState(false);
   const boardTokensRef = useRef<Token[]>([]);
   const [currentAI, setCurrentAI] = useState<Token | undefined>(undefined);
   const [enemies, setEnemies] = useState<Token[]>([]);
@@ -179,6 +302,15 @@ const BoardPage: React.FC = () => {
   const [, setIsAIThinking] = useState(false);
 
 
+  function applyTokenDamage(attackerId: string, targetId: string, rawDamage: number): void {
+    setBoardTokens((prev) =>
+      prev.map((t) =>
+        t.id === targetId
+          ? { ...t, currentLife: Math.max(0, (t.currentLife ?? 0) - rawDamage), lastDamagerId: attackerId }
+          : t
+      )
+    );
+  }
 
   useEffect(() => {
     boardTokensRef.current = boardTokens;
@@ -408,6 +540,7 @@ const BoardPage: React.FC = () => {
     paralyzedId: string;  // quem ficou sem poder reagir a este próximo ataque
   } | null>(null);
 
+  const [inDefenseCardResolution, setInDefenseCardResolution] = useState<boolean>(false);
   const [pendingCardResolution, setPendingCardResolution] = useState<Token | null>(null);
   const [showDefenseResolution, setShowDefenseResolution] = useState<{
     reactionResult: number;
@@ -538,220 +671,342 @@ const BoardPage: React.FC = () => {
     round: 0,
     turnOrder: [],
     currentTurnIndex: 0,
+    currentActorId: null,
+    phase: "Initiative",
+    locks: {
+      aiActing: false,
+      reallocating: false,
+      resolvingAction: false
+    },
     accumulatedActions: {},
     activeEffects: {},
     actionHistory: [],
+    isReallocatingTurns: false,
+    isAIActing: false,
+    turnVersion: 0,
   });
+
+  function searchAccumulatedActions(tokenId: string): number
+  {
+    return battleState.accumulatedActions[tokenId];
+  }
+
+  function searchCurrentMana(token: Token): number
+  {
+    return token.currentMana ?? 0
+  }
+
   const battleStateRef = useRef<BattleState>(battleState);
+  // Mutex síncrono para a FSM da IA.
+  // isAIActing no battleState é assíncrono (só visível após re-render),
+  // por isso não funciona como guard em runCurrentAIPhase.
+  // Esta ref é lida/escrita de forma síncrona, sem aguardar ciclo de render.
+  const isAIActingRef = useRef(false);
+
+  function returnActorID() {
+    return battleState.turnOrder[battleState.currentTurnIndex]?.tokenId;
+  }
+
+  function beginTurn(): ActionInformation {
+    return {
+      actorId: returnActorID(),
+      version: battleState.turnVersion,
+    }
+  }
+
+  function setAILock() {
+    setBattleState(prev => ({
+      ...prev,
+      locks: { ...prev.locks, aiActing: true },
+    }));
+  }
+
+  function setAIUnlock() {
+    setBattleState(prev => ({
+      ...prev,
+      locks: { ...prev.locks, aiActing: false },
+    }));
+  }
+
+  function setNotAITurn(): void {
+    // Libera o mutex síncrono imediatamente, antes do re-render.
+    isAIActingRef.current = false;
+    setBattleState(prev => ({
+      ...prev,
+      isAIActing: false,
+    }));
+  }
+
+  function setAITurn(): void {
+    setBattleState(prev => ({
+      ...prev,
+      isAIActing: true,
+    }));
+  }
 
   useEffect(() => {
     battleStateRef.current = battleState;
   }, [battleState]);
 
   /* ESTADOS DE COMBATE DINÂMICO */
-  const reallocTurnLock = useRef(false);
-  const tokenDeadLock = useRef(false);
+
+  function canLevelUp(token: Token)
+  {
+    return (
+      (token.attributes.xp ?? 0) +
+      (token.pendingXPAllocating ?? 0)
+    ) >= xpProgressionByLevel(
+      token.attributes.level
+    );
+  }
+
+  function calculateLevelGain(token: Token)
+  {
+    let xp =
+      token.attributes.xp +
+      token.pendingXPAllocating;
+
+    let level =
+      token.attributes.level;
+
+    let levelsGained = 0;
+
+    while (
+      xp >= xpProgressionByLevel(level)
+    )
+    {
+      xp -= xpProgressionByLevel(level);
+
+      level++;
+      levelsGained++;
+    }
+
+    return levelsGained;
+  }
+
+  function xpReward(token: Token): number {
+    const total_xp = xpProgressionByLevel(token.attributes.level);
+    const reward = Math.floor(total_xp / 5);
+    return reward;
+  }
+
+  function awardXP(killer: Token, victim: Token) {
+    if (killer.type !== "player") return;
+    if (victim.type === "player") return;
+
+    const xp = xpReward(victim);
+
+    setCreatedTokens(prev =>
+      prev.map(token => {
+
+        if (token.createId !== killer.createId)
+          return token;
+
+        return {
+          ...token,
+          pendingXPAllocating:
+            (token.pendingXPAllocating ?? 0) + xp,
+        };
+      })
+    );
+
+    console.log(
+      `[XP] ${killer.name} ganhou ${xp}`
+    );
+  }
+
+  function handleTokenDeath(deadToken: Token) {
+    console.log("[TOKEN MORREU]", deadToken.name, deadToken.id);
+
+    if (!deadToken.lastDamagerId) return;
+
+    const killer = boardTokens.find(
+      t => t.id === deadToken.lastDamagerId
+    );
+
+    if (!killer) return;
+
+    awardXP(killer, deadToken);
+  }
+
   useEffect(() => {
 
-    /*
-      IDs vivos.
-    */
-    reallocTurnLock.current = true;
+    // Usa a ref como fonte de verdade para o status: o useEffect depende apenas
+    // de boardTokens, portanto battleState.status lido diretamente seria o valor
+    // do render anterior (closure stale). A ref é sempre atual.
+    if (battleStateRef.current.status !== "In Battle") return;
+
+    const deadTokens =
+      boardTokens.filter(
+        token =>
+          (token.currentLife ?? 0) <= 0
+      );
+
+    if (deadTokens.length <= 0) {
+      return;
+    }
+
+    // Captura os IDs dos mortos agora, antes de qualquer setState assíncrono,
+    // para que o setTimeout abaixo não use uma closure stale de deadTokens.
+    const deadIds = deadTokens.map(token => token.id);
 
     const aliveTokenIds =
       boardTokens
-        .filter(
-          token =>
-            (token.currentLife ?? 1) > 0
-        )
-        .map(
-          token => token.id
-        );
+        .filter(token => (token.currentLife ?? 0) > 0)
+        .map(token => token.id);
 
+    // Ativa isReallocatingTurns e recalcula a ordem de turno em um único
+    // setBattleState atômico — dois setBattleStates separados causavam race
+    // condition onde o segundo sobrescrevia o primeiro antes do React batchear.
     setBattleState(prev => {
 
-      /*
-        Remove mortos.
-      */
+      // Se a batalha já terminou entre o render e este setter, não realoca.
+      if (prev.status !== "In Battle") return prev;
 
       const newTurnOrder =
         prev.turnOrder.filter(
-
-          turn =>
-
-            aliveTokenIds.includes(
-              turn.tokenId
-            )
-
+          turn => aliveTokenIds.includes(turn.tokenId)
         );
 
-      /*
-        Sem turnos restantes.
-      */
-
-      if (newTurnOrder.length <= 0) {
-
-        return {
-
-          ...prev,
-
-          turnOrder: [],
-          currentTurnIndex: 0,
-
-        };
-
-      }
-
-      /*
-        Token atual antigo.
-      */
-
-      const currentTurn =
-        prev.turnOrder[
-        prev.currentTurnIndex
-        ];
-
-      /*
-        Procura esse token
-        na nova turnOrder.
-      */
+      const currentTurn = prev.turnOrder[prev.currentTurnIndex];
 
       let newCurrentIndex =
         newTurnOrder.findIndex(
-
-          turn =>
-
-            turn.tokenId ===
-            currentTurn?.tokenId
-
+          turn => turn.tokenId === currentTurn?.tokenId
         );
 
-      /*
-        Se morreu/removido,
-        cai para 0.
-      */
-
       if (newCurrentIndex < 0) {
-
         newCurrentIndex = 0;
-
-      }
-
-      /*
-        Nada mudou.
-      */
-
-      const sameOrder =
-        newTurnOrder.length ===
-        prev.turnOrder.length;
-
-      const sameIndex =
-        newCurrentIndex ===
-        prev.currentTurnIndex;
-
-      if (
-        sameOrder &&
-        sameIndex
-      ) {
-
-        return prev;
-
       }
 
       return {
-
         ...prev,
-
-        turnOrder:
-          newTurnOrder,
-
-        currentTurnIndex:
-          newCurrentIndex,
-
+        isReallocatingTurns: true,
+        turnOrder: newTurnOrder,
+        currentTurnIndex: newCurrentIndex,
       };
 
     });
 
-    reallocTurnLock.current = false;
+    const timeout = setTimeout(() => {
 
-  }, [boardTokens]);
-
-  useEffect(() => {
-
-    /*
-      Tokens mortos.
-    */
-    tokenDeadLock.current = true;
-
-    const deadTokens =
-      boardTokens.filter(
-
-        token =>
-
-          (token.currentLife ?? 1) <= 0
-
+      setBoardTokens(prev =>
+        prev.filter(token => !deadIds.includes(token.id))
       );
 
-    /*
-      Nada morto.
-    */
+      // Só encerra realocação se ainda estivermos em batalha.
+      setBattleState(prev => {
+        if (prev.status !== "In Battle") return prev;
+        return { ...prev, isReallocatingTurns: false };
+      });
 
-    if (deadTokens.length <= 0) {
-
-      tokenDeadLock.current = false;
-
-      return;
-
-    }
-
-    /*
-      Agenda remoção.
-    */
-
-    const timeouts =
-      deadTokens.map(token =>
-
-        setTimeout(() => {
-
-          setBoardTokens(prev =>
-
-            prev.filter(
-
-              t => t.id !== token.id
-
-            )
-
-          );
-
-        }, 1000)
-
-      );
-
-    /*
-      Cleanup.
-    */
-
-    tokenDeadLock.current = false;
+    }, 1000);
 
     return () => {
-
-      timeouts.forEach(
-
-        timeout => clearTimeout(timeout)
-
-      );
-
-      tokenDeadLock.current = false;
-
+      clearTimeout(timeout);
+      // Garante que isReallocatingTurns nunca fica preso em true caso o cleanup
+      // seja chamado antes do timeout disparar (ex: nova morte chega antes dos 1s).
+      setBattleState(prev => {
+        if (!prev.isReallocatingTurns) return prev;
+        if (prev.status !== "In Battle") return prev;
+        return { ...prev, isReallocatingTurns: false };
+      });
     };
 
   }, [boardTokens]);
 
   useEffect(() => {
-    if (battleState.turnOrder.length <= 1 && battleState.status === "In Battle") {
+
+    if (battleState.status !== "In Battle") return;
+
+    const deadTokens = boardTokens.filter(
+      t => (t.currentLife ?? 0) <= 0
+    );
+
+    deadTokens.forEach(handleTokenDeath);
+
+  }, [boardTokens]);
+
+  useEffect(() => {
+
+    if (battleState.status !== "Not in Battle")
+      return;
+
+    const rewards =
+      createdTokens.filter(
+        token => canLevelUp(token)
+      );
+
+    if (rewards.length <= 0)
+      return;
+
+    console.log("[LEVEL UP]: Token que podem upar de nível: ", rewards);
+
+    setPendingLevelUpTokens(
+      rewards
+    );
+
+    rewards.forEach(token => {
+
+      const result =
+        calculateLevelGain(token);
+
+      console.log(
+        "[LEVEL RESULT]",
+        token.name,
+        result
+      );
+
+    });    
+
+  }, [
+    battleState.status,
+    createdTokens
+  ]);
+
+  useEffect(() => {
+
+    if (currentLevelUpToken)
+      return;
+
+    if (pendingLevelUpTokens.length <= 0)
+      return;
+
+    setCurrentLevelUpToken(
+      pendingLevelUpTokens[0]
+    );
+
+  }, [
+    pendingLevelUpTokens,
+    currentLevelUpToken
+  ]);
+
+  useEffect(() => {
+
+    if (battleState.status !== "In Battle") {
+      return;
+    }
+
+    const aliveTeams = new Set(
+
+      boardTokens
+        .filter(
+          token => (token.currentLife ?? 0) > 0
+        )
+        .map(
+          token => token.team
+        )
+
+    );
+
+    if (aliveTeams.size <= 1) {
       handleEndBattle();
     }
-  }, [battleState])
+
+  }, [
+    boardTokens,
+    battleState.status
+  ]);
   /* * */
 
 
@@ -773,6 +1028,16 @@ const BoardPage: React.FC = () => {
   const pendingAttackRef = useRef(pendingAttack);
 
   const [inCardSelection, setInCardSelection] = useState<boolean>(false);
+
+  useEffect(() => {
+    if(inCardSelection)
+    {
+      console.debug(
+        "PendingCardResolution: ", pendingCardResolution,
+        "InDefenseCardResolution: ", inDefenseCardResolution,
+      )
+    }
+  }, [inCardSelection])
 
   useEffect(() => {
     pendingAttackRef.current = pendingAttack;
@@ -854,7 +1119,6 @@ const BoardPage: React.FC = () => {
       prev.filter(token => token.id !== tokenId)
     );
   }
-
 
   function searchTokenPosition(tokenId: string, attr: string) {
     const key = `${tokenId}->${attr}`;
@@ -1257,10 +1521,12 @@ const BoardPage: React.FC = () => {
   // Auto advance turn
 
   useEffect(() => {
+    console.warn("[HANDLE] Pode autopassar o turno?: ", shouldAdvanceTurn && battleStateRef.current.status === "In Battle" && !pendingAttackRef.current);
+    console.warn("[HANDLE] ShouldAdvance: ", shouldAdvanceTurn);
+    console.warn("[HANDLE] In Battle Ref?: ", battleStateRef.current.status === "In Battle")
+    console.warn("[HANDLE] Pendding Atack Ref?: ", !pendingAttackRef.current)
     if (
-      shouldAdvanceTurn &&
-      battleStateRef.current.status === "In Battle" &&
-      !pendingAttackRef.current
+      shouldAdvanceTurn && battleStateRef.current.status === "In Battle" && !pendingAttackRef.current
     ) {
       setShouldAdvanceTurn(false);
       handleNextTurn();
@@ -1346,91 +1612,50 @@ const BoardPage: React.FC = () => {
   }, [battleState.status, battleState.currentTurnIndex]);
 
   /* AI Methods */
-  const aiTurnLock = useRef(false);
+
   const aiTurnTokenRef = useRef<string | null>(null);
 
-  const aiStateMachine = useRef( new AIStateMachine( AICombatPhase.IDLE ) );
+  function runAITurnPhase() {
 
-  const [aiPhase, setAIPhase] =
-      useState<AICombatPhase>(
-          AICombatPhase.IDLE
-      );
-
-  useEffect(() => {
-
-      if (pendingFreeResponse) {
-          setAIPhase(AICombatPhase.RESPONSE);
-          return;
-      }
-
-      if (pendingEsquivaRoll && pendingAttack) {
-          setAIPhase(AICombatPhase.DEFENSE);
-          return;
-      }
-
-      if (
-          pendingAttack &&
-          pendingAttack.isReactionAllowed
-      ) {
-          setAIPhase(AICombatPhase.REACTION);
-          return;
-      }
-
-      if (
-          battleState.status === "In Battle"
-      ) {
-          setAIPhase(AICombatPhase.TURN);
-          return;
-      }
-
-      setAIPhase(AICombatPhase.IDLE);
-
-  }, [
-      pendingAttack,
-      pendingFreeResponse,
-      pendingEsquivaRoll,
-      battleState.status
-  ]);
-
-  useEffect(() => {
-
-      runAIPhase(
-          aiPhase,
-          {
-              turn: () => console.error("TURN"),
-
-              reaction: () => console.error("REACTION"),
-
-              response: () => console.error("RESPONSE"),
-
-              defense: () => console.error("DEFENSE"),
-          }
-      );
-
-  }, [aiPhase]);
-
-  useEffect(() => {
-
-    console.warn("[COMBATE] Entrando no useEffect de turno da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current, "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
-    console.warn("[COMBATE]")
-    if (battleState.status !== "In Battle") return;
+    console.error("[RUN AI TURN PHASE] ENTROU!")
+    if (battleState.status !== "In Battle") {
+      setNotAITurn()
+      console.error("[TURN] Turno da IA tentou rodar, mas não estamos em combate.");
+      return;
+    }
 
     const current =
       battleState.turnOrder[
       battleState.currentTurnIndex
       ];
 
-    if (!current) return;
-    if (pendingFreeResponse) return;
-    if (pendingAttack) return;
+    if (!current) {
+      setNotAITurn()
+      console.error("[TURN] Turno da IA tentou rodar, mas não há um turno atual.");
+      return
+    }
+
+    if (pendingFreeResponse) {
+      setNotAITurn()
+      console.error("[TURN] Turno da IA tentou rodar, mas há uma resposta pendente.");
+      return
+    }
+
+    if (pendingAttack) {
+      setNotAITurn()
+      console.error("[TURN] Turno da IA tentou rodar, mas há um ataque pendente.");
+      return
+    }
     console.info("[COMBATE] Verificações iniciais passadas, avaliando locks...");
-    if (aiTurnLock.current) {
+    if (battleState.locks.aiActing) {
       if (aiTurnTokenRef.current !== current.tokenId) {
-        aiTurnLock.current = false;
-        aiTurnTokenRef.current = null;
+        setAIUnlock()
+        aiTurnTokenRef.current = null
       } else {
 
-        return;
+        setNotAITurn()
+        console.error("[TURN] Turno da IA tentou rodar, mas a IA já está agindo neste turno.");
+        return
 
       }
 
@@ -1445,7 +1670,11 @@ const BoardPage: React.FC = () => {
         t => t.id === current.tokenId
       );
 
-    if (!token) return;
+    if (!token) {
+      setNotAITurn()
+      console.error("[TURN] Turno da IA tentou rodar, mas o token do turno não foi encontrado no tabuleiro.");
+      return;
+    };
 
     /*
       Apenas IA.
@@ -1454,76 +1683,41 @@ const BoardPage: React.FC = () => {
     if (token.type !== "ia") {
 
       setIsAIThinking(false);
-
+      setNotAITurn()
+      console.error("[TURN] Turno da IA tentou rodar, mas o token do turno não é IA.");
       return;
 
     }
 
-    // Status de combate temporário
+    const actionToken = beginTurn();
     const currentActions = battleState.accumulatedActions[token.id] ?? 1;
     const currentMana = token.currentMana ?? 0;
     const currentCars = token.cards;
 
+    console.error("[COMBAT] Total de ações do token: ", battleState.accumulatedActions[token.id]);
     const aiRepertory = getAIRepertoryForToken(token, currentActions, currentMana, currentCars);
 
     if (token.currentLife === 0) {
 
       setIsAIThinking(false);
-
+      setNotAITurn()
+      console.error("[TURN] Turno da IA tentou rodar, mas o token está morto.");
       return;
 
     }
 
-    if (reallocTurnLock.current && tokenDeadLock.current) {
+    if (battleState.isReallocatingTurns) {
       console.info("[COMBATE] Turno de IA bloqueado por realloc ou morte de token.");
       setIsAIThinking(false);
-
+      setNotAITurn()
+      console.error("[TURN] Turno da IA tentou rodar, mas um token está morto, ocorrendo realocação.");
       return;
     }
 
-    console.info("[COMBATE] Passou dos locks, IA vai agir. Nome do token:", token.name);
+    console.error("[TURN] Passou dos locks, IA vai agir. Nome do token:", token.name);
     combatInfo(`${token.name} esta pensando`);
 
-    /*
-      Contexto LOCAL
-      sincronizado com
-      o turno atual.
-    */
 
-    const context = {
-
-      self: token,
-
-      allies:
-        boardTokens.filter(
-
-          t =>
-
-            t.team === token.team &&
-            t.id !== token.id
-
-        ),
-
-      enemies:
-        boardTokens.filter(
-
-          t =>
-
-            t.team !== token.team
-
-        ),
-
-      currentTurn:
-        battleState.currentTurnIndex
-
-    };
-
-    /*
-      Lock.
-    */
-
-    aiTurnLock.current =
-      true;
     aiTurnTokenRef.current =
       token.id;
 
@@ -1531,29 +1725,101 @@ const BoardPage: React.FC = () => {
 
     /*
       Delay de pensamento.
+      O context é montado DENTRO do timeout para usar boardTokensRef,
+      que reflete o estado atual do tabuleiro no momento da execução.
+      Montar o context fora (closure stale) causava ataques a tokens
+      já mortos/removidos e entradas "Desconhecido" no histórico.
     */
+
+    console.warn(
+      "[ACTION TOKEN CREATED]",
+      {
+        tokenId: token.id,
+        tokenName: token.name,
+        actorId: actionToken.actorId,
+        currentActorId: battleState.currentActorId
+      }
+    );
 
     const timeout =
       setTimeout(() => {
 
-        console.info("AI está executando ação. ID do token:", token.id);
-        combatInfo(`${token.id} iniciou turno IA`);
+        const current =
+          battleStateRef.current;
+
+        // Guard: batalha pode ter terminado durante os 500ms do delay.
+        if (current.status !== "In Battle") {
+          console.warn("[AI CANCELADA] Batalha encerrada durante o delay");
+          setNotAITurn();
+          return;
+        }
+
+        if (current.turnVersion !== actionToken.version) {
+
+          console.warn("[AI CANCELADA] Turno expirou");
+          setNotAITurn();
+          return;
+        }
+
+        if (!current.turnOrder[current.currentTurnIndex] ||
+          current.turnOrder[current.currentTurnIndex].tokenId !== actionToken.actorId) {
+
+          console.warn(
+            "[AI CANCELADA]",
+            {
+              actorId: actionToken.actorId,
+              currentActor:
+                current.turnOrder[
+                  current.currentTurnIndex
+                ]?.tokenId,
+              currentIndex:
+                current.currentTurnIndex,
+              turnVersion:
+                current.turnVersion
+            }
+          );
+          setNotAITurn();
+          return;
+        }
+
+        // Monta o context com os tokens VIVOS no momento da execução.
+        const liveTokens = boardTokensRef.current;
+        const liveToken = liveTokens.find(t => t.id === token.id);
+
+        if (!liveToken || liveToken.currentLife === 0) {
+          console.warn("[AI CANCELADA] Token morreu durante o delay");
+          setNotAITurn();
+          return;
+        }
+
+        const context = {
+          self: liveToken,
+          allies: liveTokens.filter(
+            t => t.team === liveToken.team && t.id !== liveToken.id && (t.currentLife ?? 1) > 0
+          ),
+          enemies: liveTokens.filter(
+            t => t.team !== liveToken.team && (t.currentLife ?? 1) > 0
+          ),
+          currentTurn: current.currentTurnIndex,
+        };
+
         executeAITurn({
 
           context,
           aiRepertory,
-
           handleExecuteAction,
           moveToken: moveTokenOnBoard,
           onCompleteTurn: (result) => {
 
-            aiTurnLock.current = false;
+
             aiTurnTokenRef.current = null;
             setIsAIThinking(false);
 
             if (result?.actionStarted === false) {
               handleNextTurn(true);
             }
+
+            setNotAITurn();
 
           }
 
@@ -1566,67 +1832,54 @@ const BoardPage: React.FC = () => {
     */
 
     return () => {
-
-      console.warn(
-        "[COMBATE] CLEANUP EXECUTADO",
-        token.id,
-        battleState.currentTurnIndex
-      );
-
+      console.warn("[COMBATE] CLEANUP EXECUTADO", token.id, battleState.currentTurnIndex);
       clearTimeout(timeout);
-
-      if (aiTurnTokenRef.current === token.id) {
-
-        console.warn(
-          "[COMBATE] CLEANUP LIBEROU LOCK DA IA"
-        );
-
-        aiTurnLock.current = false;
-        aiTurnTokenRef.current = null;
-        setIsAIThinking(false);
-      }
     };
 
-  }, [
-    battleState.status,
-    battleState.currentTurnIndex,
-    pendingFreeResponse,
-    reallocTurnLock,
-    tokenDeadLock,
-    battleState.accumulatedActions,
-  ]); // AI Execute Action
+  }
 
-  useEffect(() => {
+  function runAIReactionPhase() {
 
-    console.warn("[COMBATE] Entrando no useEffect de reação da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current, "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
+    setAITurn()
 
-    if (!pendingAttack) return;
 
-    if (!pendingAttack.isReactionAllowed) return;
+    if (!pendingAttack) {
+      setNotAITurn()
+      return;
+    };
+
+    if (!pendingAttack.isReactionAllowed) {
+      setNotAITurn()
+      return;
+    };
 
     const defender =
       boardTokens.find(
         t => t.id === pendingAttack.targetId
       );
 
-    if (!defender) return;
+    if (!defender) {
+      setNotAITurn()
+      return;
+    };
 
     if (defender.type !== "ia") {
       setIsAIThinking(false);
+      setNotAITurn()
       return;
     };
     if (defender.currentLife === 0) {
 
       setIsAIThinking(false);
-
+      setNotAITurn()
       return;
 
     }
 
-    if (reallocTurnLock.current && tokenDeadLock.current) {
+    if (battleState.isReallocatingTurns) {
       console.info("Reação de IA bloqueada por realloc ou morte de token.");
       setIsAIThinking(false);
-
+      setNotAITurn()
       return;
     }
 
@@ -1645,6 +1898,7 @@ const BoardPage: React.FC = () => {
         attackAttribute
       );
 
+      setNotAITurn()
       return;
 
     }
@@ -1652,6 +1906,13 @@ const BoardPage: React.FC = () => {
     setIsAIThinking(true);
 
     const timeout = setTimeout(() => {
+
+      // Guard: se a batalha terminou durante os 500ms do delay, cancela a ação.
+      if (battleStateRef.current.status !== "In Battle") {
+        setNotAITurn();
+        return;
+      }
+
       combatInfo(`${defender.id} reagiu a ${pendingAttack.attackerId}`);
 
       executeAIReaction({
@@ -1674,17 +1935,19 @@ const BoardPage: React.FC = () => {
         setIsAIThinking(false);
       });
 
+      setNotAITurn();
+
     }, 500);
 
     return () => clearTimeout(timeout);
+  }
 
-  }, [pendingAttack, reallocTurnLock, tokenDeadLock]); // AI Reaction
+  function runAIResponsePhase() {
 
-  useEffect(() => {
-
-    console.warn("[COMBATE] Entrando no useEffect de resposta da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current, "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
-
-    if (!pendingFreeResponse) return;
+    if (!pendingFreeResponse) {
+      setNotAITurn()
+      return;
+    };
 
     const responder =
       boardTokens.find(
@@ -1696,24 +1959,29 @@ const BoardPage: React.FC = () => {
         t => t.id === pendingFreeResponse.paralyzedId
       );
 
-    if (!responder || !target) return;
+    if (!responder || !target) {
+      setNotAITurn()
+      return;
+    };
 
     if (responder.type !== "ia") {
       setIsAIThinking(false);
+      setNotAITurn()
       return
     };
 
     if (responder.currentLife === 0) {
 
       setIsAIThinking(false);
-
+      setNotAITurn()
       return;
 
     }
 
-    if (reallocTurnLock.current && tokenDeadLock.current) {
+    if (battleState.isReallocatingTurns) {
       console.info("Resposta de IA bloqueada por realloc ou morte de token.");
       setIsAIThinking(false);
+      setNotAITurn()
 
       return;
     }
@@ -1726,8 +1994,21 @@ const BoardPage: React.FC = () => {
 
     const aiRepertory = getAIRepertoryForToken(responder, actions, mana, cards);
 
+    console.error("Entro no useEffect de resposta da IA. Responder:", responder.id, "Target:", target.id, "Repertório:", aiRepertory);
+
     const timeout = setTimeout(() => {
-      combatInfo(`${responder.id} fara resposta a ${target.id}`);
+
+      console.error(
+        "[AI RESPONSE] Timeout disparou"
+      );
+
+      // Guard: se a batalha terminou durante os 500ms do delay, cancela a ação.
+      if (battleStateRef.current.status !== "In Battle") {
+        setNotAITurn();
+        return;
+      }
+
+      setNotAITurn();
 
       const actionStarted = executeAIResponseAction({
 
@@ -1756,42 +2037,56 @@ const BoardPage: React.FC = () => {
 
     }, 500);
 
-    return () => clearTimeout(timeout);
+    console.error(
+      "[AI RESPONSE] Timeout criado"
+    );
 
-  }, [pendingFreeResponse, reallocTurnLock, tokenDeadLock]);  // AI Response 
+    return () => {
+      console.error("[AI RESPONSE] Cleanup executado");
+      clearTimeout(timeout);
+    };
+  }
 
-  useEffect(() => {
+  function runAIDefensePhase() {
 
-    console.warn("[COMBATE] Entrando no useEffect de defesa da IA. Locks - AI:", aiTurnLock.current, "Realloc:", reallocTurnLock.current, "TokenDead:", tokenDeadLock.current, "PendingAttack:", !!pendingAttack, "PendingFreeResponse:", !!pendingFreeResponse);
+    if (!pendingEsquivaRoll) {
+      setNotAITurn()
+      return;
+    };
 
-    if (!pendingEsquivaRoll) return;
-
-    if (!pendingAttack) return;
+    if (!pendingAttack) {
+      setNotAITurn()
+      return;
+    };
 
     const attacker =
       boardTokens.find(
         t => t.id === pendingAttack.attackerId
       );
 
-    if (!attacker) return;
+    if (!attacker) {
+      setNotAITurn()
+      return;
+    }
 
     if (attacker.type !== "ia") {
       setIsAIThinking(false);
+      setNotAITurn()
       return
     }
 
     if (attacker.currentLife === 0) {
 
       setIsAIThinking(false);
-
+      setNotAITurn()
       return;
 
     }
 
-    if (reallocTurnLock.current && tokenDeadLock.current) {
+    if (battleState.isReallocatingTurns) {
       console.info("Turno de IA bloqueado por realloc ou morte de token.");
       setIsAIThinking(false);
-
+      setNotAITurn()
       return;
     }
 
@@ -1799,6 +2094,13 @@ const BoardPage: React.FC = () => {
     setIsAIThinking(true);
 
     const timeout = setTimeout(() => {
+
+      // Guard: se a batalha terminou durante os 500ms do delay, cancela a ação.
+      if (battleStateRef.current.status !== "In Battle") {
+        setNotAITurn();
+        return;
+      }
+
       combatInfo(`${attacker.id} resolveu defesa contra ${pendingAttack.targetId}`);
 
       executeAIDefenseResolution({
@@ -1813,17 +2115,142 @@ const BoardPage: React.FC = () => {
         setIsAIThinking(false);
       });
 
-    }, 1200);
+      setNotAITurn();
+
+    }, 500);
 
     return () => clearTimeout(timeout);
+  }
+  /* * */
+
+  const aiStateMachine = useRef(new AIStateMachine(AICombatPhase.IDLE));
+  const aiPhaseCleanup = useRef<(() => void) | null>(null); // ← NOVO
+
+  function runCurrentAIPhase() {
+    // isAIActingRef é um mutex síncrono — lido e escrito imediatamente,
+    // sem aguardar ciclo de render. battleState.isAIActing não serve para
+    // este papel porque setBattleState é assíncrono: entre o set e o
+    // próximo render o useEffect pode disparar N vezes lendo o valor antigo.
+    console.error("[ALERT] Entry, LOCK: ", isAIActingRef.current, "FASE: ", aiStateMachine.current.getPhase());
+    if (isAIActingRef.current) return;
+    isAIActingRef.current = true;
+
+    // Mantém o battleState em sincronia para quem lê isAIActing via estado.
+    setBattleState(prev => ({ ...prev, isAIActing: true }));
+
+    // Cancela cleanup anterior se existir
+    if (aiPhaseCleanup.current) {
+      aiPhaseCleanup.current();
+      aiPhaseCleanup.current = null;
+    }
+
+    const cleanup = runAIPhase(
+      aiStateMachine.current.getPhase(),
+      {
+        turn: runAITurnPhase,
+        reaction: runAIReactionPhase,
+        response: runAIResponsePhase,
+        defense: runAIDefensePhase,
+      }
+    );
+
+    console.error("[ALERT] Cleanup returned: ", cleanup);
+
+    // Guarda o cleanup retornado pela fase (ex: clearTimeout)
+    if (typeof cleanup === "function") {
+      aiPhaseCleanup.current = cleanup;
+    }
+  }
+
+  useEffect(() => {
+
+    console.warn(
+      "[AI EFFECT EXECUTOU]",
+      {
+        reallock: battleState.isReallocatingTurns,
+        isAIActing: battleState.isAIActing,
+        lock_1: battleState.locks.aiActing,
+        lock_2: battleState.locks.reallocating,
+        lock_3: battleState.locks.resolvingAction,
+        turn: battleState.currentTurnIndex,
+        turnVersion: battleState.turnVersion,
+        pendingAttack,
+        pendingFreeResponse,
+        pendingEsquivaRoll
+      }
+    );
+
+    // Guard principal: fora de batalha a FSM não deve disparar nenhuma fase.
+    // Verificamos status ANTES de isAIActing para evitar que o disparo de
+    // "isAIActing -> false" ao final do handleEndBattle acione uma nova fase.
+    if (battleState.status !== "In Battle") {
+      aiStateMachine.current.transition(AICombatPhase.IDLE);
+      return;
+    }
+
+    if (battleState.isReallocatingTurns) {
+      // Durante realocação de turnos, a FSM aguarda sem disparar nada.
+      return;
+    }
+
+    // Usa a ref síncrona — battleState.isAIActing pode estar stale aqui.
+    if (isAIActingRef.current) return;
+    console.info("[INFO] Passou dessa merda em algum momento?")
+
+    const currentTurnToken =
+      boardTokens.find(
+        t =>
+          t.id ===
+          battleState.turnOrder[
+            battleState.currentTurnIndex
+          ]?.tokenId
+      );
+
+    const isAITurn =
+      currentTurnToken?.type === "ia";
+    
+    if(!isAITurn) return;
+    console.error("[COMBATE] Efeito de controle de fase da IA disparou. isAITurn:", isAITurn, "Status do combate:", battleState.status, "Turno atual:", battleState.turnOrder[battleState.currentTurnIndex]?.tokenId)
+
+    if (
+      isAITurn &&
+      !pendingAttack &&
+      !pendingFreeResponse &&
+      !pendingEsquivaRoll
+    ) {
+      console.error("[COMBATE] Transitando para fase de TURNO da IA");
+      aiStateMachine.current.transition(AICombatPhase.TURN);
+      console.error("[TRANSITION] Fase atual da IA após transição: ", aiStateMachine.current.getPhase());
+      runCurrentAIPhase();
+    } else if (pendingFreeResponse && !pendingEsquivaRoll) {
+      console.error("[COMBATE] Transitando para fase de RESPOSTA da IA");
+      aiStateMachine.current.transition(AICombatPhase.RESPONSE);
+      console.error("[TRANSITION] Fase atual da IA após transição: ", aiStateMachine.current.getPhase());
+      runCurrentAIPhase();
+    } else if (pendingEsquivaRoll && pendingAttack) {
+      console.error("[COMBATE] Transitando para fase de DEFESA da IA");
+      aiStateMachine.current.transition(AICombatPhase.DEFENSE);
+      console.error("[TRANSITION] Fase atual da IA após transição: ", aiStateMachine.current.getPhase());
+      runCurrentAIPhase();
+    } else if (pendingAttack && pendingAttack.isReactionAllowed) {
+      console.error("[COMBATE] Transitando para fase de REAÇÃO da IA");
+      aiStateMachine.current.transition(AICombatPhase.REACTION);
+      console.error("[TRANSITION] Fase atual da IA após transição: ", aiStateMachine.current.getPhase());
+      runCurrentAIPhase();
+    } else {
+      aiStateMachine.current.transition(AICombatPhase.IDLE);
+      console.error("[TRANSITION] Fase atual da IA após transição: ", aiStateMachine.current.getPhase());
+    }
 
   }, [
-
+    pendingAttack,
+    pendingFreeResponse,
     pendingEsquivaRoll,
-    pendingAttack, reallocTurnLock, tokenDeadLock, pendingFreeResponse
-
-  ]);  // AI Defense Resolution
-  /* * */
+    battleState.currentTurnIndex,
+    battleState.isReallocatingTurns,
+    battleState.status,
+    battleState.isAIActing,
+  ]);
 
   const letters = Array.from({ length: cols }, (_, i) => getColumnName(i + 1));
 
@@ -1847,6 +2274,7 @@ const BoardPage: React.FC = () => {
     const instance: Token = {
       ...template,
 
+      createId: template.createId,
       // 🔥 NOVO ID
       id: `board_${Date.now()}_${Math.random().toString(36).slice(2)}`,
 
@@ -2021,6 +2449,18 @@ const BoardPage: React.FC = () => {
     setSelectedTokenId(tokenInCell?.id || null);
     setSelectedCell(`${letter}${number}`);
 
+    const tokInCell = boardTokens.find((t) => t.position.col === position.col && t.position.row === position.row)
+
+
+    if(inTargetSelection)
+    {
+      if(tokInCell)
+      {
+        setSelectedTarget(tokInCell);
+      }
+      return;
+    }
+
     if (isAmbientPivotSelection && armedCard) {
       const pivotType = armedCard.target.pivotSettings?.pivotType;
 
@@ -2042,6 +2482,13 @@ const BoardPage: React.FC = () => {
   // Start battle
   const handleStartBattle = () => {
     const teams = new Set(boardTokens.map((t) => t.team));
+    console.warn("[BATTLE START STATE]", {
+      battleState: battleState,
+      pendingAttack,
+      pendingFreeResponse,
+      pendingEsquivaRoll,
+      aiTurnToken: aiTurnTokenRef.current,
+    });
     if (teams.size < 2 || boardTokens.length < 2) {
       alert("É necessário ter tokens de times diferentes para iniciar.");
       return;
@@ -2137,10 +2584,17 @@ const BoardPage: React.FC = () => {
       round: 1,
       turnOrder: inits,
       currentTurnIndex: 0,
+      currentActorId: firstId,
+      phase: "Initiative",
+      locks: { aiActing: false, reallocating: false, resolvingAction: false },
       accumulatedActions: acc,
       activeEffects: {},
       actionHistory: [],
+      isReallocatingTurns: false,
+      isAIActing: false,
+      turnVersion: 1,
     });
+
 
     setDidActThisTurn(didActObj);
     setMovedThisTurn(movedObj);
@@ -2150,9 +2604,17 @@ const BoardPage: React.FC = () => {
     }
   };
 
+  const [inTargetSelection, setInTargetSelection] = useState(false);
+  const [selectedTarget, setSelectedTarget] = useState<Token | null>(null)
+  const mouseStyle = inTargetSelection ? `crosshair` : "auto";
+
+  useEffect(() => {
+    console.debug(BLUEDOT)
+  }, [inTargetSelection])
+
   const handleNextTurn = (isVoluntaryPass: boolean = false) => {
     console.log("-----------------------------------------------------------------------------------------------");
-    console.log("➡️ ENTROU NO handleNextTurn");
+    console.warn("[HANDLE] Entrou no handleNextTurn");
     const liveBattleState = battleStateRef.current;
     const liveBoardTokens = boardTokensRef.current;
 
@@ -2170,7 +2632,7 @@ const BoardPage: React.FC = () => {
 
     // Não pode avançar com resolução pendente
     if (pendingAttackRef.current || isInDefenseResolution || pendingEsquivaRoll != null) {
-      console.log("⏸️ Há resolução de ataque/defesa pendente, abortando");
+      console.warn("[HANDLE] Há resolução de ataque/defesa pendente, abortando");
       return;
     }
 
@@ -2187,13 +2649,13 @@ const BoardPage: React.FC = () => {
     }
 
     const tokenName = liveBoardTokens.find(t => t.id === currentTokenId)?.name ?? "Desconhecido";
-    console.log("🧭 FINALIZANDO TURNO DE:", tokenName);
+    console.warn("[HANDLE] FINALIZANDO TURNO DE:", tokenName);
     combatInfo(`${currentTokenId} tentou passar turno`);
 
     // Se não é passe voluntário e ainda há ações, não pode auto-passar
     const currentActions = liveBattleState.accumulatedActions[currentTokenId] ?? 1;
     if (!isVoluntaryPass && currentActions > 0 && !(lastAllUsedResponse[currentTokenId] ?? false)) {
-      console.log("🚫 BLOQUEADO, AINDA RESTAM AÇÕES");
+      console.error("[HANDLE]🚫 BLOQUEADO, AINDA RESTAM AÇÕES");
       return;
     }
 
@@ -2205,7 +2667,7 @@ const BoardPage: React.FC = () => {
     }
     // Inicia trava
     isAdvancingTurnRef.current = true;
-    console.log("🔐 handleNextTurn INICIADO");
+    console.error("[HANDLE] handleNextTurn INICIADO");
 
     try {
 
@@ -2233,13 +2695,13 @@ const BoardPage: React.FC = () => {
 
         const shouldIncrementRound = nextIdx === 0;
         const newRound = shouldIncrementRound ? prev.round + 1 : prev.round;
-
+        const newTurnVersion = prev.turnVersion + 1;
         const updated: BattleState = {
           ...prev,
           currentTurnIndex: nextIdx,
+          currentActorId: nextTokenId || null,
           round: newRound,
-          // Não mexe em accumulatedActions aqui;
-          // o cálculo de ações por entrada de turno ocorre no useEffect dedicado.
+          turnVersion: newTurnVersion,
         };
 
         if (nextToken) {
@@ -2288,15 +2750,35 @@ const BoardPage: React.FC = () => {
 
   // End battle
   const handleEndBattle = () => {
+
     setBattleState({
       status: "Not in Battle",
       round: 0,
       turnOrder: [],
       currentTurnIndex: 0,
+      currentActorId: null,
+      phase: "Initiative",
+      locks: {
+        aiActing: false,
+        reallocating: false,
+        resolvingAction: false
+      },
       accumulatedActions: {},
       activeEffects: {},
       actionHistory: [],
+      isReallocatingTurns: false,
+      isAIActing: false,
+      turnVersion: 0,
     });
+
+    console.warn("[BATTLE START STATE]", {
+      battleState: battleState,
+      pendingAttack,
+      pendingFreeResponse,
+      pendingEsquivaRoll,
+      aiTurnToken: aiTurnTokenRef.current,
+    });
+
     setBoardTokens((prev) =>
       prev.map((t) => ({
         ...t,
@@ -2355,10 +2837,19 @@ const BoardPage: React.FC = () => {
     hasEnteredFirstTurnRef.current = {}; // ⬅️ Limpar ref
     remainingExtraActions.current = null; // Reset das ações extras no fim do turno
     maxSelectablePivots.current = 0;
-    aiTurnLock.current = false;
+    setAIUnlock();
     aiTurnTokenRef.current = null;
-    reallocTurnLock.current = false;
-    tokenDeadLock.current = false;
+
+    // Cancela qualquer fase da IA em andamento (setTimeout de 500ms pendente).
+    // Sem isso, a IA pode disparar executeAITurn/executeAIReaction DEPOIS que
+    // handleEndBattle rodou, corrompendo o estado inicial da próxima batalha.
+    if (aiPhaseCleanup.current) {
+      aiPhaseCleanup.current();
+      aiPhaseCleanup.current = null;
+    }
+    // Zera o mutex síncrono junto com o reset do estado.
+    isAIActingRef.current = false;
+    aiStateMachine.current.transition(AICombatPhase.IDLE);
 
     setInCardSelection(false);
     setPendingCardResolution(null);
@@ -2373,9 +2864,16 @@ const BoardPage: React.FC = () => {
     setSelectedPivots([]);
     setPreviewCells(new Set());
     setIsAIThinking(false);
+    setShouldAdvanceTurn(false);
+    setInDefenseCardResolution(false);
+    setInTargetSelection(false);
+    setSelectedTarget(null)
   };
 
   const handleExecuteAction = (choice: ExecuteChoice): boolean => {
+    if (battleState.status !== "In Battle") return false;
+    setInTargetSelection(false)
+    console.warn("[HANDLE] EXECUTE CHOICE RECEBIDA: ", choice);
     const liveBattleState = battleStateRef.current;
     const liveBoardTokens = boardTokensRef.current;
     const current = liveBattleState.turnOrder[liveBattleState.currentTurnIndex];
@@ -2392,6 +2890,7 @@ const BoardPage: React.FC = () => {
       return true;
     }
 
+    console.warn("[HANDLE] ACTION CHOICE RECEBIDA: ", choice);
     if (token && choice.actionType === "mana_recover") {
 
       const usedActions = Math.max(
@@ -2413,21 +2912,16 @@ const BoardPage: React.FC = () => {
         ...prev,
         accumulatedActions: { ...prev.accumulatedActions, [tokenId]: remainingActions },
       }));
+
+      console.error(`[HANDLE] ${tokenId} recuperou mana usando ${usedActions} ações, recuperando ${recovering * usedActions} de mana. Ações restantes: ${remainingActions}`);
       if (remainingActions <= 0) {
+        console.warn("[HANDLE] Mana recover usou todas as ações, avançando turno");
         setShouldAdvanceTurn(true);
       }
       return true;
     }
 
     if (!token || !target) return false;
-    combatInfo(`${tokenId} preparou ataque contra ${choice.targetId}`, {
-      attribute: choice.attribute,
-      actions: choice.usedActions ?? 1,
-      mana: choice.usedMana ?? 0,
-    });
-
-    console.log(">>> ATRIBUTO USADO FOI: ", choice.attribute);
-    console.log("Isso ta entrnaod aqui?");
 
     const isPhysicalAttack = ["forca", "destreza"].includes(choice.attribute);
     const attackType = isPhysicalAttack ? "fisico" : "magico";
@@ -2671,14 +3165,7 @@ const BoardPage: React.FC = () => {
     // 11) Se não pode reagir, aplica dano e trata Paralisia já neste passo
     console.log("> VALOR DE REACTION ALLOWED: ", isReactionAllowed);
     if (!isReactionAllowed) {
-      setBoardTokens((prev) =>
-        prev.map((t) =>
-          t.id === choice.targetId
-            ? { ...t, currentLife: Math.max(0, (t.currentLife ?? 0) - rawDamage) }
-            : t
-        )
-      );
-
+      applyTokenDamage(tokenId, choice.targetId, rawDamage);
       const currentParalysis = getParalysis(engineContext, choice.targetId);
       const nextState = nextParalysisAfterHit(currentParalysis, usedMana, (remainingExtraActions.current?.extraActions ?? 0));
       if (nextState !== currentParalysis) {
@@ -2689,12 +3176,14 @@ const BoardPage: React.FC = () => {
       setPendingEsquivaRoll(null);
       setIsInDefenseResolution(false);
       if (remainingActions <= 0) {
+        console.warn("[HANDLE] Setando como pode passar o turno")
         setShouldAdvanceTurn(true);
       }
       return true;
     }
 
     // 12) Caso possa reagir, não faz mais nada aqui — o ReactionPrompt será exibido pelo JSX
+    setSelectedTarget(null)
     return true;
   };
 
@@ -2703,24 +3192,32 @@ const BoardPage: React.FC = () => {
   // - Se usedCertaintyDie = true: imunidade total imediata (encerra o ataque), apenas exibindo rolagem "travada" no histórico.
   // - Se destreza (esquiva) sem Dado Certo: inicia fluxo de resolução binária (handleDefenseResolution).
   // - Se consistência sem Dado Certo: reduz dano conforme rolagem e aplica dano restante.
+  function handleEndReaction()
+  {
+      setPendingAttack(null);
+      setPendingEsquivaRoll(null);
+      setIsInDefenseResolution(false);
+  }
+
+  function handleDefenseCardResolution(triggerToken: Token)
+  {
+    setPendingCardResolution(triggerToken);
+    setPendingAttack(null);
+    setInDefenseCardResolution(true);
+    setInCardSelection(true);
+  }
+
   const handleReaction = (
-    reactionType: "consistencia" | "destreza" | "inteligencia" | "sabedoria",
+    reactionType: "consistencia" | "destreza" | "inteligencia" | "sabedoria" | "card",
     usedMana: number,
     usedActions: number,
     roll: RollResult,
     usedCertaintyDie: boolean
   ) => {
-    console.info("[VERIFICAÇÃO] handleReaction chamada antes de qualquer validação.")
-    if (!pendingAttack) return;
-    console.info("[VERIFICAÇÃO] handleReaction chamado com:", {
-      reactionType,
-      usedMana,
-      usedActions,
-      roll,
-      usedCertaintyDie,
-      pendingAttack,
-    });
 
+    if (!pendingAttack) return;
+    if (battleState.status !== "In Battle") return;
+    console.info("Tambem entrou aqui")
     const attackerId = pendingAttack.attackerId;
     const defenderId = pendingAttack.targetId;
 
@@ -2730,13 +3227,13 @@ const BoardPage: React.FC = () => {
 
     if (!defender) return;
 
-    console.log("⚠️ ENTROU EM HANDLE REACTION DO OUTRO TOKEN");
-    combatInfo(`${defenderId} reagiu a ${attackerId}`, {
-      reactionType,
-      total: roll.total,
-      actions: usedActions,
-      mana: usedMana,
-    });
+    if(reactionType === "card" && defenderToken)
+    {
+      console.debug("Chegando aqui: ", defenderToken.name)
+      handleDefenseCardResolution(defenderToken);
+      handleEndReaction();
+      return;
+    }
 
     // Saneamento de custos do defensor
     const availableActionsDef = battleState.accumulatedActions[defenderId] ?? 1;
@@ -2832,16 +3329,13 @@ const BoardPage: React.FC = () => {
         ],
       }));
 
-      // Encerra o ataque atual imediatamente (imunidade total)
-      setPendingEsquivaRoll(null);
-      setIsInDefenseResolution(false);
-      setPendingAttack(null);
+
+      handleEndReaction()
 
       // Avança o turno do atacante se ele já não tiver ações
       const attackerActions = battleState.accumulatedActions[attackerId] ?? 1;
       console.log("ATACCKER ID: ", attackerActions);
       if (attackerActions <= 0) setShouldAdvanceTurn(true);
-
       return;
     }
 
@@ -2867,9 +3361,7 @@ const BoardPage: React.FC = () => {
         ],
       }));
 
-      setPendingAttack(null);
-      setPendingEsquivaRoll(null);
-      setIsInDefenseResolution(false);
+      handleEndReaction() 
 
       const attackerActions = battleState.accumulatedActions[attackerId] ?? 1;
       console.log("ATACCKER ID: ", attackerActions);
@@ -2938,10 +3430,7 @@ const BoardPage: React.FC = () => {
           } as ActionChoice & { round: number; attackerId?: string; targetId?: string },
         ],
       }));
-
-      setPendingAttack(null);
-      setPendingEsquivaRoll(null);
-      setIsInDefenseResolution(false);
+      handleEndReaction()
 
       const attackerActions = battleState.accumulatedActions[attackerId] ?? 1;
       console.log("ATACCKER ID: ", attackerActions);
@@ -2975,9 +3464,7 @@ const BoardPage: React.FC = () => {
         ],
       }));
 
-      setPendingAttack(null);
-      setPendingEsquivaRoll(null);
-      setIsInDefenseResolution(false);
+      handleEndReaction()
     }
     else if (reactionType === "destreza") {
       // Esquiva binária: guarda rolagem do defensor e vai para resolução com rolagem de definição do atacante
@@ -3053,13 +3540,7 @@ const BoardPage: React.FC = () => {
 
         spawnItemVFX(attackerId, defenderId, (pendingAttack.usedItem === null ? undefined : pendingAttack.usedItem), boardTokens, setBoardVfxElements, playSomeSFX)
         playSomeSFX("public/sfx/impact.mp3");
-        setBoardTokens((prev) =>
-          prev.map((t) =>
-            t.id === defenderId
-              ? { ...t, currentLife: Math.max(0, (t.currentLife ?? 0) - finalDamage) }
-              : t
-          )
-        );
+        applyTokenDamage(attackerId, defenderId, finalDamage)
 
         if (pendingAttack.usedMana > 0) {
           grantFreeActionNoReaction(engineContext, attackerId, defenderId, "paralisia_rapida", 1);
@@ -3067,9 +3548,7 @@ const BoardPage: React.FC = () => {
       }
 
       // Limpeza do ataque corrente
-      setPendingAttack(null);
-      setPendingEsquivaRoll(null);
-      setIsInDefenseResolution(false);
+      handleEndReaction()
 
       // Avança turno do atacante se sem ações
       const attackerActions = battleState.accumulatedActions[attackerId] ?? 1;
@@ -3083,18 +3562,15 @@ const BoardPage: React.FC = () => {
   };
 
   const handleExecuteResponseAction = (attackerId: string, forcedTargetId: string, choice: ExecuteChoice): boolean => {
+
+    if (battleState.status !== "In Battle") return false;
+
     const token = boardTokens.find((t) => t.id === attackerId);
     const target = boardTokens.find((t) => t.id === forcedTargetId);
-    if (!token || !target) {
-      combatInfo(`${attackerId} falhou resposta a ${forcedTargetId}: token ausente`);
-      return false;
-    }
-    combatInfo(`${attackerId} iniciou resposta a ${forcedTargetId}`, {
-      attribute: choice.attribute,
-      actions: choice.usedActions ?? 1,
-      mana: choice.usedMana ?? 0,
-    });
 
+    if (!token || !target) return false;
+
+    console.error("[HANDLE] Entrou em handleExecuteResponseAction, mas ele ainda não tem validações internas.");
 
     const coercedChoice = { ...choice, targetId: forcedTargetId };
 
@@ -3106,6 +3582,7 @@ const BoardPage: React.FC = () => {
       return false;
     }
 
+    console.error("[HANDLE] Entrou em handleExecuteResponseAction.");
     // 2) Saneamento
     const usedMana = Math.min(coercedChoice.usedMana ?? 0, token.currentMana ?? 0);
     const usedActions = Math.max(1, Math.min(coercedChoice.usedActions ?? 1, battleState.accumulatedActions[attackerId] ?? 1));
@@ -3284,9 +3761,6 @@ const BoardPage: React.FC = () => {
       atackElement: elementUsed
     });
 
-
-
-
     const currentParalysis = getParalysis(engineContext, forcedTargetId);
     const nextState = nextParalysisAfterHit(currentParalysis, usedMana, (remainingExtraActions.current.extraActions ?? 0));
     console.log("QUAL PRÓXIMO ESTADO DE PARALISIA?: ", nextState);
@@ -3302,11 +3776,7 @@ const BoardPage: React.FC = () => {
       // Aplica dano direto + progressão de paralisia
       spawnItemVFX(attackerId, forcedTargetId, pendingAttack?.usedItem, boardTokens, setBoardVfxElements, playSomeSFX);
       playSomeSFX("public/sfx/impact.mp3");
-      setBoardTokens((prev) =>
-        prev.map((t) =>
-          t.id === forcedTargetId ? { ...t, currentLife: Math.max(0, (t.currentLife ?? 0) - rawDamage) } : t
-        )
-      );
+      applyTokenDamage(attackerId, forcedTargetId, rawDamage);
 
       if (rawDamage > 0) {
 
@@ -3360,6 +3830,7 @@ const BoardPage: React.FC = () => {
         setPendingFreeResponse(null);
       }
 
+      console.error("[HANDLE] Saindo de handleExecuteResponseAction pelo caminho de 'reação não permitida'.");
       return true;
     }
     else {
@@ -3367,6 +3838,7 @@ const BoardPage: React.FC = () => {
       remainingExtraActions.current = null;
       setPendingFreeResponse(null);
       setParalysis(engineContext, forcedTargetId, "none");
+      console.error("[HANDLE] Saindo de handleExecuteResponseAction pelo caminho de 'reação permitida'.");
     }
 
     return true;
@@ -3381,6 +3853,7 @@ const BoardPage: React.FC = () => {
   ) => {
     // Precisa haver ataque e rolagem de esquiva armazenada
     if (!pendingAttack || pendingEsquivaRoll == null) return;
+    if (battleState.status !== "In Battle") return;
 
     const attackerId = pendingAttack.attackerId;
     const defenderId = pendingAttack.targetId;
@@ -3456,13 +3929,7 @@ const BoardPage: React.FC = () => {
       if (defenderToken) applyTokenEffect(engineContext, defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
       spawnItemVFX(attackerId, defenderId, pendingAttack.usedItem, boardTokens, setBoardVfxElements, playSomeSFX);
       playSomeSFX("public/sfx/impact.mp3");
-      setBoardTokens((prev) =>
-        prev.map((t) =>
-          t.id === defenderId
-            ? { ...t, currentLife: Math.max(0, (t.currentLife ?? 0) - finalDamage) }
-            : t
-        )
-      );
+      applyTokenDamage(attackerId, defenderId, finalDamage)
     }
 
 
@@ -3591,8 +4058,8 @@ const BoardPage: React.FC = () => {
       };
     });
 
-
-    switch (card.causalityType) {
+    const causalitySwitch = card.causalityType === "Defensive" ? card.defenseReplicate : card.causalityType;
+    switch (causalitySwitch) {
       case "Cure": {
         setBoardTokens((prev) =>
           prev.map((t) =>
@@ -3606,14 +4073,12 @@ const BoardPage: React.FC = () => {
         );
         break;
       }
-
       case "Offensive":
         setOffensivePendingCard(card);
         setTokensInOffensiveCard(affectedTargets);
         setOffensiveCardScore(rollScore);
         setOffensiveCardTestScore(testCardScore);
         break;
-      case "Defensive":
       case "Direct-Damage":
 
         setBoardTokens(prev => {
@@ -3705,9 +4170,11 @@ const BoardPage: React.FC = () => {
     return;
   };
 
-  const handleCardResolution = (currentId: string, target: Target, card: Card) => {
-
-    const targetType = card.target.type;
+  const handleCardResolution = (currentId: string, target: Target, card: Card, isArtifice: boolean) => {
+    console.info("[CARD] Entrando no Handle Card Resolution")
+    const targetType = card.target.type
+    console.info("[CARD] Tipo de Alvo: ", targetType)
+    console.info("[CARD] Alvo em específico: ", target.tokenTarget)
     const token = boardTokens.find((t) => t.id === currentId);
     const tokenProficiency = Math.ceil(((token?.attributes.level ?? 1) - 10) / 4 + 4);
 
@@ -3724,10 +4191,12 @@ const BoardPage: React.FC = () => {
       }
     }
     /* * */
-
-    if (pendingCardResolution) {
+    console.info("[CARD] Vai entrar no tratamento de Target?: ", pendingCardResolution)
+    if (pendingCardResolution || isArtifice) {
+      const currentTokenR = boardTokens.find((t) => t.id === currentId)
       if (targetType !== "Ambient") {
-        treatTarget(pendingCardResolution, currentId, target, card);
+        console.info("[CARD] Vai entrar no tratamento de Target")
+        if(currentTokenR) treatTarget(currentTokenR, currentId, target, card);
         setCardAreUsed(true);
       }
       else if (targetType === "Ambient") {
@@ -3819,16 +4288,8 @@ const BoardPage: React.FC = () => {
               );
             })
 
-            setBoardTokens((prev) =>
-              prev.map((t) =>
-                t.id === token.id
-                  ? {
-                    ...t,
-                    currentLife: Math.max(0, (t.currentLife ?? 0) - Math.floor(rawCardResult / 2)),
-                  }
-                  : t
-              )
-            );
+            const rawDamage = Math.floor(rawCardResult / 2);
+            applyTokenDamage(triggerOffensiveTokenId?.id!, token.id, rawDamage);
           }
           else {
             usedCard.effectToApply.forEach(e => {
@@ -3842,17 +4303,7 @@ const BoardPage: React.FC = () => {
                 "InTurn"
               );
             })
-
-            setBoardTokens((prev) =>
-              prev.map((t) =>
-                t.id === token.id
-                  ? {
-                    ...t,
-                    currentLife: Math.max(0, (t.currentLife ?? 0) - rawCardResult),
-                  }
-                  : t
-              )
-            );
+            applyTokenDamage(triggerOffensiveTokenId?.id!, token.id, rawCardResult);
           }
 
         }
@@ -3882,17 +4333,7 @@ const BoardPage: React.FC = () => {
                 "InTurn"
               );
             })
-
-            setBoardTokens((prev) =>
-              prev.map((t) =>
-                t.id === token.id
-                  ? {
-                    ...t,
-                    currentLife: Math.max(0, (t.currentLife ?? 0) - rawCardResult),
-                  }
-                  : t
-              )
-            );
+            applyTokenDamage(triggerOffensiveTokenId?.id!, token.id, rawCardResult);
           }
 
         }
@@ -4076,10 +4517,10 @@ const BoardPage: React.FC = () => {
 
   return (
     <div className="relative flex w-full min-h-screen bg-gray-900 text-white overflow-x-hidden">
-      <div className="relative flex-1 p-6" style={{ maxWidth: sidebarOpen ? `calc(100vw - ${sidebarWidth}px)` : "100vw" }}>
+      <div className="relative flex-1" style={{ maxWidth: sidebarOpen ? `calc(100vw - ${sidebarWidth}px)` : "100vw" }}>
         {/* Controls */}
         {battleState.status !== "In Battle" && (
-          <div className="absolute flex items-center gap-4 bg-gray-900 z-20 rounded-md p-2" style={{ top: 6, left: 6 }}>
+          <div className="absolute flex items-center gap-4  z-20 rounded-md p-2" style={{ top: 6, left: 6 }}>
             <SettingsDropdown
               rows={rows}
               cols={cols}
@@ -4109,7 +4550,7 @@ const BoardPage: React.FC = () => {
         )}
         {/* VIEWPORT */}
         <div
-          className="w-full h-full overflow-hidden cursor-grab"
+          className="w-full h-full overflow-hidden"
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -4125,6 +4566,7 @@ const BoardPage: React.FC = () => {
               position: "absolute",
               left: 0,
               top: 0,
+              cursor: mouseStyle,
             }}
           >
             <div style={{ paddingTop: 48 }}>
@@ -4179,7 +4621,7 @@ const BoardPage: React.FC = () => {
 
                 {/* GRID */}
                 <div
-                  className="grid relative"
+                  className="grid relative overflow-hidden"
                   style={{
                     gridTemplateColumns: `repeat(${cols}, ${cellSize}px)`,
                     backgroundImage: backgroundImage
@@ -4188,6 +4630,7 @@ const BoardPage: React.FC = () => {
                     backgroundSize: "100% 100%",
                     backgroundRepeat: "no-repeat",
                     backgroundPosition: "center",
+                    
                   }}
                 >
                   {Array.from({ length: rows }, (_, row) =>
@@ -4237,8 +4680,9 @@ const BoardPage: React.FC = () => {
                         <div
                           key={coord}
                           onClick={() => handleCellClick(l, row + 1, tok)}
+                          
                           className={[
-                            "border border-gray-700 flex items-center justify-center cursor-pointer transition-colors duration-150 relative",
+                            "border border-gray-700 flex items-center justify-center transition-colors duration-150 relative",
                             isSel
                               ? "border-green-400 shadow-[0_0_10px_2px_rgba(34,197,94,0.7)]"
                               : "hover:bg-gray-800",
@@ -4249,6 +4693,7 @@ const BoardPage: React.FC = () => {
                           style={{
                             width: cellSize,
                             height: cellSize,
+                                                    
                           }}
                           onDragOver={(e) => e.preventDefault()}
                           onDrop={(e) => {
@@ -4394,7 +4839,7 @@ const BoardPage: React.FC = () => {
                             >
                               <img
                                 src={cardInstances.pivotSettings.areaImgUrl}
-                                className="w-full h-full object-cover rounded"
+                                className="w-full h-full object-cover rounded overflow-hidden"
                               />
                             </div>
                           )}
@@ -4463,12 +4908,14 @@ const BoardPage: React.FC = () => {
             <div className="relative z-10 w-full max-w-md">
               <ActionForm
                 token={responder}
+                findedTarget={selectedTarget}
                 availableActions={battleState.accumulatedActions[responder.id] ?? 1}
                 onExecute={(choice) => {
                   handleExecuteResponseAction(responder.id, target.id, choice);
                   setControllEndResponse(false);
                   setControllEndResponse(true);
                 }}
+                onSelectionTarget={(b) => {setInTargetSelection(b);setSelectedTarget(null)}}
                 onPass={() => { }}
                 possibleTargets={[target]}
                 hidePass
@@ -4564,8 +5011,10 @@ const BoardPage: React.FC = () => {
         <div className="fixed bottom-4 left-4 z-30">
           <ActionForm
             token={currentToken}
+            findedTarget={selectedTarget}
             availableActions={battleState.accumulatedActions[currentId] ?? 0}
             onExecute={handleExecuteAction}
+            onSelectionTarget={(b) => setInTargetSelection(b)}
             onPass={handleNextTurn}
             possibleTargets={boardTokens.filter((t) => t.id !== currentId)}
             isResponseAttack={(defenderId, usedMana) => {
@@ -4591,6 +5040,7 @@ const BoardPage: React.FC = () => {
               reactionType: pendingAttack.pendingReactions[0].type as "consistencia" | "destreza",
             }}
             attackerId={pendingAttack.attackerId}
+            tokenCards={(boardTokens.find((t) => t.id === pendingAttack.targetId))?.cards}
             availableActions={battleState.accumulatedActions[pendingAttack.targetId] ?? 1}
             availableMana={boardTokens.find((t) => t.id === pendingAttack.targetId)?.currentMana ?? 0}
             certaintyDieCharges={boardTokens.find((t) => t.id === pendingAttack.targetId)?.certaintyDiceRemaining ?? 0}
@@ -4602,14 +5052,7 @@ const BoardPage: React.FC = () => {
             prevActions={remainingPrevisionAttacks.current[formatPrevisionAttackKey(pendingAttack.targetId, pendingAttack.attackerId)]}
             onSkip={() => {
               if (!pendingAttack) return;
-
-              setBoardTokens((prev) =>
-                prev.map((t) =>
-                  t.id === pendingAttack.targetId
-                    ? { ...t, currentLife: Math.max(0, (t.currentLife ?? 0) - pendingAttack.rawDamage) }
-                    : t
-                )
-              );
+              applyTokenDamage(pendingAttack.attackerId, pendingAttack.targetId, pendingAttack.rawDamage);
 
               // transição Paralisia → Paralisia Rápida (se ataque usou mana)
               const current = getParalysis(engineContext, pendingAttack.targetId);
@@ -4664,7 +5107,7 @@ const BoardPage: React.FC = () => {
                   ? { total: roll, rawRolls: [roll], usedMana: 0, CRI: 0 }
                   : (roll ?? { total: 0, rawRolls: [], usedMana: 0, CRI: 0 });
 
-              console.log("🎲 ROLL RESULT:", roll);
+              console.info("Entrou nesse lixo daqui")
               handleReaction(reactionType, usedMana, usedActions, normalized, !!usedCertaintyDie);
             }}
             onCancel={() => {
@@ -4680,13 +5123,7 @@ const BoardPage: React.FC = () => {
                 if (defenderToken) applyTokenEffect(engineContext, defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
                 spawnItemVFX(attackerToken!.id, defenderToken!.id, (pendingAttack.usedItem === null ? undefined : pendingAttack.usedItem), boardTokens, setBoardVfxElements, playSomeSFX)
                 playSomeSFX("public/sfx/impact.mp3");
-                setBoardTokens((prev) =>
-                  prev.map((t) =>
-                    t.id === pendingAttack.targetId
-                      ? { ...t, currentLife: Math.max(0, (t.currentLife ?? 0) - pendingAttack.rawDamage) }
-                      : t
-                  )
-                );
+                applyTokenDamage(pendingAttack.attackerId, pendingAttack.targetId, pendingAttack.rawDamage);
 
               }
 
@@ -4766,26 +5203,22 @@ const BoardPage: React.FC = () => {
         )}
 
       {/* Card Form */}
-      {inCardSelection && pendingCardResolution?.type === "player" && (
+      {inCardSelection && pendingCardResolution && pendingCardResolution?.type === "player" && !pendingAttack &&  (
         <>
           <CardForm
             tokenTrigger={pendingCardResolution as Token}
-            target={boardTokens.filter(
-              t => t.id !== (pendingCardResolution as Token).id
-            )}
-            availableActions={
-              battleState.accumulatedActions[
-              battleState.turnOrder[battleState.currentTurnIndex]?.tokenId
-              ] ?? 1
-            }
-            availableMana={currentToken?.currentMana ?? 0}
+            target={boardTokens.filter(t => t.id !== (pendingCardResolution as Token).id)}
+            defensiveCards={inDefenseCardResolution}
+            availableActions={searchAccumulatedActions(pendingCardResolution.id) ?? 1}
+            availableMana={searchCurrentMana(pendingCardResolution)}
             cardTimeToRecharge={(card) => formatRechargeCardRecordReturn(engineContext, (pendingCardResolution as Token).id, card.id)}
             availableCardsIds={cardsNotRechargeds.current[(pendingCardResolution as Token).id]}
             onClose={() => setInCardSelection(false)}
-            onConfirm={(card, target) => handleCardResolution(currentId, target as Target, card)}
+            onConfirm={(card, target) => handleCardResolution(pendingCardResolution.id, target as Target, card, false)}
           />
         </>
       )}
+
 
       {tokensInOffensiveCard.length > 0 &&
         offensivePendingCard && offensiveCardScore &&
@@ -4848,10 +5281,13 @@ const BoardPage: React.FC = () => {
           <InventoryUI
             key={token.id + "-" + (token.inventory.commonSlot?.length ?? 0)}
             token={token}
+            boardTokens={boardTokens}
+            battleState={battleState}
             onClose={setInventoryOpen}
             swap={(item, index) =>
               swapItemInInventory(item, index, token.id, setBoardTokens)
             }
+            useArtifice={(item, index, target) => useArtificeItem(engineContext, item, index, token.id, target, applyTokenEffect, boardTokens, setBoardTokens, battleState, handleCardResolution, setPendingCardResolution)}
           />
         );
       })()}
@@ -4899,6 +5335,15 @@ const BoardPage: React.FC = () => {
         <PresentItem
           item={presentedItem}
           onClose={() => setPresentedItem(null)}
+        />
+      )}
+
+      {currentLevelUpToken && (
+        <SkillPanel
+          token={currentLevelUpToken}
+          availablePoints={getLevelUpResult(currentLevelUpToken).pointsToAllocate}
+          onClose={handleCloseSkillPanel}
+          onConfirm={handleConfirmLevelUp}
         />
       )}
 

@@ -1,11 +1,19 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, use } from "react";
 import type { Token } from "../../types/token";
 import type { ActionChoice } from "../../types/battle";
 import { calculateDistance, isInAttackRange, calculateActionRoll } from "../../utils/battleCalculations";
-import { Swords, Sword, Brain, Book, Zap, Sparkles} from "lucide-react";
-import { GiDiceTwentyFacesTwenty, GiCardRandom} from "react-icons/gi";
+import { Sword, Brain, Book, Zap, Sparkles} from "lucide-react";
+import { GiCardRandom} from "react-icons/gi";
 import { type Item } from "../../types/item";
 import { ChevronDown, ChevronUp } from "lucide-react";
+
+
+import PANNEL1 from "../../assets/hud/PANNEL1.svg"
+import BLUEBUTTOM from "../../assets/buttons/BLUEBUTTOM.svg"
+import GRAYBUTTOM from "../../assets/buttons/GRAYBUTTOM.svg"
+import LEFTARROW from "../../assets/buttons/LEFTARROW.svg"
+import RIGHTARROW from "../../assets/buttons/RIGHTARROW.svg"
+import MINIPANNEL1 from "../../assets/hud/MINIPANNEL1.svg"
 
 
 type AttackAttr = "ataque_fisico" | "surpreender" | "desnortear" | "previnir" | "mana_recover" | "card_selection";
@@ -26,7 +34,9 @@ interface ActionFormProps {
   ) => void;
 
   onPass: () => void;
+  onSelectionTarget: (b: boolean) => void;
   possibleTargets: Token[];
+  findedTarget: Token | null;
   isResponseAttack?: (defenderId: string, usedMana: number) => boolean;
   hidePass?: boolean; // NOVO: oculta o botão de "pular"
   restrictedMode: boolean;
@@ -36,19 +46,22 @@ const ActionForm: React.FC<ActionFormProps> = ({
   token,
   availableActions,
   onExecute,
+  onSelectionTarget,
   onPass,
   possibleTargets,
+  findedTarget,
   isResponseAttack,
   hidePass,
   restrictedMode,
 }) => {
-  const [selectedAction, setSelectedAction] = useState<AttackAttr | null>(null);
+  const [selectedAction, setSelectedAction] = useState<AttackAttr | null>("ataque_fisico");
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [usedMana, setUsedMana] = useState<number>(0);
   const [usedActions, setUsedActions] = useState<number>(1);
   const [pos, setPos] = useState<number>(1);
   const willBeResponse = selectedTarget ? !!isResponseAttack?.(selectedTarget, usedMana) : false;
   const [displayForm, setDisplayForm] = useState(true);
+  const [formPage, setFormPage] = useState<number>(1);
 
   const equippedItems: Item[] = [
     token.inventory.primaryHand,
@@ -62,9 +75,86 @@ const ActionForm: React.FC<ActionFormProps> = ({
   const commonItems: Item[] = token.inventory.commonSlot ?? []; // Atualizar, para itens específicos usáveis na mochila
   const availableItems: Item[] = [...equippedItems];
 
+  //Seleção de Ação
+  const actionOptions = [
+    {
+      value: "ataque_fisico",
+      label: "Ataque Físico",
+      icon: <Sword className="inline-block" />,
+      color: "text-red-400",
+    },
+
+    ...(!restrictedMode ? [{
+      value: "surpreender",
+      label: "Surpreender",
+      icon: <Zap className="inline-block" />,
+      color: "text-yellow-400",
+    }] : []),
+
+    ...(!restrictedMode ? [{
+      value: "desnortear",
+      label: "Desnortear",
+      icon: <Book className="inline-block" />,
+      color: "text-purple-400",
+    }] : []),
+
+    ...(!restrictedMode ? [{
+      value: "previnir",
+      label: "Previnir",
+      icon: <Brain className="inline-block" />,
+      color: "text-pink-400",
+    }] : []),
+
+    ...(!restrictedMode ? [{
+      value: "mana_recover",
+      label: "Recarregar",
+      icon: <Sparkles className="inline-block" />,
+      color: "text-blue-400",
+    }] : []),
+
+    ...(!restrictedMode ? [{
+      value: "card_selection",
+      label: "Cards",
+      icon: <GiCardRandom className="inline-block text-xl" />,
+      color: "text-orange-400",
+    }] : []),
+  ];  
+  const currentIndex =
+    Math.max(
+      0,
+      actionOptions.findIndex(
+        a => a.value === selectedAction
+      )
+    );  
+  function nextAction()
+  {
+    const next =
+      (currentIndex + 1) %
+      actionOptions.length;
+
+    setSelectedAction(
+      actionOptions[next].value as AttackAttr
+    );
+  }
+
+  function prevAction()
+  {
+    const prev =
+      (currentIndex - 1 + actionOptions.length) %
+      actionOptions.length;
+
+    setSelectedAction(
+      actionOptions[prev].value as AttackAttr
+    );
+  }  
+
+  // Seleção de alvo
+  const [inTargetSelection, setInTargetSelection] = useState(false);
+
   // Selecionar item
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [itemCoerentAdd, setItemCoerentAdd] = useState<boolean>(false);
+  const [isOpen, setIsOpen] = useState(false);
   const itemOcasionalAdd = useRef<number>(0);
   useEffect(() => {
     itemOcasionalAdd.current = (selectedItem?.ocasionalAdd ?? 0);
@@ -88,312 +178,448 @@ const ActionForm: React.FC<ActionFormProps> = ({
   const distance = targetToken ? calculateDistance(token, targetToken) : 0;
   const maxRange = isPhysicalAttack ? token.bodytobodyRange : token.magicalRange;
 
-  const hasEnoughActions =
-    usedActions >= 1 && usedActions <= Math.max(1, availableActions);
+  const hasEnoughActions = usedActions >= 1 && usedActions <= Math.max(1, availableActions);
   const hasEnoughMana = usedMana >= 0 && usedMana <= (token.currentMana ?? 0);
-  const isFormValid =
-    !!selectedAction && !!selectedTarget && hasEnoughActions && hasEnoughMana && !!canAttack || selectedAction === "mana_recover" || selectedAction === "card_selection";
+  const isFormValid = !!selectedAction && !!selectedTarget && hasEnoughActions && hasEnoughMana && !!canAttack || selectedAction === "mana_recover" || selectedAction === "card_selection";
 
-    useEffect(() => {
-  if (selectedAction === "mana_recover" || selectedAction === "card_selection") {
-    setUsedCertaintyDie(false);
-    setUsedMana(0);
-    setSelectedTarget(null); // desmarca quando fica oculto
+  useEffect(() => {
+    if (selectedAction === "mana_recover" || selectedAction === "card_selection") {
+      setUsedCertaintyDie(false);
+      setUsedMana(0);
+      setSelectedTarget(null); // desmarca quando fica oculto
+    }
+  }, [selectedAction]);
+
+  useEffect(() => {
+
+    if(!findedTarget || restrictedMode) return
+
+    const validTarget = findedTarget.team !== token.team && canAttack
+
+    if(!validTarget) return
+
+    if(findedTarget !== null)
+    {
+      console.debug("Detecta?")
+      setSelectedTarget(findedTarget.id)
+      setInTargetSelection(false)
+      setDisplayForm(true)
+    }
+  }, [findedTarget])
+
+  useEffect(() => {
+    if(restrictedMode)
+    {
+      setSelectedTarget(possibleTargets[0].id)
+      setSelectedAction("ataque_fisico")
+    }
+  }, [restrictedMode, selectedTarget])
+
+  const openTargetSelection = () =>
+  {
+    setInTargetSelection(true)
+    onSelectionTarget(true)
+    setDisplayForm(false)
   }
-}, [selectedAction]);
 
   const handleExecute = () => {
-    if (!isFormValid) return;
+      if (!isFormValid) return;
+      
+      const allowedCertaintyDie = (selectedAction !== "mana_recover" && selectedAction !== "card_selection")
+      if(certaintyLeft > 0 && allowedCertaintyDie && formPage !== 2)
+      {
+        setFormPage(2);
+        return;
+      }
 
-    const respectiveAtribute = selectedAction === "ataque_fisico" ? "forca": (selectedAction === "desnortear" ? "sabedoria": (selectedAction === "previnir" ? "inteligencia" : "destreza"));
+      const respectiveAtribute = selectedAction === "ataque_fisico" ? "forca": (selectedAction === "desnortear" ? "sabedoria": (selectedAction === "previnir" ? "inteligencia" : "destreza"));
     
+      const params = {
+        tokenId: token.id,
+        Q: usedActions,
+        P: pos,
+        A: token.attributes[respectiveAtribute!],
+        PF: token.proficiencies[respectiveAtribute!] ? Math.ceil((token.attributes.level - 10) / 4 + 4) : 0,
+        O: 0,
+        N: usedMana > 0 ? 1 : 0,
+        L: token.attributes.level,
+        M: usedMana,
+      };
+      const rollResult = calculateActionRoll(params) as any; // garante o shape esperado de RollResult
+
+      const actionType = selectedAction === "ataque_fisico" ? "Ataque Físico": (selectedAction === "desnortear" ? "Desnortear": (selectedAction === "previnir" ? "Previnir" : (selectedAction === "surpreender" ? "Surpreender" : (selectedAction === "mana_recover" ? "Recarga de Mana" : "Seleção de Card"))));
+
+      onExecute({
+        attribute: respectiveAtribute!,
+        type: actionType,
+        targetId: selectedTarget!,
+        usedMana,
+        usedActions,
+        usedCertaintyDie,
+        pos,
+        rollResult,
+        actionType: selectedAction,
+        item: selectedItem // novo campo
+      });
 
 
-    const params = {
-      tokenId: token.id,
-      Q: usedActions,
-      P: pos,
-      A: token.attributes[respectiveAtribute!],
-      PF: token.proficiencies[respectiveAtribute!] ? Math.ceil((token.attributes.level - 10) / 4 + 4) : 0,
-      O: 0,
-      N: usedMana > 0 ? 1 : 0,
-      L: token.attributes.level,
-      M: usedMana,
+      setUsedCertaintyDie(false);
+      setUsedMana(0);
+      setUsedActions(1);
+      setSelectedAction(null);
+      setSelectedTarget(null);
+
+      if(formPage !== 1)
+      {
+        setFormPage(1);
+      }
+
     };
-    const rollResult = calculateActionRoll(params) as any; // garante o shape esperado de RollResult
-
-    const actionType = selectedAction === "ataque_fisico" ? "Ataque Físico": (selectedAction === "desnortear" ? "Desnortear": (selectedAction === "previnir" ? "Previnir" : (selectedAction === "surpreender" ? "Surpreender" : (selectedAction === "mana_recover" ? "Recarga de Mana" : "Seleção de Card"))));
-
-  onExecute({
-    attribute: respectiveAtribute!,
-    type: actionType,
-    targetId: selectedTarget!,
-    usedMana,
-    usedActions,
-    usedCertaintyDie,
-    pos,
-    rollResult,
-    actionType: selectedAction,
-    item: selectedItem // novo campo
-  });
-
-    setUsedCertaintyDie(false);
-    setUsedMana(0);
-    setUsedActions(1);
-    setSelectedAction(null);
-    setSelectedTarget(null);
-  };
 
 
   return (
-    <div>
-        {displayForm && (      <div className={`fixed inset-0 flex items-center justify-center backdrop-blur-md`}>
-        <div
-                className={`rounded-lg bg-gray-900/90 backdrop-blur-md border p-4 shadow-xl w-[500px]
-                ${willBeResponse ? "border-red-600" : "border-gray-700"}`}
-              >
-                <div className="flex flex-col gap-3">
-                  
-                <div className="flex items-center justify-center text-sm text-gray-300 w-full">
-                  <div className="flex items-center">
-                    <Swords className="h-5 w-5 text-red-500 mr-1" />
-
-                    <span className="font-semibold">
-                      TURNO DE {token.name.toUpperCase()}
-                    </span>
-                  </div>
+    <div>  
+        {displayForm && ( 
+          <div className={`fixed inset-0 flex items-center justify-center backdrop-blur-md`}>
+              <img
+              src={PANNEL1}
+              alt=""
+              className="
+                absolute
+                inset-0
+                w-[750px]
+                left-1/2 -translate-x-1/2
+                top-1/2 -translate-y-1/2
+                object-fill
+                pointer-events-none
+                z-0
+              "
+            />
+          <div className="relative w-[650px] h-[500px]">
+            <div className="flex flex-col gap-3">
+              
+              <div className="flex items-center justify-center text-sm text-gray-300 w-full mb-4 z-1">
+                <div className="flex items-center">
+                  <span className="font-semibold text-lg">
+                    {restrictedMode ? `RESP. DE ${token.name.toUpperCase()}` : `TURNO DE ${token.name.toUpperCase()}`}
+                  </span>
                 </div>
+              </div>
+              {formPage === 1 && (
+                <div className="absolute p-0 m-0 w-[90%] left-1/2 -translate-x-1/2 translate-y-1/3">
+                  
+                  <div className="text-lm font-semibold z-1">
+                    <p className="text-blue-500">Tipo de Ação</p>
+                  </div>
+                  <div className="flex items-center justify-between bg-black/50 border border-cyan-600 rounded-lg px-4 py-3 z-1 mb-4">
 
-                  {/* Seleção de Ação */}
-                  <div className="text-xs text-gray-400">Tipo de Ações</div>
-                  <div className="grid grid-cols-2 gap-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => setSelectedAction("ataque_fisico")}
-                      className={`flex-1 py-2 px-3 rounded font-semibold text-sm transition-colors ${
-                        selectedAction === "ataque_fisico"
-                          ? "bg-red-600 text-white"
-                          : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                      }`}
+                      onClick={prevAction}
+                      className="relative w-[20px] h-[20px] text-gray-400 hover:text-white text-xl"
                     >
-
-                      <Sword className={`gap-2 inline-block text-white`}/> Ataque Físico
+                      <img
+                          src={LEFTARROW}
+                          alt=""
+                          className="
+                            absolute
+                            inset-0
+                            w-full
+                            scale-180
+                            object-fill
+                            pointer-events-none
+                            z-5
+                          "
+                        />   
+                                          
                     </button>
-                    {((!restrictedMode)) && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedAction("surpreender")}
-                        className={`flex-1 py-2 px-3 rounded font-semibold text-sm transition-colors ${
-                          selectedAction === "surpreender"
-                            ? "bg-yellow-600 text-white"
-                            : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                        }`}
-                      >
-                        <Zap className={`gap-2 inline-block hover text-white`}/> Surpreender
-                      </button>
-                    )}
-                    {(!restrictedMode) && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedAction("desnortear")}
-                        className={`flex-1 py-2 px-3 rounded font-semibold text-sm transition-colors ${
-                          selectedAction === "desnortear"
-                            ? "bg-purple-600 text-white"
-                            : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                        }`}
-                      >
-                        <Book className={`gap-2 inline-block text-white`}/> Desnortear
-                      </button>
-                    )}
-                    {(!restrictedMode) && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedAction("previnir")}
-                        className={`flex-1 py-2 px-3 rounded font-semibold text-sm transition-colors ${
-                          selectedAction === "previnir"
-                            ? "bg-pink-500 text-white"
-                            : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                        }`}
-                      >
-                        <Brain className={`gap-2 inline-block text-white`}/> Previnir
-                      </button> 
-                    )}
-                    {(!restrictedMode) && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedAction("mana_recover")}
-                        className={`flex-1 py-2 px-3 rounded font-semibold text-sm transition-colors ${
-                          selectedAction === "mana_recover"
-                            ? "bg-blue-500 text-white"
-                            : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                        }`}
-                      >
-                        <Sparkles className={`gap-2 inline-block text-white`}/> Recarregar
-                      </button> 
-                    )}
-                    {(!restrictedMode) && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedAction("card_selection")}
-                        className={`flex-1 py-2 px-3 rounded font-semibold text-sm transition-colors ${
-                          selectedAction === "card_selection"
-                            ? "bg-orange-500 text-white"
-                            : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                        }`}
-                      >
-                        <GiCardRandom className={`gap-2 inline-block text-2xl text-white`}/> Cards
-                      </button> 
-                    )}                      
-                          
-                  </div>
 
-                  {/* Seleção de Alvo */}
-                  {selectedAction !== "mana_recover" && selectedAction !== "card_selection" &&(
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">Alvo</label>
-                    <select
-                      value={selectedTarget ?? ""}
-                      onChange={(e) => setSelectedTarget(e.target.value || null)}
-                      className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:border-green-400 focus:outline-none text-sm"
+                    <div
+                      className={`font-semibold flex items-center gap-2
+                        ${actionOptions[currentIndex].color}
+                      `}
                     >
-                      <option value="">Selecione um alvo</option>
-                      {possibleTargets.filter(t => t.team !== token.team && (t.currentLife ?? 0) > 0).map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  )}
-                  {/* Indicador de Distância */}
-                  {targetToken && selectedAction !== "mana_recover" &&(
-                    <div className="text-xs">
-                      {canAttack
-                        ? `✓ Distância: ${distance} célula(s) (Alcance: ${maxRange})`
-                        : `✗ Fora do alcance! Distância: ${distance}, Alcance: ${maxRange}`}
+                      {actionOptions[currentIndex].icon}
+                      {actionOptions[currentIndex].label}
                     </div>
-                  )}
 
-                  {/* Ações Usadas */}
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">
-                      Ações Usadas (Disponível: {availableActions})
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={Math.max(1, availableActions)}
-                      value={usedActions}
-                      onChange={(e) =>
-                        setUsedActions(
-                          Math.max(1, Math.min(Math.max(1, availableActions), Number(e.target.value)))
-                        )
-                      }
-                      className={`w-full p-2 rounded border focus:outline-none text-sm ${
-                        !hasEnoughActions
-                          ? "bg-red-900 border-red-600 text-red-100"
-                          : "bg-gray-700 border-gray-600 text-white"
-                      }`}
-                    />
+                    <button
+                      type="button"
+                      onClick={nextAction}
+                      className="relative w-[20px] h-[20px] text-gray-400 hover:text-white text-xl"
+                    >
+                      <img
+                          src={RIGHTARROW}
+                          alt=""
+                          className="
+                            absolute
+                            inset-0
+                            w-full
+                            scale-180
+                            object-fill
+                            pointer-events-none
+                            z-5
+                          "
+                        />                        
+                    </button>
+
                   </div>
 
-                {/* Item */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">
-                    Item 
-                  </label>
+                  <div className="text-lm font-semibold p-0 z-10 mb-3">
+                    <p className="text-blue-500">Estatísticas</p>
+                  </div>                          
+                  {/* Estatísticas */}
+                  <div className="relative grid grid-cols-2 gap-2 items-start rounded-lg p-2 z-1">
+                    {/* Ações Usadas */}
+                      <img
+                          src={MINIPANNEL1}
+                          alt=""
+                          className="
+                            absolute
+                            inset-0
+                            w-full
+                            scale-105
+                            -translate-y-4
+                            object-fill
+                            pointer-events-none
+                            z-5
+                          "
+                        />                
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">
+                        Ações Usadas (Disponível: {availableActions})
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={Math.max(1, availableActions)}
+                        value={usedActions}
+                        onChange={(e) =>
+                          setUsedActions(
+                            Math.max(1, Math.min(Math.max(1, availableActions), Number(e.target.value)))
+                          )
+                        }
+                        className={`w-full p-2 rounded border focus:outline-none text-sm ${
+                          !hasEnoughActions
+                            ? "bg-red-900 border-red-600 text-red-100"
+                            : "bg-black/70 border-gray-600 text-white"
+                        }`}
+                      />
+                    </div>                    
+                    
+                    {/* Seleção de Alvo + Indicador de Distância */}
+                    {/* */}
+                    {/* Seleção de alvos atualizada */}
+                    {selectedAction !== "mana_recover" && selectedAction !== "card_selection" && (
+                      <div className="flex flex-col gap-1">
+                        <label className="block text-xs text-gray-400">Alvo</label>
+                          <button
+                            onClick={() => openTargetSelection()}
+                            disabled={restrictedMode}
+                            className={`w-full p-2 rounded bg-black/70 text-white border border-gray-600 focus:border-blue-400 focus:outline-none text-sm
+                            disabled:opacity-50 disabled:cursor-not-allowed`}
+                          >
+                            {restrictedMode
+                              ? `${targetToken?.name}`
+                              : selectedTarget
+                              ? `${findedTarget?.name}`
+                              : `Nenhum alvo`}
+                          </button>
+                      </div>
+                    )}
 
-                  <select
-                    value={selectedItem?.id ?? ""}
-                    onChange={(e) => {
-                      const item =
-                        availableItems.find(i => i.id === e.target.value) ?? null;
+                    {/* Mana Usada */}
+                    {selectedAction !== "mana_recover" && selectedAction !== "card_selection" &&  (
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">
+                        Mana Usada (Disponível: {token.currentMana ?? 0})
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={token.currentMana ?? 0}
+                        value={usedMana}
+                        onChange={(e) =>
+                          setUsedMana(Math.max(0, Math.min(token.currentMana ?? 0, Number(e.target.value))))
+                        }
+                        className={`w-full p-2 rounded border focus:outline-none text-sm ${
+                          !hasEnoughMana
+                            ? "bg-red-900 border-red-600 text-red-100"
+                            : "bg-black/70 border-gray-600 text-white"
+                        }`}
+                      />
+                    </div>
+                    )}
 
-                      setSelectedItem(item);
-                    }}
+                    {/* Item */}
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">
+                        Item 
+                      </label>
 
-                    className={`w-full p-2 rounded ${itemCoerentAdd ? "bg-gray-700" : "bg-red-700"} text-white border ${itemCoerentAdd ? "border-gray-600" : "border-red-600"} border-gray-600 text-sm`}
-                  >
-                    <option value="">Nenhum item</option>
+                      <div className="relative">
 
-                    {availableItems.map(item => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
+                        <button
+                          type="button"
+                          onClick={() => setIsOpen(prev => !prev)}
+                          className="w-full p-1.5 rounded bg-black/70 border border-gray-600 text-center"
+                        >
+                          {selectedItem
+                            ? selectedItem.name
+                            : (
+                              <span className="text-gray-400 italic">
+                                Nenhum item
+                              </span>
+                            )
+                          }
+                        </button>
+
+                        {isOpen && (
+                          <div className="absolute z-50 mt-1 w-full rounded bg-gray-800 border border-gray-700 shadow-lg max-h-60 overflow-y-auto">
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedItem(null);
+                                setIsOpen(false);
+                              }}
+                              className="w-full text-left px-3 py-2 text-gray-400 italic hover:bg-gray-700"
+                            >
+                              Nenhum item
+                            </button>
+
+                            {availableItems.map(item => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedItem(item);
+                                  setIsOpen(false);
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-gray-700 text-white"
+                              >
+                                {item.name}
+                              </button>
+                            ))}
+
+                          </div>
+                        )}
+
+                      </div>
+                    </div>
+
+
+                  </div>                  
                 </div>
-
-                  {/* Mana Usada */}
-                  {selectedAction !== "mana_recover" && selectedAction !== "card_selection" &&  (
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">
-                      Mana Usada (Disponível: {token.currentMana ?? 0})
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={token.currentMana ?? 0}
-                      value={usedMana}
-                      onChange={(e) =>
-                        setUsedMana(Math.max(0, Math.min(token.currentMana ?? 0, Number(e.target.value))))
-                      }
-                      className={`w-full p-2 rounded border focus:outline-none text-sm ${
-                        !hasEnoughMana
-                          ? "bg-red-900 border-red-600 text-red-100"
-                          : "bg-gray-700 border-gray-600 text-white"
-                      }`}
-                    />
-                  </div>
-                  )}
+              )}
+              {formPage === 2 && (
+                <div>
                   {/* Dado Certo */}
                   {selectedAction !== "mana_recover" && selectedAction !== "card_selection" && (
-                  <div className="flex items-center justify-between bg-gray-800/60 rounded p-2">
-                    <label htmlFor="use-certainty" className="text-sm text-gray-200 flex items-center gap-2">
-                      <input
-                        id="use-certainty"
-                        type="checkbox"
-                        className="h-4 w-4"
-                        disabled={certaintyLeft <= 0}
-                        checked={usedCertaintyDie}
-                        onChange={(e) => setUsedCertaintyDie(e.target.checked)}
-                      />
-                      Usar Dado Certo
-                    </label>
-                    <span className="text-xs text-gray-400">Restantes: {certaintyLeft}</span>
-                  </div>
-                  )}
-                  {/* Botões */}
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={handleExecute}
-                      className="flex-1 py-2 bg-purple-600 hover:bg-purple-500 cursor-pointer rounded text-white text-sm font-bold disabled:opacity-50"
-                      disabled={!isFormValid}
-                    >
-                      <GiDiceTwentyFacesTwenty className="gap-2 inline-block"/> 
-                      {selectedAction === "card_selection" &&(
-                        <p className="inline-block"> Selecionar</p>
-                          
-                      )
-                      }
-                      {selectedAction !== "card_selection" &&(
-                        <div className="inline-block">
-                          Executar
-                        </div>
-                      )
-                      }
-                    </button>
-                    {!hidePass && (
-                      <button type="button" onClick={onPass}className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white text-sm" >
-                        Passar
-                      </button>
-                    )}
-
-                  </div>
+                    <div className="flex items-center justify-between bg-gray-800/60 rounded p-2">
+                      <label htmlFor="use-certainty" className="text-sm text-gray-200 flex items-center gap-2">
+                        <input
+                          id="use-certainty"
+                          type="checkbox"
+                          className="h-4 w-4"
+                          disabled={certaintyLeft <= 0}
+                          checked={usedCertaintyDie}
+                          onChange={(e) => setUsedCertaintyDie(e.target.checked)}
+                        />
+                        Usar Dado Certo
+                      </label>
+                      <span className="text-xs text-gray-400">Restantes: {certaintyLeft}</span>
+                    </div>
+                  )} 
                 </div>
-        </div>
-      </div>)}
+              )}
+
+
+
+
+              {/* Botões */}
+              <div className="absolute bottom-7 left-1/2 -translate-x-1/2 flex gap-2 w-[650px]">
+
+                <button
+                  type="button"
+                  onClick={handleExecute}
+                  className="relative flex-1 py-2 cursor-pointer rounded text-white text-sm font-bold disabled:opacity-50 z-1"
+                  disabled={!isFormValid}
+                >
+                  <img
+                      src={BLUEBUTTOM}
+                      alt=""
+                      className="
+                        absolute
+                        inset-0
+                        w-full
+                        h-full
+                        scale-180
+                        object-fill
+                        pointer-events-none
+                      "
+                    />
+
+                    <span
+                      className="
+                        relative
+                        z-10
+                        flex
+                        items-center
+                        justify-center
+                        h-full
+                        text-white
+                        font-bold
+                        text-sm
+                      "
+                    >
+                      Executar
+                    </span>
+                </button>
+
+                {!hidePass && (
+                  <button
+                    type="button"
+                    onClick={onPass}
+                    className="relative flex-1 py-2 rounded text-white text-sm font-bold z-1"
+                  >
+                  <img
+                      src={GRAYBUTTOM}
+                      alt=""
+                      className="
+                        absolute
+                        inset-0
+                        w-full
+                        h-full
+                        scale-180
+                        object-fill
+                        pointer-events-none
+                      "
+                    />
+
+                    <span
+                      className="
+                        relative
+                        z-10
+                        flex
+                        items-center
+                        justify-center
+                        h-full
+                        text-white
+                        font-bold
+                        text-sm
+                      "
+                    >
+                      Passar
+                    </span>                        
+                  </button>
+                )}
+
+              </div>
+            </div>
+          </div>
+          </div>
+        )}
         <button
           onClick={() => setDisplayForm(!displayForm)}
           className={`

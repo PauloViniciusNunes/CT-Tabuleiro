@@ -1,9 +1,11 @@
-import React, { useState, type FormEvent } from "react";
+import React, { useEffect, useState, type FormEvent } from "react";
 import type { Item } from "../../types/item";
 import type { Card } from "../../types/card";
 import type { ItemSlot, ItemRarity } from "../../types/item";
 import type { TokenAttributes } from "../../types/token";
 import { type ChangeEvent } from "react";
+import { type EffectType } from "../../types/effects";
+import { EFFECT_TYPES } from "../../types/effects";
 
 interface ItemCreateProps {
   availableCards: Card[];
@@ -27,16 +29,25 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
 
   const [selectedCards, setSelectedCards]   = useState<Card[]>([]);
   const [cardPickerOpen, setCardPickerOpen] = useState<boolean>(false);
+  const [artificeCardPickerOpen, setArtificeCardPickerOpen] = useState<boolean>(false);
+  
   const [craftable, setCraftable] = useState(false);
-  const [haveVfx, setHaveVfx] = useState<boolean>(false);
+  
+  const [artifice, setArtifice]   = useState(false);
+  const [artificeManaAdd, setArtificeManaAdd] = useState(0);
+  const [artificeLifeAdd, setArtificeLifeAdd] = useState(0);
+  const [artificeEffectApply, setArtificeEffectApply] = useState<EffectType | null>(null);
+  const [artificeCardDispach, setArtificeCardDispach] = useState<Card | null>(null);
 
-  const toggleCard = (card: Card) => {
-    setSelectedCards(prev =>
-      prev.some(c => c.id === card.id)
-        ? prev.filter(c => c.id !== card.id)
-        : [...prev, card]
-    );
-  };
+  useEffect(() => {
+    if(!artifice)
+    {
+      setArtificeManaAdd(0);
+      setArtificeLifeAdd(0);
+      setArtificeEffectApply(null);
+      setArtificeCardDispach(null);
+    }
+  }, [artifice])
 
   const [itemName, setItemName]   = useState<string>("")
   const [itemDesc, setItemDesc]   = useState<string>("")
@@ -97,6 +108,14 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
       rarity,
       value: itemValue,
       craftable,
+      isArtifice: artifice,
+      artficeSettings: 
+      {
+        lifeAdd: artificeLifeAdd,
+        manaAdd: artificeManaAdd,
+        effectToApply: artificeEffectApply,
+        cardDispach: artificeCardDispach,
+      },
       craftableWith: undefined,
       vfxUrl: itemVFXurl,
       sfxUrl: itemSFXurl,
@@ -176,6 +195,125 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
           </select>
         </label>
         
+        <label className="flex items-center gap-2 mb-2">
+          <input
+            type="checkbox"
+            checked={artifice}
+            onChange={e => setArtifice(e.target.checked)}
+            className="accent-blue-400"
+          />
+          <span className="text-sm font-semibold">Item é artifício?</span>
+        </label>
+
+        {artifice && (
+          <div>
+            <span className="text-sm font-semibold">Configurações de Artifício</span>
+            <fieldset className="border border-gray-600 rounded p-3 mb-3">
+              <span className="text-sm font-semibold">Adição de Vida:</span>
+              <input
+                type="number"
+                className="bg-gray-700 border border-gray-600 rounded p-1 text-center"
+                value={artificeLifeAdd}
+                onChange={e => setArtificeLifeAdd(Number(e.target.value))}
+              />
+              <span className="text-sm font-semibold">Adição de Mana:</span>
+              <input
+                type="number"
+                className="bg-gray-700 border border-gray-600 rounded p-1 text-center"
+                value={artificeManaAdd}
+                onChange={e => setArtificeManaAdd(Number(e.target.value))}
+              />
+              <span className="text-sm font-semibold">Efeito de Aplicação:</span>
+              <select
+                defaultValue="none"
+                onChange={(e) => {
+                  setArtificeEffectApply(e.target.value as EffectType)
+                }}
+                className="bg-gray-700 border border-gray-600 rounded p-2 text-sm w-full"
+              >
+                {EFFECT_TYPES.map((effect) => (
+                  <option key={effect} value={effect}>
+                    {effect}
+                  </option>
+                ))}
+              </select>  
+              <span className="text-sm font-semibold">Card de Disparo:</span>
+              <fieldset className="border border-gray-600 p-3 rounded bg-gray-700 bg-opacity-50 mb-2">
+                  <legend className="font-semibold text-blue-400 px-2">Card</legend>
+                  <button
+                    type="button"
+                    onClick={() => setArtificeCardPickerOpen(true)}
+                    className="w-full text-center bg-blue-600 hover:bg-blue-500 cursor-pointer px-6 py-2 rounded font-semibold transition-colors"
+                  >
+                    + Adicionar Card
+                  </button>
+                  
+                  <div className="pt-2">
+                    {!artificeCardDispach ? (
+                      <p className="text-gray-400 text-sm text-center">Card de disparo não definido.</p>
+                    ) : (
+                        <div
+                          key={artificeCardDispach.id}
+                          className="bg-gray-800 p-3 rounded flex flex-col gap-2 hover:bg-gray-750 transition-colors"
+
+                        >
+                          <div className="flex items-start gap-3">
+                              <img
+                                src={artificeCardDispach.img}
+                                alt="Card"
+                                className="w-12 h-12 object-cover rounded border border-gray-600"
+                                draggable={false}
+                              />
+
+                              <div className="flex-1 overflow-hidden">
+                                <h2 className="text-sm font-bold text-white line-clamp-2">
+                                  {artificeCardDispach.name}
+                                </h2>
+                              </div>
+                              
+                              <div className="flex flex-wrap gap-2 text-xs text-gray-400">
+                                <span className="bg-gray-700 px-2 py-0.5 rounded">
+                                  Ações: {artificeCardDispach.actionsRequired}
+                                </span>
+
+                                {artificeCardDispach.baseDice && (
+                                  <span className="bg-gray-700 px-2 py-0.5 rounded">
+                                    {artificeCardDispach.baseDice.quantity}
+                                    {artificeCardDispach.baseDice.type}
+                                  </span>
+                                )}
+
+                                {artificeCardDispach.manaRequired && (
+                                  <span className="bg-blue-700/40 px-2 py-0.5 rounded text-blue-300">
+                                    Mana: {artificeCardDispach.manaRequired}
+                                  </span>
+                                )}
+                              </div>
+
+                              <button
+                                onClick={() =>
+                                  setArtificeCardDispach(null)
+                                }
+                                className="text-red-400 hover:text-red-300 text-sm"
+                                title="Remover card"
+                              >
+                                ✕
+                              </button>
+                                                                                                      
+                          </div>
+                        </div>
+
+                    )
+                    }
+                  </div>
+
+              </fieldset>                         
+            </fieldset>
+          </div>
+
+        )
+        }
+
         {/* VFX */}
         <label className="flex flex-col gap-1">
           <span className="font-semibold text-sm">VFX Frames</span>
@@ -438,7 +576,68 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
             </button>
           </div>
         </div>
-      )}      
+      )}  
+
+      {artificeCardPickerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-lg w-full max-w-md p-4 shadow-xl">
+            <h3 className="text-lg font-bold text-orange-400 mb-3 text-center">
+              Selecionar Card
+            </h3>
+
+            <div className="max-h-[320px] overflow-y-auto space-y-2">
+              {availableCards.length === 0 ? (
+                <p className="text-gray-400 text-sm text-center">
+                  Nenhum card na biblioteca.
+                </p>
+              ) : (
+                availableCards.map((card) => {
+                  const alreadyAdded = artificeCardDispach ? card.id === artificeCardDispach.id : false;
+
+                  return (
+                    <button
+                      key={card.id}
+                      disabled={alreadyAdded}
+                      onClick={() => {
+                        if (alreadyAdded) return;
+                        setArtificeCardDispach(card);
+                        setArtificeCardPickerOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 p-2 rounded
+                        ${
+                          alreadyAdded
+                            ? "bg-gray-700 opacity-50 cursor-not-allowed"
+                            : "bg-gray-700 hover:bg-gray-600"
+                        }`}
+                    >
+                      <img
+                        src={card.img}
+                        alt={card.name}
+                        className="w-10 h-10 object-cover rounded"
+                      />
+                      <div className="flex-1 text-left">
+                        <p className="text-sm font-semibold text-white">
+                          {card.name}
+                        </p>
+                        <p className="text-xs text-gray-400 line-clamp-1">
+                          {card.causality}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            <button
+              onClick={() => setArtificeCardPickerOpen(false)}
+              className="mt-4 w-full bg-red-600 hover:bg-red-700 py-2 rounded font-semibold"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}            
     </div>
   );
 };

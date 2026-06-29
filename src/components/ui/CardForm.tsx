@@ -8,6 +8,7 @@ interface CardFormProps {
   tokenTrigger: Token;
   availableActions: number;
   availableMana: number;
+  defensiveCards: boolean;
   cardTimeToRecharge:(card: Card) => number;
   target: Token[];
   availableCardsIds: string[];
@@ -19,6 +20,7 @@ const CardForm: React.FC<CardFormProps> = ({
   tokenTrigger,
   availableActions,
   availableMana,
+  defensiveCards,
   target,
   availableCardsIds,
   cardTimeToRecharge,
@@ -38,6 +40,11 @@ const CardForm: React.FC<CardFormProps> = ({
   });
 
   const proficiency = Math.ceil(((tokenTrigger.attributes.level - 10) / 4) + 4)
+  const filteredCards = tokenTrigger.cards.filter(card =>
+    defensiveCards
+      ? card.causalityType === "Defensive"
+      : card.causalityType !== "Defensive"
+  );  
   const canUseCard =
     selectedCard &&
     (selectedCard.actionsRequired ?? 0) <= availableActions &&
@@ -240,29 +247,33 @@ useEffect(() => {
           {/* =========================  */}
           {/* LISTA DE CARDS DISPONÍVEIS */}
           {/* =========================  */}
+
+
           <div className="bg-gray-800 rounded-lg p-4 flex flex-col gap-3 overflow-y-auto max-h-[420px]">
-            {tokenTrigger.cards.length === 0 ? (
+            {filteredCards.length === 0 ? (
               <p className="text-red-400 text-sm text-center">
-                Este personagem não possui cards.
+                Este personagem não possui cards compatíveis.
               </p>
             ) : (
-              tokenTrigger.cards.map((card) => {
+              filteredCards.map((card) => {
 
                 let cardNotRecharge = false;
 
-                if(availableCardsIds === undefined)
+                if (availableCardsIds === undefined)
                 {
                   cardNotRecharge = false;
                 }
-                else if(availableCardsIds.includes(card.id))
+                else if (availableCardsIds.includes(card.id))
                 {
                   cardNotRecharge = true;
-                  console.error("Personagem possui tokens indisponíveis...");
+                  console.error(
+                    "Personagem possui tokens indisponíveis..."
+                  );
                 }
 
                 const disabled =
                   (card.actionsRequired ?? 0) > availableActions ||
-                  (card.manaRequired ?? 0) > availableMana       ||
+                  (card.manaRequired ?? 0) > availableMana ||
                   cardNotRecharge;
 
                 return (
@@ -284,19 +295,33 @@ useEffect(() => {
                       alt={card.name}
                       className="w-10 h-10 rounded object-cover border border-gray-600"
                     />
+
                     <div className="flex-1 overflow-hidden">
                       <p className="text-sm font-semibold text-white truncate">
                         {card.name}
                       </p>
+
                       <p className="text-xs text-gray-400 truncate">
                         {card.causality}
                       </p>
+
                       {cardNotRecharge && (
                         <p className="text-sm font-semibold text-red-400 opacity-100">
                           {`Restam ${cardTimeToRecharge(card)} rounds para a recarga deste card.`}
                         </p>
-                      )
-                      }
+                      )}
+
+                      {(card.actionsRequired ?? 0) > availableActions && (
+                        <p className="text-sm font-semibold text-red-400 opacity-100">
+                          {`Ações requiridas superiores ao total disponível. DISPONÍVEL: ${availableActions} | NECESSÁRIO: ${card.actionsRequired}`}
+                        </p>
+                      )}
+
+                      {(card.manaRequired ?? 0) > availableMana && (
+                        <p className="text-sm font-semibold text-red-400 opacity-100">
+                          {`Mana total insuficiente para o uso desse card. DISPONÍVEL: ${availableMana} | NECESSÁRIO: ${card.manaRequired}`}
+                        </p>                        
+                      )}
                     </div>
                   </button>
                 );

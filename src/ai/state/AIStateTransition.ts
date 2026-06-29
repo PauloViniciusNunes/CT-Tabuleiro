@@ -5,26 +5,34 @@ export const AITransitions: Record<
     AICombatPhase[]
 > = {
     IDLE: [
-        "TURN"
+        "TURN",
+        "RESPONSE"
     ],
 
     TURN: [
         "REACTION",
-        "IDLE"
-    ],
-
-    REACTION: [
         "RESPONSE",
         "IDLE"
     ],
 
+    REACTION: [
+        "REACTION",
+        "RESPONSE",
+        "IDLE",
+        "TURN"
+    ],
+
     RESPONSE: [
+        "RESPONSE",
         "DEFENSE",
-        "IDLE"
+        "REACTION",
+        "IDLE",
+        "TURN"
     ],
 
     DEFENSE: [
         "TURN",
+        "RESPONSE",
         "IDLE"
     ]
 };

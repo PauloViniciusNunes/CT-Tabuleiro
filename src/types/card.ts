@@ -5,6 +5,7 @@ import type { RollResult } from "./battle";
 
 
 export type CardCausality = "Direct-Damage" | "Only-Effect-Application" | "Offensive" | "Defensive" | "Cure";
+export type NonDefensiveCardCausality = Exclude<CardCausality, "Defensive">;
 export type CardDuration  = number;
 
 export type Position = {
@@ -37,6 +38,7 @@ export type Card =
     itsLoaded: boolean,        
     causality: string,
     causalityType: CardCausality,
+    defenseReplicate: NonDefensiveCardCausality,
     partialOffensive: boolean | undefined,
     entityQuantity: number,
     effectToApply: EffectType[],

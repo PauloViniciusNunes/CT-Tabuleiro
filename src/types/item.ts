@@ -1,9 +1,18 @@
 import type { Card } from "./card";
+import type { EffectType } from "./effects";
 import type { TokenAttributes, TokenInventory } from "./token"
 
 
 export type ItemSlot   = "primary-hand" | "off-hand" | "neck" | "ring" | "armor" | "inventory-only";
 export type ItemRarity = "common" | "uncommon" | "rare" | "very-rare" | "epic" | "mitic" | "legendary" | "supreme" | "absolute";
+
+export type ArtificeSettings =
+{
+  lifeAdd: number,
+  manaAdd: number,
+  effectToApply: EffectType | null,
+  cardDispach: Card | null,
+}
 
 export type Item = 
 {
@@ -23,6 +32,10 @@ export type Item =
 
     craftable: boolean;                  // Pode ser usado como craft?
     craftableWith: string[] | undefined; // Armazena IDs de outros items.
+    
+    isArtifice: boolean;
+    artficeSettings: ArtificeSettings;
+    
     vfxUrl?: string[];
     sfxUrl?: string;
 }

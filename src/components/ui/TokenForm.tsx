@@ -194,8 +194,12 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
       return;
     }
 
+  const tokenId = generateId();
+
     const token: Token = {
-      id: generateId(),
+      createId: tokenId,
+      id: tokenId,
+      lastDamagerId: undefined,
       name: name.trim(),
       type: type,
       imageUrl: imagePreview,
@@ -205,6 +209,7 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
       status,
       team,
       class: tokenClass,
+      pendingXPAllocating: 0,
       tokenCards: selfCards,
       cards: selfCards, 
       position: { col: 1, row: 1 },

@@ -1,5 +1,13 @@
 import type { TokenAttributes } from "./token";
 
+export type AllocatedPoints = {
+    forca: number;
+    destreza: number;
+    consistencia: number;
+    inteligencia: number;
+    sabedoria: number;
+    carisma: number;
+};
 export type BattleStatus = "Not in Battle" | "In Battle";
 
 export interface InitiativeData {
@@ -49,12 +57,30 @@ export interface TurnEffect {
   moment: "OwnTurn" | "AnyTurn";
 }
 
+export interface BattleLocks {
+  aiActing: boolean;
+  reallocating: boolean;
+  resolvingAction: boolean;
+}
+
+export type ActionInformation = {
+  actorId: string | null;
+  version: number;
+}
+
 export interface BattleState {
   status: BattleStatus;
   round: number;
   turnOrder: InitiativeData[];
   currentTurnIndex: number;
+  currentActorId: string | null;
+  phase: string;
+  locks: BattleLocks;
   accumulatedActions: Record<string, number>;
   activeEffects: Record<string, TurnEffect[]>;
   actionHistory: ActionChoice[];
+  isReallocatingTurns: boolean;
+  isAIActing: boolean;
+  turnVersion: number;
 }
+
