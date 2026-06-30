@@ -1,4 +1,6 @@
-import type { TokenAttributes } from "./token";
+import type { TokenAttributes, Token } from "./token";
+import type { Item } from "./item";
+import type { TokenPrimaryElement } from "./effects";
 
 export type AllocatedPoints = {
     forca: number;
@@ -66,6 +68,28 @@ export interface BattleLocks {
 export type ActionInformation = {
   actorId: string | null;
   version: number;
+}
+
+
+export type PendingReaction = {
+  type: "consistencia" | "destreza";
+  targetToken: Token;
+};
+
+export type PendingAttack =
+{
+  attackerId: string;
+  targetId: string;
+  rawDamage: number;
+  attackRoll: number;
+  usedMana: number;
+  attackAttribute: ActionChoice['attribute'];
+  pendingReactions: PendingReaction[];
+  isReactionAllowed: boolean;
+  isFreeAttack?: boolean;
+  usedActions: number;
+  atackElement: TokenPrimaryElement;
+  usedItem?: Item;
 }
 
 export interface BattleState {

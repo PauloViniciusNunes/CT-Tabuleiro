@@ -16,6 +16,11 @@ export function randomInt(min: number, max: number): number {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+export function randomCandidate<T>(array: T[]): T {
+    return array[Math.floor(Math.random() * array.length)];
+}
+
+
 export function xpProgressionByLevel(lvl: number) {
   return Math.ceil(100 * Math.pow(lvl, 1.4));
 }
@@ -272,3 +277,30 @@ export function isInAttackRange(
   return false;
 }
 
+export function finalPos(a: number, b: number)
+{
+    if (a + b === 3) {
+    return 2;
+    }
+    else if (a + b === 1) {
+    return 0.5;
+    }
+    else if (a + b === 1.5) {
+    return 0.5;
+    }
+    else if (a + b === 2) {
+    return 1;
+    }
+    else if (a + b === 4) {
+    return 2;
+    }
+    else if (a + b === 2.5) {
+    return 1;
+    }
+    else if (a + b > 4) {
+    return 2;
+    }
+    else {
+    return 1;
+    }
+}

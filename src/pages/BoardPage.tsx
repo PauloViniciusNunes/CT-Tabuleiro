@@ -15,10 +15,11 @@ import { spawnItemVFX } from "../types/elementoVFX";
 import type { PivotCandidate } from "../types/pivot";
 import type { OffensiveCardResponse } from "../types/card";
 import type { AllocatedPoints } from "../types/battle";
-
+import type { PendingReaction } from "../types/battle";
+import { elementToEffect } from "../types/effects";
 
 import BLUEDOT from "../assets/dot/BLUEDOT.png"
-import REDDOT from "../assets/dot/REDDOT.svg"
+
 
 import { playSomeSFX } from "../audio/playSomeSFX";
 
@@ -27,7 +28,7 @@ import { calculateCardRoll, calculateDistance, isInAttackRange, sum, xpProgressi
 import type { Token, TokenAttributes, TokenClass, TokenProficiencies } from "../types/token";
 import type { Item } from "../types/item";
 import { canDefenderReact, nextParalysisAfterHit } from '../utils/paralysis';
-import type { ParalysisState } from '../types/status';
+import type { ParalysisState, PostParalyse } from '../types/status';
 
 import type { Position } from "../types/card";
 
@@ -163,12 +164,6 @@ const teamGlowColors: Record<string, string> = {
   Yellow: "rgba(234, 179, 8, 0.6)",
 };
 
-
-type PendingReaction = {
-  type: "consistencia" | "destreza";
-  targetToken: Token;
-};
-
 export const MusicContext = React.createContext<MusicContextType | null>(null);
 
 const BoardPage: React.FC = () => {
@@ -293,7 +288,6 @@ const BoardPage: React.FC = () => {
   );
 }
 
-  const [showLevelUpPanel, setShowLevelUpPanel] = useState(false);
   const boardTokensRef = useRef<Token[]>([]);
   const [currentAI, setCurrentAI] = useState<Token | undefined>(undefined);
   const [enemies, setEnemies] = useState<Token[]>([]);
@@ -528,11 +522,7 @@ const BoardPage: React.FC = () => {
 
   const [prevReaction, setPrevReaction] = useState<Record<string, string>>({});
   const [lastAllUsedResponse, setLastAllUsedResponse] = useState<Record<string, boolean>>({});
-  const [postParalyse, setPostParalyse] = useState<{
-    responderId: string;
-    forcedId: string;
-    allowedPostAtack: boolean;
-  } | null>(null);
+  const [postParalyse, setPostParalyse] = useState<PostParalyse | null>(null);
 
   const lastTurnKeyRef = useRef<string>("");
   const [pendingFreeResponse, setPendingFreeResponse] = useState<{
@@ -1165,59 +1155,7 @@ const BoardPage: React.FC = () => {
   const attributeTable = useRef<Record<string, Record<string, number>>>({});
   // USO: attributeTable.current["atlas"]["forca"] = 15;
 
-  const elementToEffect: Record<TokenPrimaryElement, EffectType> = {
-    neutro: "none",
-    fogo: "queimando",
-    terra: "corroendo",
-    vento: "consistencia_debuff",
-    agua: "afogando",
-    darkfire: "darkfire",
-    arcano: "purificado",
-    acido: "corroendo",
-    eletrico: "eletrizado",
-    veneno: "envenenado",
-    som: "vulneravel_som",
-    gelo: "congelando",
-    sangue: "sangrando",
-    darkelectric: "eletrizado_dark",
-    magia_neutra: "neutral_magicalized",
-    caos: "caozificado",
-    alma: "almificado",
-    psiquico: "psicotico",
-    ferro: "enferrujado",
-    cobre: "encobrizado",
-    hidrogenio: "hidrogenado",
-    fosforo: "fosforizado",
-    helio: "heliozinado",
-    neonio: "neozinado",
-    argonio: "argonizado",
-    criptonio: "criptonizado",
-    xenonio: "xeonizado",
-    radonio: "radonizado",
-    sombra: "sombrificado",
-    luz: "clareado",
-    esporos: "esporizado",
-    resina: "resinizado",
-    plasma: "plasmizado",
-    entropia: "entropizado",
-    miasma: "miasmisado",
-    eter: "eterificado",
-    encumbria: "encumbriado",
-    aether: "aetherificado",
-    antimagia: "antimagicalizado",
-    vazio: "envaziado",
-    radiacao: "radioativado",
-    vetor: "vetorizado",
-    primordialidade: "primordializado",
-    fogo_azul: "queimando_azul",
-    fogo_verde: "queimando_verde",
-    fogo_vermelho: "queimando_vermelho",
-    gravidade: "gratitacionalizado",
-    espaco: "espaciado",
-    realidade: "realizado",
-    fogo_cromatico: "queimando_cromatizado",
-    ethereum: "etherizado"
-  };
+
 
   function addLargeExplosionOverlay(
     tokenId: string,
@@ -2329,11 +2267,23 @@ const BoardPage: React.FC = () => {
     });
   }
 
+  const [inTargetSelection, setInTargetSelection] = useState(false);
+  const [selectedTarget, setSelectedTarget] = useState<Token | null>(null)
+  const maxSelectablePivots = useRef<number>(0);
+
   const engineContext = useMemo<EngineContext>(
     () => ({
       boardTokens,
+      boardTokensRef,
       setBoardTokens,
-
+      shouldAdvanceTurn,
+      setShouldAdvanceTurn,
+      pendingAttack,
+      setPendingAttack,
+      pendingEsquivaRoll,
+      setPendingEsquivaRoll,
+      tokensBattlePosition,
+      setTokensBattlePosition,
       cardEntities,
       setCardEntities,
 
@@ -2355,6 +2305,7 @@ const BoardPage: React.FC = () => {
       setTokenParalysis,
 
       battleState,
+      battleStateRef,
       setBattleState,
 
       freeActionLock,
@@ -2369,13 +2320,56 @@ const BoardPage: React.FC = () => {
       armedCard,
 
       pendingCardResolution,
-
+      setPendingCardResolution,
       selectedPivots,
       setSelectedPivots,
+      didActThisTurn,
+      setDidActThisTurn,
+      inCardSelection,
+      setInCardSelection,
+      isInDefenseResolution,
+      setIsInDefenseResolution,
+      selectedTarget,
+      setSelectedTarget,
+      prevReaction,
+      setPrevReaction,
+      inDefenseCardResolution,
+      setInDefenseCardResolution,
+      boardVfxElements,
+      setBoardVfxElements,
+      postParalyse,
+      setPostParalyse,
+      lastAllUsedResponse,
+      setLastAllUsedResponse,
+      lastTurnActed,
+      setLastTurnActed,
+      lastTurnMoved,
+      setLastTurnMoved,
+      hasEnteredFirstTurnRef,
+      movedThisTurn,
+      setMovedThisTurn,
+      maxSelectablePivots,
+      setAIUnlock,
+      aiTurnTokenRef,
+      aiPhaseCleanup,
+      isAIActingRef,
+      aiStateMachine,
+      setTokensInOffensiveCard,
+      setOffensiveCardScore,
+      setOffensiveCardTestScore,
+      setOffensivePendingCard,
+      setArmedCard,
+      setIsAmbientPivotSelection,
+      setPreviewCells,
+      setIsAIThinking,
+      setInTargetSelection,
+      isAdvancingTurnRef,
+      pendingAttackRef
     }),
     [
       boardTokens,
-
+      pendingAttack,
+      pendingEsquivaRoll,
       cardEntities,
 
       cellSize,
@@ -2396,6 +2390,16 @@ const BoardPage: React.FC = () => {
       pendingCardResolution,
 
       selectedPivots,
+      inCardSelection,
+      isInDefenseResolution,
+      selectedTarget,
+      prevReaction,
+      inDefenseCardResolution,
+      boardVfxElements,
+      postParalyse,
+      lastTurnActed,
+      lastTurnMoved,
+      movedThisTurn
     ]
   );
 
@@ -2604,13 +2608,9 @@ const BoardPage: React.FC = () => {
     }
   };
 
-  const [inTargetSelection, setInTargetSelection] = useState(false);
-  const [selectedTarget, setSelectedTarget] = useState<Token | null>(null)
+
   const mouseStyle = inTargetSelection ? `crosshair` : "auto";
 
-  useEffect(() => {
-    console.debug(BLUEDOT)
-  }, [inTargetSelection])
 
   const handleNextTurn = (isVoluntaryPass: boolean = false) => {
     console.log("-----------------------------------------------------------------------------------------------");
@@ -3217,7 +3217,7 @@ const BoardPage: React.FC = () => {
 
     if (!pendingAttack) return;
     if (battleState.status !== "In Battle") return;
-    console.info("Tambem entrou aqui")
+
     const attackerId = pendingAttack.attackerId;
     const defenderId = pendingAttack.targetId;
 
@@ -4170,6 +4170,13 @@ const BoardPage: React.FC = () => {
     return;
   };
 
+  function closeCardForm()
+  {
+    console.debug("[DEBUG] Pending Attack: ", pendingAttack);
+    console.debug("[DEBUG] Pending Esquiva Roll: ", pendingEsquivaRoll);
+    setInCardSelection(false);
+  }
+
   const handleCardResolution = (currentId: string, target: Target, card: Card, isArtifice: boolean) => {
     console.info("[CARD] Entrando no Handle Card Resolution")
     const targetType = card.target.type
@@ -4503,7 +4510,7 @@ const BoardPage: React.FC = () => {
     }
   };
 
-  const maxSelectablePivots = useRef<number>(0);
+  
 
   /* * */
   const currentData = battleState.turnOrder[battleState.currentTurnIndex];
@@ -5107,7 +5114,7 @@ const BoardPage: React.FC = () => {
                   ? { total: roll, rawRolls: [roll], usedMana: 0, CRI: 0 }
                   : (roll ?? { total: 0, rawRolls: [], usedMana: 0, CRI: 0 });
 
-              console.info("Entrou nesse lixo daqui")
+              console.debug("[DEBUG] Método onReact atingido.")
               handleReaction(reactionType, usedMana, usedActions, normalized, !!usedCertaintyDie);
             }}
             onCancel={() => {
@@ -5213,7 +5220,7 @@ const BoardPage: React.FC = () => {
             availableMana={searchCurrentMana(pendingCardResolution)}
             cardTimeToRecharge={(card) => formatRechargeCardRecordReturn(engineContext, (pendingCardResolution as Token).id, card.id)}
             availableCardsIds={cardsNotRechargeds.current[(pendingCardResolution as Token).id]}
-            onClose={() => setInCardSelection(false)}
+            onClose={() => closeCardForm()}
             onConfirm={(card, target) => handleCardResolution(pendingCardResolution.id, target as Target, card, false)}
           />
         </>
