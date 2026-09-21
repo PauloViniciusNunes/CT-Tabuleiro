@@ -4,7 +4,7 @@
 
 services:
   - type: web
-    name: ct-tabuleiro-frontend
+    name: ct-tabuleiro
     runtime: static
     autoDeployTrigger: commit
     # The repository-wide TypeScript check currently includes legacy modules
@@ -61,7 +61,7 @@ services:
       - key: FRONTEND_ORIGIN
         fromService:
           type: web
-          name: ct-tabuleiro-frontend
+          name: ct-tabuleiro
           envVarKey: RENDER_EXTERNAL_URL
       - key: SOCKET_URL
         fromService:
@@ -95,7 +95,7 @@ services:
       - key: FRONTEND_ORIGIN
         fromService:
           type: web
-          name: ct-tabuleiro-frontend
+          name: ct-tabuleiro
           envVarKey: RENDER_EXTERNAL_URL
 
 databases:

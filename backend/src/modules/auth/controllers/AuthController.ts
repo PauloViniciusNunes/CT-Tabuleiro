@@ -38,6 +38,7 @@ export class AuthController {
                 },
                 {
                     status: 400,
+                    headers: CORS_HEADERS,
                 }
             );
 
@@ -71,6 +72,7 @@ export class AuthController {
                 },
                 {
                     status: 401,
+                    headers: CORS_HEADERS,
                 }
             );
 
@@ -87,9 +89,10 @@ export class AuthController {
             })
         } catch (error) {
             console.error(error)
-            return NextResponse.json({
-                message: error
-            })
+            return NextResponse.json(
+                { message: error },
+                { headers: CORS_HEADERS },
+            )
         }
     }
 
