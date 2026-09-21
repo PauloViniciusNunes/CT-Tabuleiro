@@ -59,6 +59,10 @@ export class SocketServer {
     private constructor() {
 
         console.log("Socket Server iniciado");
+        console.log(
+            "[Socket CORS] FRONTEND_ORIGIN:",
+            process.env.FRONTEND_ORIGIN ?? "não configurado",
+        );
 
         const httpServer = createServer();
 

@@ -4,13 +4,24 @@ const DEFAULT_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
 ] as const;
 
+function normalizeOrigin(value: string): string | null {
+    try {
+        return new URL(value.trim()).origin;
+    } catch {
+        return null;
+    }
+}
+
 function configuredOrigins(): Set<string> {
     const origins = (process.env.FRONTEND_ORIGIN ?? "")
         .split(",")
-        .map((origin) => origin.trim())
+        .map(normalizeOrigin)
         .filter(Boolean);
 
-    return new Set([...DEFAULT_ALLOWED_ORIGINS, ...origins]);
+    return new Set([
+        ...DEFAULT_ALLOWED_ORIGINS.map((origin) => normalizeOrigin(origin)),
+        ...origins,
+    ].filter((origin): origin is string => Boolean(origin)));
 }
 
 export function isAllowedFrontendOrigin(origin: string | undefined | null): boolean {
@@ -19,7 +30,8 @@ export function isAllowedFrontendOrigin(origin: string | undefined | null): bool
         return true;
     }
 
-    if (configuredOrigins().has(origin)) {
+    const normalizedOrigin = normalizeOrigin(origin);
+    if (normalizedOrigin && configuredOrigins().has(normalizedOrigin)) {
         return true;
     }
 
@@ -40,8 +52,9 @@ export function corsHeadersForOrigin(origin: string | undefined | null): Record<
         "Vary": "Origin",
     };
 
-    if (origin && isAllowedFrontendOrigin(origin)) {
-        headers["Access-Control-Allow-Origin"] = origin;
+    const normalizedOrigin = origin ? normalizeOrigin(origin) : null;
+    if (normalizedOrigin && isAllowedFrontendOrigin(normalizedOrigin)) {
+        headers["Access-Control-Allow-Origin"] = normalizedOrigin;
     }
 
     return headers;
