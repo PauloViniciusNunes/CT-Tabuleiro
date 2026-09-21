@@ -14,6 +14,7 @@ export default defineConfig({
         port: 5173,
         strictPort: true,
         allowedHosts: [
+            "ct-tabuleiro.onrender.com",
             "ct-tabuleiro.local",
             "localhost",
             "127.0.0.1",
@@ -30,5 +31,11 @@ export default defineConfig({
                 ws: true,
             },
         },
+    },
+    preview: {
+        host: "0.0.0.0",
+        allowedHosts: [
+            "ct-tabuleiro.onrender.com",
+        ],
     },
 });
