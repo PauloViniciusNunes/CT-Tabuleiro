@@ -1,0 +1,1 @@
+export {POST} from "@/modules/asset-library/cards/routes/create/route"

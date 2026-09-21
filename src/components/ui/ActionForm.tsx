@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import type { Token } from "../../types/token";
 import type { ActionChoice } from "../../types/battle";
 import { calculateDistance, isInAttackRange, calculateActionRoll } from "../../utils/battleCalculations";
@@ -6,6 +6,8 @@ import { Sword, Brain, Book, Zap, Sparkles} from "lucide-react";
 import { GiCardRandom} from "react-icons/gi";
 import { type Item } from "../../types/item";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import type { PrimaryMechanic } from "../../types/effects";
+import { getTokenMechanicForAction } from "../../utils/tokenMechanics";
 
 
 import PANNEL1 from "../../assets/hud/PANNEL1.svg"
@@ -30,10 +32,11 @@ interface ActionFormProps {
       pos: number;
       actionType: string;
       item: Item | null;
+      selectedMechanic: PrimaryMechanic;
     }
-  ) => void;
+  ) => void | Promise<void>;
 
-  onPass: () => void;
+  onPass: () => void | Promise<void>;
   onSelectionTarget: (b: boolean) => void;
   possibleTargets: Token[];
   findedTarget: Token | null;
@@ -62,6 +65,19 @@ const ActionForm: React.FC<ActionFormProps> = ({
   const willBeResponse = selectedTarget ? !!isResponseAttack?.(selectedTarget, usedMana) : false;
   const [displayForm, setDisplayForm] = useState(true);
   const [formPage, setFormPage] = useState<number>(1);
+  const availableMechanics = useMemo<PrimaryMechanic[]>(
+    () => token.tokenPrimaryElement?.length ? token.tokenPrimaryElement : ["neutro"],
+    [token.tokenPrimaryElement],
+  );
+  const [selectedMechanic, setSelectedMechanic] = useState<PrimaryMechanic>(availableMechanics[0]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submissionLockRef = useRef(false);
+
+  useEffect(() => {
+    if (!availableMechanics.includes(selectedMechanic)) {
+      setSelectedMechanic(availableMechanics[0]);
+    }
+  }, [availableMechanics, selectedMechanic]);
 
   const equippedItems: Item[] = [
     token.inventory.primaryHand,
@@ -222,11 +238,15 @@ const ActionForm: React.FC<ActionFormProps> = ({
     setDisplayForm(false)
   }
 
-  const handleExecute = () => {
-      if (!isFormValid) return;
+  const handleExecute = async () => {
+      if (!isFormValid || submissionLockRef.current) return;
       
       const allowedCertaintyDie = (selectedAction !== "mana_recover" && selectedAction !== "card_selection")
-      if(certaintyLeft > 0 && allowedCertaintyDie && formPage !== 2)
+      const needsMechanicChoice = usedMana > 0 && availableMechanics.length > 1;
+      const hasSecondPageOptions = allowedCertaintyDie &&
+        (certaintyLeft > 0 || needsMechanicChoice);
+
+      if(hasSecondPageOptions && formPage !== 2)
       {
         setFormPage(2);
         return;
@@ -236,6 +256,7 @@ const ActionForm: React.FC<ActionFormProps> = ({
     
       const params = {
         tokenId: token.id,
+        usedItemId: selectedItem?.id,
         Q: usedActions,
         P: pos,
         A: token.attributes[respectiveAtribute!],
@@ -249,32 +270,54 @@ const ActionForm: React.FC<ActionFormProps> = ({
 
       const actionType = selectedAction === "ataque_fisico" ? "Ataque Físico": (selectedAction === "desnortear" ? "Desnortear": (selectedAction === "previnir" ? "Previnir" : (selectedAction === "surpreender" ? "Surpreender" : (selectedAction === "mana_recover" ? "Recarga de Mana" : "Seleção de Card"))));
 
-      onExecute({
-        attribute: respectiveAtribute!,
-        type: actionType,
-        targetId: selectedTarget!,
-        usedMana,
-        usedActions,
-        usedCertaintyDie,
-        pos,
-        rollResult,
-        actionType: selectedAction,
-        item: selectedItem // novo campo
-      });
+      submissionLockRef.current = true;
+      setIsSubmitting(true);
+      try {
+        await onExecute({
+          attribute: respectiveAtribute!,
+          type: actionType,
+          targetId: selectedTarget!,
+          usedMana,
+          usedActions,
+          usedCertaintyDie,
+          pos,
+          rollResult,
+          actionType: selectedAction,
+          item: selectedItem,
+          selectedMechanic: getTokenMechanicForAction(
+            availableMechanics,
+            selectedMechanic,
+            usedMana,
+          ),
+        });
 
-
-      setUsedCertaintyDie(false);
-      setUsedMana(0);
-      setUsedActions(1);
-      setSelectedAction(null);
-      setSelectedTarget(null);
-
-      if(formPage !== 1)
-      {
-        setFormPage(1);
+        setUsedCertaintyDie(false);
+        setUsedMana(0);
+        setUsedActions(1);
+        setSelectedAction(null);
+        setSelectedTarget(null);
+        if(formPage !== 1) setFormPage(1);
+      } catch (error) {
+        console.error("Não foi possível executar a ação:", error);
+        submissionLockRef.current = false;
+        setIsSubmitting(false);
       }
 
     };
+
+  const handlePass = async () => {
+    if (submissionLockRef.current) return;
+
+    submissionLockRef.current = true;
+    setIsSubmitting(true);
+    try {
+      await onPass();
+    } catch (error) {
+      console.error("Não foi possível passar o turno:", error);
+      submissionLockRef.current = false;
+      setIsSubmitting(false);
+    }
+  };
 
 
   return (
@@ -513,9 +556,33 @@ const ActionForm: React.FC<ActionFormProps> = ({
                 </div>
               )}
               {formPage === 2 && (
-                <div>
+                <div className="absolute p-0 m-0 w-[90%] left-1/2 -translate-x-1/2 translate-y-1/3 space-y-4">
+                  {usedMana > 0 && availableMechanics.length > 1 && (
+                    <div className="rounded-lg border border-cyan-700 bg-black/50 p-3">
+                      <p className="mb-2 text-sm font-semibold text-cyan-400">
+                        Mecânica da mana
+                      </p>
+                      <div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
+                        {availableMechanics.map((mechanic) => (
+                          <button
+                            key={mechanic}
+                            type="button"
+                            onClick={() => setSelectedMechanic(mechanic)}
+                            className={`rounded border px-2 py-2 text-xs capitalize transition-colors ${
+                              selectedMechanic === mechanic
+                                ? "border-cyan-300 bg-cyan-700 text-white"
+                                : "border-gray-600 bg-gray-900/80 text-gray-300 hover:border-cyan-600"
+                            }`}
+                          >
+                            {mechanic.replaceAll("_", " ")}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Dado Certo */}
-                  {selectedAction !== "mana_recover" && selectedAction !== "card_selection" && (
+                  {selectedAction !== "mana_recover" && selectedAction !== "card_selection" && certaintyLeft > 0 && (
                     <div className="flex items-center justify-between bg-gray-800/60 rounded p-2">
                       <label htmlFor="use-certainty" className="text-sm text-gray-200 flex items-center gap-2">
                         <input
@@ -544,7 +611,7 @@ const ActionForm: React.FC<ActionFormProps> = ({
                   type="button"
                   onClick={handleExecute}
                   className="relative flex-1 py-2 cursor-pointer rounded text-white text-sm font-bold disabled:opacity-50 z-1"
-                  disabled={!isFormValid}
+                  disabled={!isFormValid || isSubmitting}
                 >
                   <img
                       src={BLUEBUTTOM}
@@ -573,14 +640,15 @@ const ActionForm: React.FC<ActionFormProps> = ({
                         text-sm
                       "
                     >
-                      Executar
+                      {isSubmitting ? "Processando..." : "Executar"}
                     </span>
                 </button>
 
                 {!hidePass && (
                   <button
                     type="button"
-                    onClick={onPass}
+                    onClick={handlePass}
+                    disabled={isSubmitting}
                     className="relative flex-1 py-2 rounded text-white text-sm font-bold z-1"
                   >
                   <img
@@ -610,7 +678,7 @@ const ActionForm: React.FC<ActionFormProps> = ({
                         text-sm
                       "
                     >
-                      Passar
+                      {isSubmitting ? "Processando..." : "Passar"}
                     </span>                        
                   </button>
                 )}

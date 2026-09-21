@@ -49,6 +49,8 @@ export function generateActionChoice(
 
     actionType: actionType,
 
+    selectedMechanic: attacker.tokenPrimaryElement?.[0] ?? "neutro",
+
     cardId: card?.id,
 
   };

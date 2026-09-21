@@ -85,64 +85,74 @@ export type EffectType = typeof EFFECT_TYPES[number];
 
 export type EffectMoment = "InTurn" | "AllTurn" | "Area"
 
-export type TokenPrimaryElement =
-  "neutro" |
-  "fogo" |
-  "terra" |
-  "vento" |
-  "agua" |
-  "darkfire" |
-  "arcano" |
-  "acido" |
-  "eletrico" |
-  "veneno" |
-  "som" |
-  "gelo" |
-  "sangue" |
-  "darkelectric" |
-  "magia_neutra" |
-  "caos" |
-  "alma" |
-  "psiquico" |
-  "ferro" |
-  "cobre" |
-  "hidrogenio" |
-  "fosforo" |
-  "helio" |
-  "neonio" |
-  "argonio" |
-  "criptonio" |
-  "xenonio" |
-  "radonio" |
-  "sombra" |
-  "luz" |
-  "esporos" |
-  "resina" |
-  "plasma" |
-  "entropia" |
-  "miasma" |
-  "eter" |
-  "encumbria" |
-  "aether" |
-  "antimagia" |
-  "vazio" |
-  "radiacao" |
-  "vetor" |
-  "primordialidade" |
-  "fogo_azul" |
-  "fogo_verde" |
-  "fogo_vermelho" |
-  "fogo_cromatico" |
-  "ethereum" |
-  "gravidade" |
-  "espaco" |
-  "realidade";
+export const TokenPrimaryElement = [
+  "neutro" ,
+  "fogo" ,
+  "terra" ,
+  "vento" ,
+  "agua" ,
+  "darkfire" ,
+  "arcano",
+  "acido" ,
+  "eletrico" ,
+  "veneno" ,
+  "som" ,
+  "gelo" ,
+  "sangue" ,
+  "invulnerabilidade",
+  "darkelectric" ,
+  "magia_neutra" ,
+  "caos" ,
+  "alma" ,
+  "psiquico" ,
+  "ferro" ,
+  "cobre" ,
+  "hidrogenio" ,
+  "fosforo",
+  "helio" ,
+  "neonio" ,
+  "argonio" ,
+  "criptonio" ,
+  "xenonio" ,
+  "radonio" ,
+  "sombra" ,
+  "luz" ,
+  "esporos" ,
+  "resina" ,
+  "plasma" ,
+  "entropia" ,
+  "miasma" ,
+  "eter" ,
+  "encumbria" ,
+  "aether" ,
+  "antimagia" ,
+  "vazio" ,
+  "radiacao" ,
+  "vetor" ,
+  "primordialidade" ,
+  "fogo_azul" ,
+  "fogo_verde" ,
+  "fogo_vermelho" ,
+  "fogo_cromatico" ,
+  "ethereum" ,
+  "gravidade" ,
+  "espaco" ,
+  "realidade",
+  "drenar-sangue",
+  "escurecido",
+  "arma-magica",
+  "asas-dragao",
+  "cancelar-dano",
+  "surto-acao"
+] as const;
 
-export type TokenPrimaryDisvantage = TokenPrimaryElement | "none";
+export type PrimaryMechanic = typeof TokenPrimaryElement[number]
+
+export type TokenPrimaryDisvantage = PrimaryMechanic | "none";
 
 export type TokenEffect = {
   duration: number | undefined,
-  elementResultant: TokenPrimaryElement,
+  elementResultant: PrimaryMechanic,
   effectType: EffectType,
   intensity: number,
   effectMoment: EffectMoment,
@@ -150,7 +160,7 @@ export type TokenEffect = {
   cardResultantId?: string,  // Adicionado
 }
 
-export type CombinationResult = | { remove: EffectType[]; add?: EffectType | EffectType[]; intensityMultiplier?: number; explosion?: boolean; areaRadius?: number; areaDamage?: number; areaEffect?: EffectType; areaElement?: TokenPrimaryElement; overlay?: string; gifPath?: string; } | null;
+export type CombinationResult = | { remove: EffectType[]; add?: EffectType | EffectType[]; intensityMultiplier?: number; explosion?: boolean; areaRadius?: number; areaDamage?: number; areaEffect?: EffectType; areaElement?: PrimaryMechanic; overlay?: string; gifPath?: string; } | null;
 
 export type EffectGrowthModel = "A" | "B";
 
@@ -166,7 +176,7 @@ export const effectGrowthRules: Partial<Record<EffectType, EffectGrowthModel>> =
   // ... etc
 };
 
-export const elementToEffect: Record<TokenPrimaryElement, EffectType> = {
+export const elementToEffect: Record<PrimaryMechanic, EffectType> = {
   neutro: "none",
   fogo: "queimando",
   terra: "corroendo",

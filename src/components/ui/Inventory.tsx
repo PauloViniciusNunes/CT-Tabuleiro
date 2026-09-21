@@ -1,11 +1,12 @@
 import type React from "react";
-import type { Token, TokenInventory } from "../../types/token";
+import type { Token } from "../../types/token";
 import { useState, useEffect, useRef } from "react";
 import type { Item, ItemRarity, ItemSlot } from "../../types/item";
 import { DollarSign, ChevronRight, ChevronLeft } from "lucide-react";
 import { xpProgressionByLevel } from "../../utils/battleCalculations";
 import type { Target } from "../../types/target";
 import type { BattleState } from "../../types/battle";
+import type { EquippedInventorySlot } from "../../api/modules/battleEngine";
 
 export interface InventoryUIProps
 {
@@ -13,8 +14,9 @@ export interface InventoryUIProps
     boardTokens: Token[],
     battleState: BattleState,
     onClose: (t: boolean) => void;
-    swap: (i: Item, n: number) => void;
-    useArtifice: (item: Item, index: number, target: Target) => void,
+    swap: (i: Item, n: number) => Promise<void> | void;
+    unequip: (slot: EquippedInventorySlot) => Promise<void> | void;
+    consumeArtifice: (item: Item, index: number, target: Target) => Promise<void> | void,
 }
 
 const PARTICLE_RARITIES = [
@@ -112,7 +114,7 @@ export function useRarityParticles(
   }, [canvas, rarity, textEl]);
 }
 
-const InventoryUI: React.FC<InventoryUIProps> = ({ token, boardTokens,battleState, onClose, swap, useArtifice}) => {
+const InventoryUI: React.FC<InventoryUIProps> = ({ token, boardTokens,battleState, onClose, swap, unequip, consumeArtifice}) => {
   const inventory = token.inventory;
   const { rows, cols } = inventory.inventoryDimensions;
   const [hoveredItem, setHoveredItem] = useState<Item | null>(null);
@@ -137,7 +139,7 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, boardTokens,battleStat
     4: "armor",
   }
 
-  const numberToTokenSlot: Record<number, keyof TokenInventory> =
+  const numberToTokenSlot: Record<number, EquippedInventorySlot> =
   {
     0: "primaryHand",
     1: "offHand",
@@ -261,51 +263,53 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, boardTokens,battleStat
   const [selectedArtificeItem, setSelectedArtificeItem] = useState<Item | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [openTargetSelection, setOpenTargetSelection] = useState(false);
-
-  useEffect(() => {
-    console.info("Item Selecionado: ", selectedArtificeItem, "Nome da Habilidade: ", selectedArtificeItem?.artficeSettings.cardDispach?.name, "Tipo de Alvo: ", selectedArtificeItem?.artficeSettings.cardDispach?.target.type)
-  }, [selectedArtificeItem])
+  const [isUsingArtifice, setIsUsingArtifice] = useState(false);
+  const [artificeError, setArtificeError] = useState<string | null>(null);
 
   useEffect(() => {
     console.info("INVENTORY RENDER:", token.inventory.commonSlot);
   }, [token]);
 
   useEffect(() => {
+    const card = selectedArtificeItem?.artficeSettings.cardDispach;
+    const targetType = card?.target.type ?? "Self";
+    const availableTargets = boardTokens.filter((candidate) => candidate.id !== token.id);
 
-    if (
-      selectedArtificeItem?.artficeSettings.cardDispach?.target.type !== "Target"
-    )
+    setArtificeError(null);
+    setSelectedTargets([]);
+
+    if (targetType === "Target") {
+      const firstTarget = availableTargets[0];
+      setSelectedTargetId(firstTarget?.id ?? "");
+      targets.current = {
+        type: "Target",
+        tokenTarget: firstTarget ? [firstTarget] : [],
+        numbersTarget: 1,
+        pivot: null,
+        pivotSettings: undefined,
+      };
       return;
+    }
 
-    const validTargets =
-      restTokens.filter(
-        t => t.team !== token.team
-      );
-
-    if (validTargets.length <= 0)
+    if (targetType === "Ambient") {
+      targets.current = {
+        type: "Ambient",
+        tokenTarget: null,
+        numbersTarget: card?.entityQuantity ?? 1,
+        pivot: null,
+        pivotSettings: card?.target.pivotSettings,
+      };
       return;
-
-    const firstTarget =
-      validTargets[0];
-
-    setSelectedTargetId(
-      firstTarget.id
-    );
+    }
 
     targets.current = {
-      type: "Target",
-      tokenTarget: [firstTarget],
-      numbersTarget: 1,
+      type: targetType,
+      tokenTarget: targetType === "Self" ? [token] : [],
+      numbersTarget: targetType === "Self" ? 1 : card?.target.numbersTarget ?? 1,
       pivot: null,
-      pivotSettings: undefined,
+      pivotSettings: card?.target.pivotSettings,
     };
-
-    console.info("[TARGET] Current: ", targets.current)
-
-  }, [
-    selectedArtificeItem,
-    token.team,
-  ]);  
+  }, [selectedArtificeItem, boardTokens, token]);
 
   useEffect(() => {
 
@@ -333,6 +337,52 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, boardTokens,battleStat
     selectedTargets,
     selectedArtificeItem,
   ]);  
+
+  const closeArtificeConfirmation = () => {
+    if (isUsingArtifice) return;
+    setOpenTargetSelection(false);
+    setSelectedArtificeItem(null);
+    setSelectedTargets([]);
+    setSelectedTargetId("");
+    setArtificeError(null);
+  };
+
+  const confirmArtificeUse = async () => {
+    if (!selectedArtificeItem) return;
+
+    const targetType = selectedArtificeItem.artficeSettings.cardDispach?.target.type;
+    if (targetType === "Target" && !selectedTargetId) {
+      setArtificeError("Selecione um alvo.");
+      return;
+    }
+    if (targetType === "Multi-Target" && selectedTargets.length === 0) {
+      setArtificeError("Selecione ao menos um alvo.");
+      return;
+    }
+
+    setIsUsingArtifice(true);
+    setArtificeError(null);
+    try {
+      await consumeArtifice(selectedArtificeItem, selectedIndex, targets.current);
+      setOpenTargetSelection(false);
+      onClose(false);
+    } catch (error) {
+      let message = error instanceof Error
+        ? error.message
+        : "Não foi possível usar o artifício.";
+      try {
+        const response = JSON.parse(message) as { message?: unknown };
+        if (typeof response.message === "string") message = response.message;
+      } catch {
+        // The API may already have returned a plain-text message.
+      }
+      setArtificeError(
+        message,
+      );
+    } finally {
+      setIsUsingArtifice(false);
+    }
+  };
 
 
   useRarityParticles(
@@ -493,12 +543,20 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, boardTokens,battleStat
                       onContextMenu={(e) => {
                         e.preventDefault();
                         if(!item) return;
-                        if(item.isArtifice && battleState.status === "In Battle") {
-                          setSelectedArtificeItem(item);
-                          setSelectedIndex(index);
-                          setOpenTargetSelection(true)
+                        if (item.isArtifice) {
+                          if (
+                            battleState.status === "In Battle" &&
+                            battleState.currentActorId === token.id
+                          ) {
+                            setSelectedArtificeItem(item);
+                            setSelectedIndex(index);
+                            setOpenTargetSelection(true);
+                          }
+                          return;
                         }
-                        if(!item.isArtifice) swap(item, index);
+                        if (item.slot !== "inventory-only") {
+                          void swap(item, index);
+                        }
                       }}
                     >
                       {item ? (
@@ -552,6 +610,11 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, boardTokens,battleStat
                               flex items-center justify-center overflow-hidden
                               hover:border-purple-400 transition
                             "
+                            title={
+                              item
+                                ? "Clique com o botão direito para mover à mochila"
+                                : undefined
+                            }
                             onMouseEnter={(e) => {
                               if (!item) return;
                               setHoveredItem(item);
@@ -562,6 +625,11 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, boardTokens,battleStat
                               setMousePos({ x: e.clientX, y: e.clientY });
                             }}
                             onMouseLeave={() => setHoveredItem(null)}                            
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              if (!item) return;
+                              void unequip(numberToTokenSlot[index]);
+                            }}
                           >
                             {item ? (
                               <div className="text-xs text-center">
@@ -679,57 +747,50 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, boardTokens,battleStat
 
       {openTargetSelection && (
         <div className="relative z-10 w-full max-w-md rounded-lg border-2 border-blue-900 bg-gray-800 p-4 text-gray-100 shadow-2xl">
+          <h3 className="mb-1 text-lg font-bold text-orange-300">
+            Usar {selectedArtificeItem?.name}
+          </h3>
+          <p className="mb-4 text-sm text-gray-300">
+            O artifício será consumido permanentemente.
+          </p>
+
           {selectedArtificeItem && selectedArtificeItem.artficeSettings.cardDispach?.target.type === "Target" && (
-            <div>
-            <select 
-            className="bg-gray-700 w-full p-1 font-semibold"
-            value={selectedTargetId}
-            onChange={(e) => {
-
-              const id = e.target.value;
-              setSelectedTargetId(id);                            
-
-              const tokens = restTokens.find(t => t.id === e.target.value);
-
-              if(!tokens) return;
-
-              targets.current = {
-                type: "Target",
-                tokenTarget: [tokens],
-                numbersTarget: 1,
-                pivot: null,
-                pivotSettings: undefined,
-              }
-
-            }}>
-
-              {restTokens.filter(t => t.team !== token.team).map((t) => (
-                <option value={t.id} key={t.id}>
-                  {t.name}
-                </option>
-              ))}
-
-            </select>
-
-            <button
-              onClick={() => {
-                useArtifice(selectedArtificeItem, selectedIndex, targets.current);
-                onClose(false);
-              }}
-              className="px-6 py-2 bg-orange-600 hover:bg-orange-500 rounded text-white text-sm font-bold disabled:opacity-40 cursor-pointer"
-            >
-              Usar Card
-            </button>   
-            </div>         
+            <label className="mb-4 flex flex-col gap-1 text-sm font-semibold">
+              Alvo
+              <select
+                className="w-full rounded bg-gray-700 p-2"
+                value={selectedTargetId}
+                onChange={(e) => {
+                  const selectedToken = restTokens.find(t => t.id === e.target.value);
+                  setSelectedTargetId(e.target.value);
+                  targets.current = {
+                    type: "Target",
+                    tokenTarget: selectedToken ? [selectedToken] : [],
+                    numbersTarget: 1,
+                    pivot: null,
+                    pivotSettings: undefined,
+                  };
+                }}
+              >
+                {restTokens.length === 0 && <option value="">Sem alvos disponíveis</option>}
+                {restTokens.map((candidate) => (
+                  <option value={candidate.id} key={candidate.id}>
+                    {candidate.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
+
           {selectedArtificeItem && selectedArtificeItem.artficeSettings.cardDispach && selectedArtificeItem.artficeSettings.cardDispach.target.type === "Multi-Target" && (
-            <div className="bg-gray-700/50 w-full text-sm rounded p-2 space-y-1">
-              {restTokens.filter(t => t.team !== token.team).map((t) => {
-                const checked = selectedTargets.includes(t);
+            <div className="mb-4 w-full space-y-1 rounded bg-gray-700/50 p-2 text-sm">
+              <p className="mb-2 font-semibold">Alvos</p>
+              {restTokens.map((candidate) => {
+                const checked = selectedTargets.some((selected) => selected.id === candidate.id);
 
                 return (
                   <label
-                    key={t.id}
+                    key={candidate.id}
                     className={`flex items-center gap-2 p-2 rounded cursor-pointer
                       ${checked ? "bg-orange-600/30" : "hover:bg-gray-600/40"}
                     `}
@@ -742,61 +803,43 @@ const InventoryUI: React.FC<InventoryUIProps> = ({ token, boardTokens,battleStat
                         setSelectedTargets((prev) => {
                           if (e.target.checked) {
                             if (prev.length >= (selectedArtificeItem.artficeSettings.cardDispach?.target.numbersTarget ?? 1)) return prev;
-                            return [...prev, t];
+                            return [...prev, candidate];
                           }
-                          return prev.filter((tok) => tok.id !== t.id);
+                          return prev.filter((selected) => selected.id !== candidate.id);
                         });
                       }}
                     />
-                    <span>{t.name}</span>
-                    
+                    <span>{candidate.name}</span>
                   </label>
                 );
               })}
-              <button
-                onClick={() => {           
-                  useArtifice(selectedArtificeItem, selectedIndex, targets.current);
-                  onClose(false);
-                }}
-                className="px-6 py-2 bg-orange-600 hover:bg-orange-500 rounded text-white text-sm font-bold disabled:opacity-40 cursor-pointer"
-              >
-                Usar Card
-            </button> 
-            </div>            
-          )}
-          {selectedArtificeItem && selectedArtificeItem.artficeSettings.cardDispach && selectedArtificeItem.artficeSettings.cardDispach.target.type === "Ambient" && (
-            <div className="relative z-10 w-full max-w-md rounded-lg border-2 border-blue-900 bg-gray-800 p-4 text-gray-100 shadow-2xl">
-              <button
-              onClick={() => {
-                targets.current = {
-                  type: "Ambient",
-                  tokenTarget: null,
-                  numbersTarget: selectedArtificeItem.artficeSettings.cardDispach?.entityQuantity ?? 1,
-                  pivot: null,
-                  pivotSettings: undefined,
-                };                
-                useArtifice(selectedArtificeItem, selectedIndex, targets.current);
-                onClose(false);
-              }}
-              className="px-6 py-2 bg-orange-600 hover:bg-orange-500 rounded text-white text-sm font-bold disabled:opacity-40 cursor-pointer"
-            >
-              Usar Card
-            </button> 
             </div>
           )}
-          {selectedArtificeItem && selectedArtificeItem.artficeSettings.cardDispach && selectedArtificeItem.artficeSettings.cardDispach.target.type === "Ambient" && (
-            <div>
-              <button
-              onClick={() => {             
-                useArtifice(selectedArtificeItem, selectedIndex, targets.current);
-                onClose(false);
-              }}
-              className="px-6 py-2 bg-orange-600 hover:bg-orange-500 rounded text-white text-sm font-bold disabled:opacity-40 cursor-pointer"
-            >
-              Usar Card
-            </button>               
-            </div>
+
+          {artificeError && (
+            <p className="mb-3 rounded border border-red-700 bg-red-950/50 p-2 text-sm text-red-200">
+              {artificeError}
+            </p>
           )}
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={closeArtificeConfirmation}
+              disabled={isUsingArtifice}
+              className="rounded bg-gray-600 px-4 py-2 text-sm font-bold hover:bg-gray-500 disabled:opacity-40"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmArtificeUse()}
+              disabled={isUsingArtifice}
+              className="rounded bg-orange-600 px-4 py-2 text-sm font-bold text-white hover:bg-orange-500 disabled:opacity-40"
+            >
+              {isUsingArtifice ? "Usando..." : "Usar artifício"}
+            </button>
+          </div>
         </div>
       )}
 

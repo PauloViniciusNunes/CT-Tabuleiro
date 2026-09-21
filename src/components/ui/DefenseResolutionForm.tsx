@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import type { Token } from "../../types/token";
 import type { RollResult } from "../../types/battle";
 import { calculateActionRoll } from "../../utils/battleCalculations";
@@ -9,8 +9,8 @@ interface DefenseResolutionFormProps {
   defenderName: string;
   reactionResult: number;
   availableActions: number;
-  onResolve: (usedActions: number, result: RollResult, usedMana: number) => void; // ⬅️ ADICIONAR usedMana
-  onCancel: () => void;
+  onResolve: (usedActions: number, usedMana: number) => void | Promise<void>;
+  onCancel: () => void | Promise<void>;
 }
 
 const DefenseResolutionForm: React.FC<DefenseResolutionFormProps> = ({
@@ -24,6 +24,7 @@ const DefenseResolutionForm: React.FC<DefenseResolutionFormProps> = ({
   const [usedMana, setUsedMana] = useState(0);
   const [usedActions, setUsedActions] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const submissionLockRef = useRef(false);
 
   const availableMana = attacker.currentMana ?? 0;
   const maxAvailableActions = Math.max(1, availableActions); // ⬅️ USA O VALOR REAL
@@ -33,49 +34,32 @@ const DefenseResolutionForm: React.FC<DefenseResolutionFormProps> = ({
   const isFormValid = hasEnoughMana && hasEnoughActions;
 
   const handleResolve = async () => {
-  if (!isFormValid || isLoading) return;
+  if (!isFormValid || isLoading || submissionLockRef.current) return;
 
+  submissionLockRef.current = true;
   setIsLoading(true);
-
   try {
-    console.log("🎯 DefenseResolutionForm: Executando Definição de Velocidade");
-
-    const proficiencyBonus = attacker.proficiencies.destreza
-      ? Math.ceil((attacker.attributes.level - 10) / 4 + 4)
-      : 0;
-
-    const params = {
-      tokenId: attacker.id,
-      Q: usedActions,
-      P: 1,
-      A: attacker.attributes.destreza,
-      PF: proficiencyBonus,
-      O: 0,
-      N: usedMana > 0 ? 1 : 0,
-      L: attacker.attributes.level,
-      M: usedMana,
-    };
-
-    const rollResult = calculateActionRoll(params);
-
-    console.log("⚔️ Comparação de Velocidade:", {
-      esquivaDoDefensor: reactionResult,
-      definiçãoDoAtacante: rollResult.total,
-      resultado:
-        rollResult.total >= reactionResult
-          ? "ACERTA (Dano aplicado)"
-          : "DESVIA (Sem dano)",
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
-    onResolve(usedActions, rollResult, usedMana); // ⬅️ PASSE usedActions
-  } 
-  finally 
-  {
+    await onResolve(usedActions, usedMana);
+  } catch (error) {
+    console.error("Não foi possível resolver a defesa:", error);
+    submissionLockRef.current = false;
     setIsLoading(false);
   }
 };
+
+  const handleCancel = async () => {
+    if (submissionLockRef.current) return;
+
+    submissionLockRef.current = true;
+    setIsLoading(true);
+    try {
+      await onCancel();
+    } catch (error) {
+      console.error("Não foi possível cancelar a resolução:", error);
+      submissionLockRef.current = false;
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 w-96 border-2 border-cyan-600 shadow-lg">
@@ -161,7 +145,7 @@ const DefenseResolutionForm: React.FC<DefenseResolutionFormProps> = ({
           {isLoading ? "Processando..." : "Executar"}
         </button>
         <button
-          onClick={onCancel}
+          onClick={handleCancel}
           disabled={isLoading}
           className="flex-1 py-2 px-3 rounded font-semibold text-sm bg-gray-700 hover:bg-gray-600 text-white transition-colors disabled:opacity-60"
         >

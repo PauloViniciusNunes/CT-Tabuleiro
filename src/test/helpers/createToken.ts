@@ -80,6 +80,9 @@ export function createToken(
 
         bossSettings: undefined,
 
+        ownerId: "",
+        campaignId: "",
+
         ...overrides,
 
         attributes: {

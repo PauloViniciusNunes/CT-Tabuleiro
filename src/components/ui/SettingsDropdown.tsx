@@ -7,6 +7,8 @@ interface SettingsDropdownProps {
   onChangeRows: (rows: number) => void;
   onChangeCols: (cols: number) => void;
   onChangeBackgroundImage: (imageUrl: string | null) => void;
+  onGenerateMazeOpen: (b: boolean) => void;
+  onMapSelect: (b: boolean) => void;
 }
 
 export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
@@ -15,6 +17,8 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   onChangeRows,
   onChangeCols,
   onChangeBackgroundImage,
+  onGenerateMazeOpen,
+  onMapSelect
 }) => {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -121,9 +125,30 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
               />
             </div>
 
-            <div className="mt-3 text-xs italic text-gray-400">
-              Mais opções em breve...
+            <div>
+              <label className="block text-sm font-semibold mb-1" htmlFor="bg-image-input">
+                Selecionar Mapa
+              </label>
+                <button
+                  onClick={() => onMapSelect(true)}
+                  className="w-full text-sm text-gray-300 italic bg-gray-800 rounded border border-gray-700 py-1 px-2 cursor-pointer hover:bg-gray-900"
+                >
+                  Mapas
+                </button>
             </div>
+
+            <div>
+              <label className="block text-sm font-semibold mb-1" htmlFor="bg-image-input">
+                Gerar Labirinto
+              </label>
+                <button
+                  onClick={() => onGenerateMazeOpen(true)}
+                  className="w-full text-sm text-gray-300 italic bg-gray-800 rounded border border-gray-700 py-1 px-2 cursor-pointer hover:bg-gray-900"
+                >
+                  Gerar
+                </button>
+            </div>            
+
           </div>
         </div>
       )}

@@ -5,9 +5,9 @@ export function formatRechargeCardRecord(context: EngineContext, tokenId: string
     context.timeToRechargeCard.current[key] = recharge
 }
 
-export function formatRechargeCardRecordReturn(context: EngineContext, tokenId: string, cardId: string) {
+export function formatRechargeCardRecordReturn(timeToRechargeCard: Record<string, number>, tokenId: string, cardId: string) {
     const key = `${tokenId}->${cardId}`
-    return context.timeToRechargeCard.current[key]
+    return timeToRechargeCard[key]
 }
 
 export function removeCardNotRecharge(context: EngineContext, currentId: string, valor: string) {

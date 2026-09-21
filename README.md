@@ -1,73 +1,62 @@
-# React + TypeScript + Vite
+# CT-Tabuleiro
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Iniciar o ambiente completo
 
-Currently, two official plugins are available:
+Instale as dependências do frontend e do backend normalmente. Para disponibilizar
+uma sessão pela internet, instale também o
+[`cloudflared`](https://developers.cloudflare.com/tunnel/downloads/) e confirme a
+instalação com:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cloudflared --version
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Depois execute apenas:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run start-all
 ```
+
+O comando inicia e identifica os logs de frontend, backend, Socket.IO e
+Cloudflare. Assim que o Quick Tunnel estiver conectado, um painel separado mostra
+a URL aleatória `https://*.trycloudflare.com`. Essa é a única URL que deve ser
+compartilhada com os jogadores. Ela muda a cada execução.
+
+Quick Tunnels são destinados somente a desenvolvimento e testes. Se a criação
+do tunnel falhar ou o `cloudflared` não estiver instalado, os serviços locais
+continuam funcionando. Uma configuração `config.yaml` existente no diretório do
+`cloudflared` pode impedir o uso de Quick Tunnels.
+
+### Roteamento
+
+O Vite funciona como gateway local na porta `5173`:
+
+| Caminho público | Destino interno |
+| --- | --- |
+| `/` | frontend Vite `127.0.0.1:5173` |
+| `/api/*` | backend Next.js `127.0.0.1:3000` |
+| `/socket.io/*` | Socket.IO `127.0.0.1:3001` (HTTP e WebSocket) |
+
+O `cloudflared` aponta somente para o gateway Vite. A API e o Socket.IO não
+ganham URLs públicas independentes. O frontend usa caminhos da mesma origem,
+portanto funciona tanto em `http://ct-tabuleiro.local:5173` quanto na URL HTTPS
+do tunnel.
+
+### Executar sem Cloudflare
+
+Para iniciar todos os serviços locais sem criar acesso remoto:
+
+```bash
+npm run start-all -- --no-cloudflare
+```
+
+Também é possível usar `CT_DISABLE_CLOUDFLARE=1 npm run start-all` em ambientes
+Unix. `Ctrl+C` encerra frontend, backend, Socket.IO e `cloudflared` em conjunto.
+
+### Autenticação e CORS
+
+A autenticação usa JWT enviado no header `Authorization` e armazenado no
+`sessionStorage`; ela não depende de cookies ou de domínio. O backend e o
+Socket.IO aceitam as origens locais conhecidas, a origem configurada em
+`FRONTEND_ORIGIN` e subdomínios HTTPS de `trycloudflare.com`. Não é utilizado
+um CORS irrestrito com `*`.

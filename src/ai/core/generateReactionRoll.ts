@@ -22,6 +22,7 @@ attribute:
   return calculateActionRoll({
 
     tokenId: self.id,
+    usedItemId: undefined,
 
     Q: usedActions,
 

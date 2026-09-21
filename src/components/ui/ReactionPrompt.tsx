@@ -1,5 +1,5 @@
 // /src/components/ui/ReactionPrompt.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as RadioGroup from "@radix-ui/react-radio-group";
 import * as Switch from "@radix-ui/react-switch";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -42,7 +42,7 @@ export interface ReactionPromptProps {
     usedActions: number;
     usedMana: number;
     usedCertaintyDie?: boolean;
-  }) => void;
+  }) => void | Promise<void>;
 
   // Forma legada (compatível com BoardPage atual)
   actor?: ActorLike;
@@ -52,9 +52,8 @@ export interface ReactionPromptProps {
     usedMana: number,
     usedActions: number,
     usedCertaintyDie?: boolean,
-    roll?: number | RollResult,
     item?: Item | null,
-  ) => void;
+  ) => void | Promise<void>;
 
   // Paralisia/lock
   isReactionAllowed?: boolean | undefined;
@@ -63,8 +62,8 @@ export interface ReactionPromptProps {
   prevActions: number;
 
   // Cancelar (tomar o golpe)
-  onCancel: () => void;
-  onPrev: () => void;
+  onCancel: () => void | Promise<void>;
+  onPrev: () => void | Promise<void>;
 }
 
 const buttonVariants = cva(
@@ -92,50 +91,12 @@ const buttonVariants = cva(
   }
 );
 
-const attributeDescriptions: Record<string, string> = {
-  destreza: "Esquiva: teste binário para desviar completamente do dano.",
-  consistencia: "Defesa: reduz o dano recebido ao comparar com Força ou Sabedoria.",
-  inteligencia: "Leitura tática: testa se você antecipa ou não o movimento adversário.",
-  sabedoria: "Resistência mental: evita que suas ações sejam entregues ao adversário (Desnortear).",
-};
-
 const reactionOptionsByActionType: Record<string, ReactionAttr[]> = {
   destreza: ["destreza", "card"],
   forca: ["destreza", "consistencia", "card"],
   inteligencia: ["inteligencia", "card"],
   sabedoria: ["sabedoria", "card"],
 };
-
-const radioOptions = {
-  destreza: {
-    title: "Destreza",
-    description: "Esquiva binária. Se vencer a Definição, evita todo dano.",
-    icon: <Zap className="h-4 w-4 text-yellow-300" />,
-  },
-  consistencia: {
-    title: "Consistência",
-    description: "Defesa que reduz o dano recebido ao comparar com Força/Sabedoria.",
-    icon: <Shield className="h-4 w-4 text-cyan-300" />,
-  },
-  inteligencia: {
-    title: "Inteligência",
-    description: "Teste para determinar se o adversário vai prever suas próximas ações.",
-    icon: <Brain className="h-4 w-4 text-pink-500" />,
-  },
-  sabedoria: {
-    title: "Sabedoria",
-    description:
-      "Teste contra Desnortear. Se falhar, suas ações são entregues ao adversário.",
-    icon: <Book className="h-4 w-4 text-purple-500" />,
-  },
-  card: {
-    title: "Card",
-    description: "Utilizar uma habilidade especial para se defender.",
-    icon: <CardSim className="h-4 w-4 text-orange-500" />
-  }
-} as const;
-
-
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> &
   VariantProps<typeof buttonVariants>;
@@ -216,6 +177,9 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
   const [usedActions, setUsedActions] = useState<number>(1);
   const [usedMana, setUsedMana] = useState<number>(0);
   const [useCertaintyDie, setUseCertaintyDie] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submissionLockRef = useRef(false);
+  const isBusy = isLoading || isSubmitting;
 
   const actionOptions = [
     {
@@ -386,65 +350,57 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
     );
   }
 
-  function handleConfirm() {
+  async function handleConfirm() {
     if (!selectedAttribute) return;
     if (!hasEnoughActions || !hasEnoughMana) return;
     if (useCertaintyDie && !canUseCertaintyDie) return;
+    if (submissionLockRef.current) return;
     console.info("Selected Attribute: ", selectedAttribute)
 
-    // Preferência: forma nova
-    if (onConfirm) {
-      onConfirm({
-        attribute: selectedAttribute,
-        usedActions,
-        usedMana,
-        usedCertaintyDie: useCertaintyDie || undefined,
-      });
-      return;
-    }
+    submissionLockRef.current = true;
+    setIsSubmitting(true);
 
-    const positionPReaction = (selectedAttribute === "destreza" && diretionalActionType === "destreza") ? 2 : 1;
-
-    if (onReact && actor) {
-
-      let rollResult: RollResult =
-      {
-        rawRolls:[0], 
-        total: 0,
-        usedMana:0, 
-        CRI: 0       
-      };
-      
-      if(selectedAttribute !== "card")
-      {
-        const params = {
-          tokenId: actor.id,
-          Q: usedActions,
-          P: positionPReaction,
-          A: actor.attributes[selectedAttribute!],
-          PF: actor.proficiencies[selectedAttribute!]
-            ? Math.ceil((actor.attributes.level - 10) / 4 + 4)
-            : 0,
-          O: itemCoerentAdd ? (selectedItem?.ocasionalAdd ?? 0) : 0,
-          N: usedMana > 0 ? 1 : 0,
-          L: actor.attributes.level,
-          M: usedMana,
-        };
-
-        rollResult = calculateActionRoll(params);
+    try {
+      // Preferência: forma nova
+      if (onConfirm) {
+        await onConfirm({
+          attribute: selectedAttribute,
+          usedActions,
+          usedMana,
+          usedCertaintyDie: useCertaintyDie || undefined,
+        });
+        return;
       }
 
-      onReact(
-        actor.id,
-        selectedAttribute,
-        usedMana,
-        usedActions,
-        useCertaintyDie || undefined,
-        rollResult,
-        selectedItem,
-      );
+      if (onReact && actor) {
+        await onReact(
+          actor.id,
+          selectedAttribute,
+          usedMana,
+          usedActions,
+          useCertaintyDie || undefined,
+          selectedItem,
+        );
+      }
+    } catch (error) {
+      console.error("Não foi possível confirmar a reação:", error);
+      submissionLockRef.current = false;
+      setIsSubmitting(false);
     }
   }
+
+  const runLocked = async (callback: () => void | Promise<void>) => {
+    if (submissionLockRef.current) return;
+    submissionLockRef.current = true;
+    setIsSubmitting(true);
+    try {
+      await callback();
+    } catch (error) {
+      console.error("Não foi possível concluir a reação:", error);
+      submissionLockRef.current = false;
+      setIsSubmitting(false);
+    }
+  };
 
   const resultColor =
     resultType === "fail"
@@ -582,7 +538,7 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
                     )
                   );
                 }}
-                disabled={isLoading}
+                disabled={isBusy}
                 className={[inputBase, hasEnoughActions ? inputOk : inputError].join(
                   " "
                 )}
@@ -614,7 +570,7 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
                     )
                   );
                 }}
-                disabled={isLoading}
+                disabled={isBusy}
                 className={[inputBase, hasEnoughMana ? inputOk : inputError].join(
                   " "
                 )}
@@ -659,7 +615,7 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
                   inputBase,
                   "flex items-center gap-3 cursor-pointer",
                   canUseCertaintyDie ? inputOk : inputError,
-                  (!canUseCertaintyDie || isLoading) ? "opacity-60 cursor-not-allowed" : "",
+                  (!canUseCertaintyDie || isBusy) ? "opacity-60 cursor-not-allowed" : "",
                 ].join(" ")}
               >
                 <input
@@ -668,7 +624,7 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
                   onChange={(e) =>
                     setUseCertaintyDie(e.target.checked && canUseCertaintyDie)
                   }
-                  disabled={!canUseCertaintyDie || isLoading}
+                  disabled={!canUseCertaintyDie || isBusy}
                   className="h-4 w-4 accent-emerald-500"
                 />
 
@@ -692,7 +648,7 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
             <Button
               onClick={handleConfirm}
               disabled={
-                isLoading ||
+                isBusy ||
                 !selectedAttribute ||
                 !hasEnoughActions ||
                 !hasEnoughMana ||
@@ -704,8 +660,8 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
             </Button>            
             <Button
               variant="ghost"
-              onClick={onCancel}
-              disabled={isLoading}
+              onClick={() => void runLocked(onCancel)}
+              disabled={isBusy}
               className="gap-2"
             >
               <XCircle className="h-4 w-4" />
@@ -715,7 +671,8 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
               prevActions > 0 &&
               (
                 <Button
-                  onClick={onPrev}
+                  onClick={() => void runLocked(onPrev)}
+                  disabled={isBusy}
                   className="bg-pink-500 hover:bg-pink-300 text-white gap-2"
                 >
                   <Brain className="h-4 w-4" />

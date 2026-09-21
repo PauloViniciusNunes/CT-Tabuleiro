@@ -1,0 +1,5 @@
+export {OPTIONS} from "../../../../../../middleware"
+export {POST} from "@/modules/battles/routes/queue/create/route"
+export {DELETE} from "@/modules/battles/routes/queue/delete/route"
+export {PATCH} from "@/modules/battles/routes/queue/update/route"
+export {GET} from "@/modules/battles/routes/queue/find/route"

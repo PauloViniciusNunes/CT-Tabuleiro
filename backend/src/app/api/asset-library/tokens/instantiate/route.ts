@@ -1,0 +1,1 @@
+export {POST} from "@/modules/asset-library/tokens/routes/instantiate/route"

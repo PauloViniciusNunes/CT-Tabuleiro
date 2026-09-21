@@ -1,17 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
-import TokenForm from "./TokenForm";
+import TokenCreateForm from "./TokenCreateForm";
 import BattlePanel from "../ui/BattlePanel";
 import TokenEditForm from "./TokenEditForm";
-import CardCreate from "./CardCreateForm";
+import CardCreateForm from "./CardCreateForm";
 import type { Token } from "../../types/token";
 import type { Card } from "../../types/card";
 import type { ActionChoice, BattleState } from "../../types/battle";
 import MusicList from "../music/MusicList";
-import { PencilLine } from "lucide-react";
+import { PencilLine, Search } from "lucide-react";
 import type { Item, ItemRarity } from "../../types/item";
 import ItemCreateForm from "./ItemCreateForm";
 import CardEditForm from "./CardEditForm";
 import ItemEditForm from "./ItemEditForm";
+import type { Campaign, User } from "../../types/campaign";
 
 interface SidebarProps {
   tokens: Token[];
@@ -20,20 +21,20 @@ interface SidebarProps {
   cardBeingEdited: Card | null,
   items: Item[];
   itemBeingEdited: Item | null
-  addToken: (token: Token) => void;
+  addToken: (token: Token) => Promise<void>;
   updateToken: (token: Token) => void;
   onEditToken: (token: Token) => void;
-  onSaveEditedToken: (token: Token) => void;
+  onSaveEditedToken: (token: Token) => void | Promise<void>;
   onCloseEditedToken: (token: Token | null) => void,
   removeToken: (tokenId: string) => void;
-  addCard: (card: Card) => void;
+  addCard: (card: Card) => void | Promise<void>;
   onEditCard: (card: Card) => void;
-  onSaveEditedCard: (card: Card) => void;
+  onSaveEditedCard: (card: Card) => void | Promise<void>;
   onCloseEditedCard: (card: Card| null) => void;
   removeCard: (cardId: string) => void;
-  addItem: (item: Item) => void;
+  addItem: (item: Item) => void | Promise<void>;
   onEditItem: (item: Item) => void;
-  onSaveEditedItem: (item: Item) => void;
+  onSaveEditedItem: (item: Item) => void | Promise<void>;
   onCloseEditedItem: (item: Item | null) => void;
   setIntroduction: (b: boolean) => void;
   removeItem: (itemId: string) => void;
@@ -48,9 +49,48 @@ interface SidebarProps {
   onEndBattle: () => void;
   onNextTurn: () => void;
   boardBoss: Token | null;
+  campaign: Campaign| null,
+  userId: string | null,
+  users: User[]
 }
 
 type TabType = "token" | "cards" |"item" | "music" | "chat";
+
+function normalizeSearch(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase();
+}
+
+function includesSearch(name: string, query: string): boolean {
+  return normalizeSearch(name).includes(normalizeSearch(query));
+}
+
+interface LibrarySearchInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}
+
+function LibrarySearchInput({ value, onChange, placeholder }: LibrarySearchInputProps) {
+  return (
+    <div className="relative w-full mb-4">
+      <Search
+        aria-hidden="true"
+        size={16}
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+      />
+      <input
+        type="search"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full py-2 pl-9 pr-3 text-white text-sm bg-gray-800 border border-gray-700 focus:border-green-400 focus:outline-none rounded"
+      />
+    </div>
+  );
+}
 
 const Sidebar: React.FC<SidebarProps> = ({
   tokens,
@@ -60,7 +100,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   items,
   itemBeingEdited,
   addToken,
-  updateToken,
   onEditToken,
   onSaveEditedToken,
   onCloseEditedToken,
@@ -75,7 +114,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   onCloseEditedItem,
   onEditItem,
   removeItem,
-  setIntroduction,
   battleHistory,
   widthPx,
   onWidthChange,
@@ -85,14 +123,25 @@ const Sidebar: React.FC<SidebarProps> = ({
   onEndBattle, 
   onNextTurn,
   boardBoss,
+  campaign,
+  userId,
+  users
 }) => {
 
   const [formOpen, setFormOpen]         = useState<boolean>(false);
   const [cardFormOpen, setCardFormOpen] = useState<boolean>(false);
   const [itemFormOpen, setItemFormOpen] = useState<boolean>(false);
 
-  const [activeTab, setActiveTab] = useState<TabType>("token");
+  const [activeTab, setActiveTab] = useState<TabType>("chat");
   const [chatInput, setChatInput] = useState("");
+  const [tokenSearch, setTokenSearch] = useState("");
+  const [cardSearch, setCardSearch] = useState("");
+  const [itemSearch, setItemSearch] = useState("");
+  const [musicSearch, setMusicSearch] = useState("");
+
+  const filteredTokens = tokens.filter((token) => includesSearch(token.name, tokenSearch));
+  const filteredCards = cards.filter((card) => includesSearch(card.name, cardSearch));
+  const filteredItems = items.filter((item) => includesSearch(item.name, itemSearch));
   
   const rarityNameFormated: Record<ItemRarity, string> = 
   {
@@ -158,7 +207,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     onWidthChange(next);
   };
 
-  
+  const permissionTabSeek = campaign?.ownerId === (userId ?? "") ?
+    ["token", "cards","item", "music", "chat"] : ["chat"]
 
   const stopResizing = () => {
     if (!resizingRef.current) return;
@@ -191,7 +241,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const formatActionHistory = (
     action: ActionChoice & { round: number; attackerName: string; targetName: string }
   ) => {
-    const firstDice = action.rollResult.rawRolls[0];
+    const firstDice = action.rollResult?.rawRolls[0];
     let diceStyle = "";
     if (firstDice === 20) {
       diceStyle = "text-green-400 font-bold drop-shadow-[0_0_8px_rgba(34,197,94,0.8)]";
@@ -209,11 +259,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         </span>
         : {action.type} para{" "}
         <span className="text-yellow-400">{action.targetName}</span> ⟶{" "}
-        <span className={diceStyle}>{firstDice}</span> + ({action.rollResult.total} - {firstDice}) ={" "}
-        <span className="font-semibold text-green-300">{action.rollResult.total}</span>
+        <span className={diceStyle}>{firstDice}</span> + ({action.rollResult?.total} - {firstDice}) ={" "}
+        <span className="font-semibold text-green-300">{action.rollResult?.total}</span>
       </div>
     );
   };
+
 
   return (
     <>
@@ -235,7 +286,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Tabs Header */}
         <div className="flex border-b border-gray-700">
-          {(["token", "cards","item", "music", "chat"] as TabType[]).map((tab) => (
+          {(permissionTabSeek as TabType[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -264,11 +315,18 @@ const Sidebar: React.FC<SidebarProps> = ({
                 >
                   + Criar Token
                 </button>
+                <LibrarySearchInput
+                  value={tokenSearch}
+                  onChange={setTokenSearch}
+                  placeholder="Pesquisar tokens..."
+                />
                 <div className="flex-1 overflow-y-auto space-y-3">
-                  {tokens.length === 0 ? (
-                    <p className="text-gray-400 text-sm text-center">Nenhum token criado.</p>
+                  {filteredTokens.length === 0 ? (
+                    <p className="text-gray-400 text-sm text-center">
+                      {tokens.length === 0 ? "Nenhum token criado." : "Nenhum token encontrado."}
+                    </p>
                   ) : (
-                    tokens.map((token) => (
+                    filteredTokens.map((token) => (
                       <div key={token.id} className="bg-gray-800 p-3 rounded flex flex-col gap-2">
                         <div className="flex items-center gap-3">
                           <img
@@ -321,14 +379,19 @@ const Sidebar: React.FC<SidebarProps> = ({
                 >
                   + Criar Card
                 </button>
+                <LibrarySearchInput
+                  value={cardSearch}
+                  onChange={setCardSearch}
+                  placeholder="Pesquisar cards..."
+                />
 
                 <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                  {cards.length === 0 ? (
+                  {filteredCards.length === 0 ? (
                     <p className="text-gray-400 text-sm text-center">
-                      Nenhum card criado.
+                      {cards.length === 0 ? "Nenhum card criado." : "Nenhum card encontrado."}
                     </p>
                   ) : (
-                    cards.map((card) => (
+                    filteredCards.map((card) => (
                       <div
                         key={card.id}
                         className="bg-gray-800 p-3 rounded flex flex-col gap-2
@@ -404,7 +467,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             {activeTab === "item" && (
               <div className="w-full flex flex-col h-full">
                 <h2 className="text-lg font-bold text-white select-none mb-2 text-center">
-                  Itens
+                  Biblioteca de Items
                 </h2>
 
                 <button
@@ -414,14 +477,19 @@ const Sidebar: React.FC<SidebarProps> = ({
                 >
                   + Adicionar Item
                 </button>
+                <LibrarySearchInput
+                  value={itemSearch}
+                  onChange={setItemSearch}
+                  placeholder="Pesquisar itens..."
+                />
 
                 <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                  {items.length === 0 ? (
+                  {filteredItems.length === 0 ? (
                     <p className="text-gray-400 text-sm text-center">
-                      Nenhum item criado.
+                      {items.length === 0 ? "Nenhum item criado." : "Nenhum item encontrado."}
                     </p>
                   ) : (
-                    items.map((item) => (
+                    filteredItems.map((item) => (
                       <div
                         key={item.id}
                         className="bg-gray-800 p-3 rounded flex flex-col gap-2
@@ -492,7 +560,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <p className="text-gray-400 text-xs text-center mb-3">
                   Coloque arquivos em /src/musics para aparecerem aqui.
                 </p>
-                <MusicList />
+                <LibrarySearchInput
+                  value={musicSearch}
+                  onChange={setMusicSearch}
+                  placeholder="Pesquisar músicas..."
+                />
+                <MusicList searchQuery={musicSearch} />
               </div>
             )}
 
@@ -506,6 +579,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   onNextTurn={onNextTurn}
                   onStartBattle={onStartBattle}
                   boardBoss={boardBoss}
+                  isGameMaster={campaign?.ownerId === userId}
                 />         
                 <h2 className="mt-2 text-lg font-bold text-white select-none mb-2 text-center">Historic Battle</h2>
                   <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-800 rounded p-3 mb-2 space-y-2">
@@ -548,22 +622,21 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {formOpen && (
-        <TokenForm
-          onSave={(token) => {
-            addToken(token);
-            setFormOpen(false);
-          }}
+        <TokenCreateForm
+          onSave={addToken}
           onClose={() => setFormOpen(false)}
           cards={cards}
           items={items}
+          users={users}
+          campaign={campaign}
+          tokens={tokens}
         />
       )}
 
     {cardFormOpen && (
-      <CardCreate
+      <CardCreateForm
         onSave={(newCard) => {
-          addCard(newCard);
-          setCardFormOpen(false);
+          return Promise.resolve(addCard(newCard)).then(() => setCardFormOpen(false));
         }}
         onClose={() => setCardFormOpen(false)}
       />
@@ -574,6 +647,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           theseToken={tokenBeingEdited}
           cards={cards}
           items={items}
+          users={users}
+          campaign={campaign}
+          tokens={tokens}
           onClose={() => onCloseEditedToken(null)}
           onSave={onSaveEditedToken}
         />
@@ -583,7 +659,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <CardEditForm
           theseCard={cardBeingEdited}
           onSave={onSaveEditedCard}
-          onClose={() => onCloseEditedCard}
+          onClose={() => onCloseEditedCard(null)}
         />
       )}
 
@@ -592,7 +668,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           availableCards={cards}
           theseItem={itemBeingEdited}
           onSave={onSaveEditedItem}
-          onClose={() => onCloseEditedItem}
+          onClose={() => onCloseEditedItem(null)}
         />
       )}
 
@@ -610,4 +686,3 @@ const Sidebar: React.FC<SidebarProps> = ({
 };
 
 export default Sidebar;
-

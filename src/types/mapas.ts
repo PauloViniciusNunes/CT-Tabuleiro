@@ -9,4 +9,5 @@ export type Mapa = {
     img: string;
     mapObjs: MapObject[];
     boardTokens: Token[];
+    campaignId: string
 }

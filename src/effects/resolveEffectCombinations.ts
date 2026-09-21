@@ -2,7 +2,9 @@ import type { Token } from "../types/token";
 import type { EffectType, CombinationResult } from "../types/effects";
 import { tokenHasEffects } from "./effectsQuery";
 
-export function resolveEffectCombinations(
+export function 
+
+resolveEffectCombinations(
     token: Token,
     incoming: EffectType
   ): CombinationResult | null {

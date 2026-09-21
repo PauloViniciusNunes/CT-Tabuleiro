@@ -29,5 +29,7 @@ dist-ssr
 .codex
 .agents
 
+AGENTS.md
+CLAUDE.md
 QWEN.md
 PROJECT_CONTEXT.md

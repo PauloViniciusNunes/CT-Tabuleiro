@@ -1,20 +1,26 @@
 import type { Pivot, Target } from "./target"
 import type { EffectType } from "./effects";
-import type { Token, TokenTeam } from "./token";
-import type { RollResult } from "./battle";
+import type { TokenTeam } from "./token";
 
 
-export type CardCausality = "Direct-Damage" | "Only-Effect-Application" | "Offensive" | "Defensive" | "Cure";
+export type CardCausality = "Direct-Damage" | "Only-Effect-Application" | "Offensive" | "Defensive" | "Cure" | "None"; 
 export type NonDefensiveCardCausality = Exclude<CardCausality, "Defensive">;
 export type CardDuration  = number;
+export type OffensiveCardAttribute =
+    | "forca"
+    | "destreza"
+    | "consistencia"
+    | "inteligencia"
+    | "sabedoria"
+    | "carisma";
 
 export type Position = {
     row: number,
     col: number,
 }
 
-export type SpellType     = "Abjuração" | "Encantamento" | "Conjuração" | "Ilusão" | "Transmutação" | "Advinhação" | "Necromancia" | "Evocação"|null;
-export type SpellCircle   = 1|2|3|4|5|6|7|8|9|null;
+export type SpellType     = "Abjuração" | "Encantamento" | "Conjuração" | "Ilusão" | "Transmutação" | "Advinhação" | "Necromancia" | "Evocação"| "None" | null;
+export type SpellCircle   = 1|2|3|4|5|6|7|8|9|0|null;
 export type BaseDice =
 {
     quantity: number,
@@ -27,17 +33,17 @@ export type Card =
     img: string,
     desc: string,
     name: string,
-    spellType?: SpellType,
+    spellType?: SpellType, // enum
     spellCircle?: SpellCircle,
     baseDice?: BaseDice | null,
     manaRequired?: number | null,
     actionsRequired?: number | null,
-    duration?: CardDuration,
+    duration?: CardDuration, // CardDuration = number
     recharge: Number,
     remainingDuration: number, // = duration, por padrão
     itsLoaded: boolean,        
     causality: string,
-    causalityType: CardCausality,
+    causalityType: CardCausality, //enum
     defenseReplicate: NonDefensiveCardCausality,
     partialOffensive: boolean | undefined,
     entityQuantity: number,
@@ -45,8 +51,7 @@ export type Card =
     target: Target,
 }
 
-export type CardEntityInstance =
-{
+export type MechanicOverlay = {
     id: string; // Adicionado.
     triggerId: string;
     anchorTokenId?: string;
@@ -58,13 +63,10 @@ export type CardEntityInstance =
 }
 
 export type OffensiveCardResponse = {
-    usedCard: Card,
-    rawCardResult: number,
-    rawTestResult: number,
+    defenderId: string;
+    attribute: OffensiveCardAttribute;
     usedMana: number;
     usedActions: number;
     usedCertainDie: boolean;
-    defenseRollResult: RollResult;
-    token: Token;
     previewAction: boolean;
-  };
+};

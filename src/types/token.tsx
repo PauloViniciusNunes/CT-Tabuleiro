@@ -1,6 +1,6 @@
 // Acrescente no seu arquivo Token
 import type { ParalysisState } from './status';
-import type {TokenEffect, TokenPrimaryElement, TokenPrimaryDisvantage} from './effects'
+import type {TokenEffect, TokenPrimaryDisvantage, PrimaryMechanic} from './effects'
 import type {Card } from './card';
 import type { Item } from './item';
 
@@ -13,6 +13,25 @@ export interface TokenAttributes {
   carisma: number;
   level: number;
   xp: number;
+}
+
+export type TokenMultipliableAttribute =
+  | "forca"
+  | "destreza"
+  | "consistencia"
+  | "inteligencia"
+  | "sabedoria"
+  | "carisma";
+
+export type TokenAttributeMultipliers = Record<TokenMultipliableAttribute, number>;
+
+export interface TokenTransformation {
+  baseTokenId: string;
+  inheritBaseCards: boolean;
+  attributeMultipliers: TokenAttributeMultipliers;
+  additionalCards: Card[];
+  additionalMechanics: PrimaryMechanic[];
+  additionalDisadvantages: TokenPrimaryDisvantage[];
 }
 
 export interface TokenOccasionalAddition
@@ -87,8 +106,9 @@ export interface Token {
   team: TokenTeam;
   position: TokenPosition;
 
-  bodytobodyRange: number;      // Alcance de ataque físico (padrão: 1)
+  bodytobodyRange: number;       // Alcance de ataque físico (padrão: 1)
   magicalRange: number;          // Alcance de ataque mágico (padrão: 6)
+  naturalMovement?: number;
   pendingXPAllocating: number;
 
   currentLife?: number;
@@ -99,14 +119,19 @@ export interface Token {
   certaintyDiceRemaining?: number;
   paralysisState?: ParalysisState;
   tokenEffects?: TokenEffect[]; // default: 'none'
-  tokenPrimaryElement?: TokenPrimaryElement;
-  tokenPrimaryDisvantege?: TokenPrimaryDisvantage;
+  tokenPrimaryElement?: PrimaryMechanic[];
+  tokenPrimaryDisvantege?: TokenPrimaryDisvantage[];
   visualOverlays?: {
     id: string;
     type: string;
     size: number;
     offset: number;
     gifPath: string;
+    mechanicInstanceIds?: string[];
   }[];
   bossSettings?: BossInterfaceColors;
+  ownerId: string,
+  campaignId: string
+  /** Present only when this template/instance represents a transformation. */
+  transformation?: TokenTransformation;
 }

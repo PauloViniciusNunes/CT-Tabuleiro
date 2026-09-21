@@ -1,72 +1,83 @@
 import React, { useEffect, useState, type FormEvent } from "react";
-import type { Item } from "../../types/item";
+import { PASSIVE_MECHANIC_OPTIONS, type Item, type PassiveMechanic } from "../../types/item";
 import type { Card } from "../../types/card";
 import type { ItemSlot, ItemRarity } from "../../types/item";
 import type { TokenAttributes } from "../../types/token";
-import { type ChangeEvent } from "react";
-import { type EffectType } from "../../types/effects";
-import { EFFECT_TYPES } from "../../types/effects";
+import { itemFromForm } from "../../models/forms/itemFormModel";
 
-interface ItemCreateProps {
+export interface ItemFormProps {
   availableCards: Card[];
-  onSave: (item: Item) => void;
+  onSave: (item: Item) => void | Promise<void>;
   onClose: () => void;
+  initialItem?: Item;
+  mode?: "create" | "edit";
 }
 
-const generateId = () => crypto.randomUUID();
 
-const ItemCreateForm: React.FC<ItemCreateProps> = ({
+
+export const ItemForm: React.FC<ItemFormProps> = ({
   availableCards,
   onSave,
   onClose,
+  initialItem,
+  mode = initialItem ? "edit" : "create",
 }) => { 
-  const [slot, setSlot]     = useState<ItemSlot>("inventory-only");
-  const [rarity, setRarity] = useState<ItemRarity>("common");
+  const [slot, setSlot] = useState<ItemSlot>(initialItem?.slot ?? "inventory-only");
+  const [rarity, setRarity] = useState<ItemRarity>(initialItem?.rarity ?? "common");
+  const [passiveMechanics, setPassiveMechanics] = useState<PassiveMechanic[]>(
+    initialItem?.passiveMechanics ?? [],
+  );
 
-  const [ocasionalAdd, setOcasionalAdd] = useState(0);
+  const [ocasionalAdd, setOcasionalAdd] = useState(initialItem?.ocasionalAdd ?? 0);
   const [atribute, setAtribute] =
-    useState<keyof Omit<TokenAttributes, "level" | "xp">>("forca");
+    useState<keyof Omit<TokenAttributes, "level" | "xp">>(
+      initialItem?.atributeToOcasionalAdd ?? "forca",
+    );
 
-  const [selectedCards, setSelectedCards]   = useState<Card[]>([]);
+  const [selectedCards, setSelectedCards] = useState<Card[]>(
+    initialItem?.habilityCards ?? [],
+  );
   const [cardPickerOpen, setCardPickerOpen] = useState<boolean>(false);
   const [artificeCardPickerOpen, setArtificeCardPickerOpen] = useState<boolean>(false);
   
-  const [craftable, setCraftable] = useState(false);
+  const [craftable, setCraftable] = useState(initialItem?.craftable ?? false);
   
-  const [artifice, setArtifice]   = useState(false);
-  const [artificeManaAdd, setArtificeManaAdd] = useState(0);
-  const [artificeLifeAdd, setArtificeLifeAdd] = useState(0);
-  const [artificeEffectApply, setArtificeEffectApply] = useState<EffectType | null>(null);
-  const [artificeCardDispach, setArtificeCardDispach] = useState<Card | null>(null);
+  const [artifice, setArtifice] = useState(initialItem?.isArtifice ?? false);
+  const [artificeManaAdd, setArtificeManaAdd] = useState(
+    initialItem?.artficeSettings.manaAdd ?? 0,
+  );
+  const [artificeLifeAdd, setArtificeLifeAdd] = useState(
+    initialItem?.artficeSettings.lifeAdd ?? 0,
+  );
+  const [artificeMechanicApply, setArtificeMechanicApply] = useState<PassiveMechanic | null>(
+    initialItem?.artficeSettings.mechanicToApply ?? null,
+  );
+  const [artificeCardDispach, setArtificeCardDispach] = useState<Card | null>(
+    initialItem?.artficeSettings.cardDispach ?? null,
+  );
 
   useEffect(() => {
     if(!artifice)
     {
       setArtificeManaAdd(0);
       setArtificeLifeAdd(0);
-      setArtificeEffectApply(null);
+      setArtificeMechanicApply(null);
       setArtificeCardDispach(null);
     }
   }, [artifice])
 
-  const [itemName, setItemName]   = useState<string>("")
-  const [itemDesc, setItemDesc]   = useState<string>("")
+  const [itemName, setItemName] = useState(initialItem?.name ?? "");
+  const [itemDesc, setItemDesc] = useState(initialItem?.desc ?? "");
 
-  const [itemImgUrl, setItemImgUrl]   = useState<string>("");
-  const [itemVFXurl, setItemVFXurl] = useState<string[]>([]);
-  const [itemSFXurl, setItemSFXurl] = useState<string>("");
-  const [itemValue, setItemValue]     = useState<number>(0)
+  const [itemImgUrl, setItemImgUrl] = useState(initialItem?.imgUrl ?? "");
+  const [itemVFXurl, setItemVFXurl] = useState<string[]>(initialItem?.vfxUrl ?? []);
+  const [itemSFXurl, setItemSFXurl] = useState(initialItem?.sfxUrl ?? "");
+  const [itemValue, setItemValue] = useState(initialItem?.value ?? 0);
 
-  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) {
-      setItemImgUrl("");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () =>
-      setItemImgUrl(reader.result as string);
-    reader.readAsDataURL(file);
+  const togglePassiveMechanic = (mechanic: PassiveMechanic) => {
+    setPassiveMechanics((current) => current.includes(mechanic)
+      ? current.filter((active) => active !== mechanic)
+      : [...current, mechanic]);
   };
 
   const handleVFXImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -93,35 +104,32 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
     reader.readAsDataURL(file);
   }
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
-    const item: Item = {
+    const item = itemFromForm({
+      existing: initialItem,
       name: itemName,
-      imgUrl: itemImgUrl,
-      desc: itemDesc,
-      id: generateId(),
+      imageUrl: itemImgUrl,
+      description: itemDesc,
       slot,
-      ocasionalAdd,
-      atributeToOcasionalAdd: atribute,
-      habilityCards: selectedCards.length > 0 ? selectedCards : null,
+      occasionalAdd: ocasionalAdd,
+      occasionalAttribute: atribute,
+      cards: selectedCards,
       rarity,
       value: itemValue,
       craftable,
       isArtifice: artifice,
-      artficeSettings: 
-      {
-        lifeAdd: artificeLifeAdd,
-        manaAdd: artificeManaAdd,
-        effectToApply: artificeEffectApply,
-        cardDispach: artificeCardDispach,
-      },
-      craftableWith: undefined,
+      passiveMechanics,
+      artificeLifeAdd,
+      artificeManaAdd,
+      artificeMechanic: artificeMechanicApply,
+      artificeCard: artificeCardDispach,
       vfxUrl: itemVFXurl,
       sfxUrl: itemSFXurl,
-    };
+    });
 
-    onSave(item);
+    await onSave(item);
     onClose();
   };
 
@@ -130,10 +138,10 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
       <form
         onSubmit={handleSubmit}
         className="w-full max-w-[520px] bg-gray-800 rounded-lg p-4 md:p-6 text-white shadow-2xl
-                   max-h-[90vh] overflow-y-auto"
+                   max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain"
       >
         <h2 className="text-xl font-bold text-blue-400 mb-3">
-          Criar Item
+          {mode === "edit" ? "Editar Item" : "Criar Item"}
         </h2>
 
 
@@ -152,9 +160,10 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
         <label className="flex flex-col gap-1">
           <span className="font-semibold text-sm">Imagem</span>
           <input
-            type="file"
-            accept="image/*"
-            onChange={handleImageChange}
+            type="text"
+            value={itemImgUrl}
+            onChange={(e) => setItemImgUrl(e.target.value)}
+            placeholder="Cole a URL da imagem"
             required
             className="p-2 rounded bg-gray-700 border border-gray-600"
           />
@@ -183,8 +192,9 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
           <span className="text-sm font-semibold">Slot</span>
           <select
             className="bg-gray-700 border border-gray-600 rounded p-2"
-            value={slot}
+            value={artifice ? "inventory-only" : slot}
             onChange={e => setSlot(e.target.value as ItemSlot)}
+            disabled={artifice}
           >
             <option value="primary-hand">Mão Principal</option>
             <option value="off-hand">Mão Secundária</option>
@@ -205,6 +215,26 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
           <span className="text-sm font-semibold">Item é artifício?</span>
         </label>
 
+        <fieldset className="mb-3 rounded border border-gray-600 p-3">
+          <legend className="px-2 font-semibold text-blue-400">Mecânicas passivas</legend>
+          <p className="mb-2 text-xs text-gray-400">
+            Aplicadas enquanto o item estiver equipado e persistem por toda a batalha.
+          </p>
+          <div className="grid max-h-52 grid-cols-1 gap-2 overflow-y-auto overscroll-contain pr-1 sm:grid-cols-2">
+            {PASSIVE_MECHANIC_OPTIONS.map((mechanic) => (
+              <label key={mechanic.id} className="flex cursor-pointer items-center gap-2 rounded bg-gray-700 p-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={passiveMechanics.includes(mechanic.id)}
+                  onChange={() => togglePassiveMechanic(mechanic.id)}
+                  className="accent-blue-400"
+                />
+                {mechanic.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
         {artifice && (
           <div>
             <span className="text-sm font-semibold">Configurações de Artifício</span>
@@ -223,17 +253,20 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
                 value={artificeManaAdd}
                 onChange={e => setArtificeManaAdd(Number(e.target.value))}
               />
-              <span className="text-sm font-semibold">Efeito de Aplicação:</span>
+              <span className="text-sm font-semibold">Mecânica autoaplicada:</span>
               <select
-                defaultValue="none"
+                value={artificeMechanicApply ?? ""}
                 onChange={(e) => {
-                  setArtificeEffectApply(e.target.value as EffectType)
+                  setArtificeMechanicApply(
+                    e.target.value === "" ? null : e.target.value as PassiveMechanic,
+                  )
                 }}
                 className="bg-gray-700 border border-gray-600 rounded p-2 text-sm w-full"
               >
-                {EFFECT_TYPES.map((effect) => (
-                  <option key={effect} value={effect}>
-                    {effect}
+                <option value="">Nenhuma</option>
+                {PASSIVE_MECHANIC_OPTIONS.map((mechanic) => (
+                  <option key={mechanic.id} value={mechanic.id}>
+                    {mechanic.label}
                   </option>
                 ))}
               </select>  
@@ -500,7 +533,7 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
         </label>
 
         {/* Ações */}
-        <div className="flex justify-end gap-3 pt-3 border-t border-gray-600">
+        <div className="sticky bottom-0 z-10 -mx-4 flex justify-end gap-3 border-t border-gray-600 bg-gray-800 px-4 py-3 md:-mx-6 md:px-6">
           <button
             type="button"
             onClick={onClose}
@@ -512,7 +545,7 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
             type="submit"
             className="bg-blue-600 px-4 py-2 rounded font-semibold"
           >
-            Criar Item
+            {mode === "edit" ? "Salvar Item" : "Criar Item"}
           </button>
         </div>
       </form>
@@ -641,5 +674,9 @@ const ItemCreateForm: React.FC<ItemCreateProps> = ({
     </div>
   );
 };
+
+const ItemCreateForm: React.FC<Omit<ItemFormProps, "initialItem" | "mode">> = (props) => (
+  <ItemForm {...props} mode="create" />
+);
 
 export default ItemCreateForm;

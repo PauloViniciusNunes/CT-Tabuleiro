@@ -1,131 +1,143 @@
-import type { EngineContext } from "../types/BoardEngineContext";
+/* REACT & CORE */
+import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
 
-import React, { useMemo, useState, useEffect, useRef, useActionState } from "react";
+/* CONTEXTS */
+import { type MusicContextType } from "../components/context/MusicContext";
+
+/* COMPONENTS (UI) */
 import SettingsDropdown from "../components/ui/SettingsDropdown";
 import Sidebar from "../components/ui/Sidebar";
 import StatusBars from "../components/ui/StatusBars";
 import ActionForm from "../components/ui/ActionForm";
 import ReactionPrompt from "../components/ui/ReactionPrompt";
 import CinematicDisplayNameUI from "../components/ui/Introduction";
-import { type Mapa } from "../types/mapas";
 import MapSelect from "../components/ui/MapSelect";
 import PresentItem from "../components/ui/PresentItem";
 import GenerateMaze from "../components/ui/GenerateMaze";
-import { spawnItemVFX } from "../types/elementoVFX";
-import type { PivotCandidate } from "../types/pivot";
-import type { OffensiveCardResponse } from "../types/card";
-import type { AllocatedPoints } from "../types/battle";
-import type { PendingReaction } from "../types/battle";
-import { elementToEffect } from "../types/effects";
-
-import BLUEDOT from "../assets/dot/BLUEDOT.png"
-
-
-import { playSomeSFX } from "../audio/playSomeSFX";
-
 import DefenseResolutionForm from "../components/ui/DefenseResolutionForm";
-import { calculateCardRoll, calculateDistance, isInAttackRange, sum, xpProgressionByLevel } from "../utils/battleCalculations";
-import type { Token, TokenAttributes, TokenClass, TokenProficiencies } from "../types/token";
-import type { Item } from "../types/item";
-import { canDefenderReact, nextParalysisAfterHit } from '../utils/paralysis';
-import type { ParalysisState, PostParalyse } from '../types/status';
-
-import type { Position } from "../types/card";
-
-import { getTokenVisualEffects } from "../types/getTokenVisual"
-
-import type {
-  BattleState,
-  InitiativeData,
-  RollResult,
-  ActionChoice,
-  ActionInformation
-} from "../types/battle";
-
-import type { ExecuteChoice } from "../types/executeChoice";
-import {
-  rollInitiative,
-  initializeBattleStats,
-  calculateActionRoll,
-} from "../utils/battleCalculations";
-import processTurnEffects from "../utils/battleEffects";
-
-import type { EffectType, TokenPrimaryElement, } from "../types/effects";
-import type { CardEntityInstance, Card } from "../types/card";
 import CardForm from "../components/ui/CardForm";
-import type { Target } from "../types/target";
 import OffensiveCardResolution from "../components/ui/OffensiveCardResolution";
-import type { ActionRollParams } from "../types/battle";
 import InventoryUI from "../components/ui/Inventory";
 import SkillPanel from "../components/ui/SkillPannel";
-import { type MusicContextType } from "../components/context/MusicContext";
-import type { MapObject } from "../types/mapObject";
 import CreateMapObject from "../components/ui/CreateMapObject";
-import type { ElementoVFX } from "../types/elementoVFX";
+import BoardToolbox from "../components/ui/BoardToolbox";
+import ActiveMechanicsTooltip from "../components/ui/ActiveMechanicsTooltip";
+import SpecialResponseForm from "../components/ui/SpecialResponseForm";
 
-/* AI */
+/* WEB API */
+import { MapaAPI, useMaps } from "../api/modules/maps";
+import { TokenAPI, useTokens } from "../api/modules/tokens";
+import { ItemAPI, useItems } from "../api/modules/items";
+import { CardAPI, useCards } from "../api/modules/cards";
+import { TokenInstanceAPI } from "../api/modules/tokenInstances";
+import { BattleStateAPI, useBattleState } from "../api/modules/battleStates";
+import { TokenInstaceMapper } from "../api/mappers/tokenInstanceMapper";
+
+/* WEB SOCKET */
+import { socket } from "../api/socket/socket";
+
+/* SOCKET LISTENERS */
+import { TokenInstanceSocketListener } from "../api/listeners/TokenInstanceSocketListener";
+import { BattleSocketListener } from "../api/listeners/BattleSocketListener";
+import { PendingSocketListener } from "../api/listeners/PendingSocketListener";
+import { FrontendSocketListener } from "../api/listeners/FrontendSocketListener";
+
+/* AUDIO */
+import { playSomeSFX } from "../audio/playSomeSFX";
+
+/* UTILS & BATTLE CALCULATIONS */
+import {
+  isInAttackRange,
+  xpProgressionByLevel,
+} from "../utils/battleCalculations";
+import { canDefenderReact, nextParalysisAfterHit } from "../utils/paralysis";
+
+/* STATE MANAGERS */
+import { getParalysis, setParalysis } from "../state/stateParalysis";
+
+/* COMBAT SYSTEMS */
+import { formatRechargeCardRecordReturn } from "../combat/combatRecharge";
+import { formatPrevisionAttackKey } from "../combat/combatPrevisions";
+
+/* GEOMETRY */
+import { cellToPosition } from "../geometry/position";
+
+/* INVENTORY LOGIC */
+import { haveSpaceInInventory, addItemToInventory } from "../inventory/inventoryCapacity";
+
+/* ENTITIES */
+import { generatePairDoor } from "../entities/entitiesPorts";
+
+/* EFFECTS LOGIC */
+
+/* CARDS LOGIC */
+import {
+  tokenHasCardEffect,
+  applyCardEffectToToken,
+  removeCardEffectsFromToken,
+} from "../cards/cardEffects";
+import { isTokenInCardInstanceRange } from "../cards/cardQueries";
+import { resolveCardEntityPosition } from "../cards/cardEntities";
+
+/* AI SYSTEM */
 import { executeAITurn } from "../ai/executeAITurn";
 import type { AIContext } from "../ai/types/aiContext";
 import { executeAIReaction } from "../ai/executeAIReaction";
 import { executeAIResponseAction } from "../ai/executeAIResponseAction";
 import { executeAIDefenseResolution } from "../ai/executeAIDefenseResolution";
 import { getAIRepertoryForToken } from "../ai/core/getAIRepertoryForToken";
-/* * */
-
-import { grantFreeActionNoReaction } from "../state/stateFreeAction";
-
-import { getParalysis, setParalysis } from "../state/stateParalysis";
-
-import { reduceTimeToRecharge, formatRechargeCardRecord, formatRechargeCardRecordReturn } from "../combat/combatRecharge";
-import { defineRemainingPrevisionAttacks, formatPrevisionAttackKey } from "../combat/combatPrevisions";
-
-import { getCellsInRadius } from "../geometry/radius";
-import { cellToPosition } from "../geometry/position";
-
-import { haveSpaceInInventory, addItemToInventory } from "../inventory/inventoryCapacity";
-import { swapItemInInventory } from "../inventory/inventorySwap";
-import { useArtificeItem } from "../inventory/inventoryUseArtifice";
-
-import { generatePairDoor } from "../entities/entitiesPorts";
-
-import {
-  applyTokenEffect,
-  applyEffectsCausality,
-} from "../effects/effectsApplication";
-
-import {
-  stepTokenEffect,
-} from "../effects/stepSystem";
-
-/* CARDS */
-
-import {
-  decreaseCardEntityDuration,
-  tokenHasCardEffect,
-  applyCardEffectToToken,
-  removeCardEffectsFromToken,
-  applyCardEntityEffectToToken,
-} from "../cards/cardEffects";
-
-import {
-  isTokenInCardInstanceRange,
-} from "../cards/cardQueries";
-
-import {
-  resolveCardEntityPosition,
-  getTokensInCardEntityRadius,
-} from "../cards/cardEntities";
-
-import {
-  resolveTriggerFixPivot,
-  addPivot,
-  resolvePivotPosition,
-} from "../cards/cardTriggers";
-import { AICombatPhase } from "../types/ai/AICombatPhase";
 import { AIStateMachine } from "../ai/state/AIStateMachine";
-import { runAIPhase } from "../types/ai/AIStateRunner";
 
-/** */
+/* TYPES */
+import { type Mapa } from "../types/mapas";
+import { type ElementoVFX } from "../types/elementoVFX";
+import type { PivotCandidate } from "../types/pivot";
+import type { ExecuteChoice } from "../types/executeChoice";
+import type { Target } from "../types/target";
+import type { MapObject } from "../types/mapObject";
+import type { Token } from "../types/token";
+import type { Item } from "../types/item";
+import type { ParalysisState, PostParalyse } from "../types/status";
+import { getTokenVisualEffects } from "../types/getTokenVisual";
+import { AICombatPhase } from "../types/ai/AICombatPhase";
+import { runAIPhase } from "../types/ai/AIStateRunner";
+import type {
+  MechanicOverlay,
+  Card,
+  OffensiveCardResponse,
+  Position
+} from "../types/card";
+import type {
+  BattleState,
+  RollResult,
+  ActionChoice,
+  ActionInformation,
+  PendingAttack,
+  AllocatedPoints,
+  ActiveMechanic,
+} from "../types/battle";
+import {
+  BattleEngineAPI,
+  type EquippedInventorySlot,
+} from "../api/modules/battleEngine";
+import { CampaignAPI } from "../api/modules/campaigns";
+import type { Campaign, CampaignMapRouting, User } from "../types/campaign";
+import { getLoggedUserId } from "../utils/getLoggedUser";
+import { UserAPI } from "../api/modules/user";
+import { BattleViewRules } from "../api/view/BattleViewRules";
+import { generateUUID } from "../utils/generateUUID";
+import { formatCellDistance, measureCells } from "../tools/ruler";
+import type {
+  BoardToolId,
+  GridPoint,
+  RulerMeasurement,
+} from "../types/tools";
+import type {
+  PendingSpecialResponse,
+  SpecialResponseValues,
+} from "../types/specialResponse";
+
+
 const getColumnName = (num: number): string => {
   let name = "";
   while (num > 0) {
@@ -147,16 +159,6 @@ const columnToNumber = (name: string): number => {
   return num;
 };
 
-const combatInfo = (message: string, data?: unknown) => {
-  if (data === undefined) {
-    console.info(`[COMBATE] ${message}`);
-    return;
-  }
-
-  console.info(`[COMBATE] ${message}`, data);
-};
-
-
 const teamGlowColors: Record<string, string> = {
   Red: "rgba(239, 68, 68, 0.6)",
   Blue: "rgba(59, 130, 246, 0.6)",
@@ -164,21 +166,59 @@ const teamGlowColors: Record<string, string> = {
   Yellow: "rgba(234, 179, 8, 0.6)",
 };
 
+interface OnlineCampaignUser {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export const MusicContext = React.createContext<MusicContextType | null>(null);
 
+const BASE_CELL_SIZE = 40;
+const MIN_BOARD_ZOOM = 0.5;
+const MAX_BOARD_ZOOM = 3;
+const KEYBOARD_ZOOM_STEP = 0.1;
+
+/* BOARD PAGE MAIN OBJECT */
 const BoardPage: React.FC = () => {
 
   const [introdutionAnimation, setIntroductionAnimation] = useState<boolean>(false);
-  const [zoom, setZoom] = useState(1);
-  const cellSize = 40 * zoom;
+  const [viewportTransform, setViewportTransform] = useState({
+    zoom: 1,
+    pan: { x: 0, y: 0 },
+  });
+  const { zoom, pan } = viewportTransform;
+  const cellSize = BASE_CELL_SIZE;
+  const boardViewportRef = useRef<HTMLDivElement | null>(null);
+  const [activeBoardTool, setActiveBoardTool] = useState<BoardToolId | null>(null);
+  const [rulerMeasurement, setRulerMeasurement] = useState<RulerMeasurement | null>(null);
+  const [isRulerMeasuring, setIsRulerMeasuring] = useState(false);
+  const draggedTokenRef = useRef<Token | null>(null);
   /* * */
 
+  const [users, setUsers] = useState<User[]>([])
+  const [onlineCampaignUsers, setOnlineCampaignUsers] = useState<OnlineCampaignUser[]>([]);
+
+  const [userId, setUserId] = useState<string | null>(null)
+  const [campaign, setCampaign] = useState<Campaign | null>(null)
+  const [mapRouting, setMapRouting] = useState<CampaignMapRouting | null>(null)
+  const [pendingSpecialResponse, setPendingSpecialResponse] = useState<PendingSpecialResponse | null>(null);
+  const selectedMapIdRef = useRef<string | undefined>(undefined);
+
   const [boardTokens, setBoardTokens] = useState<Token[]>([]);
+  const boardTokensRef = useRef<Token[]>([]);
+  useEffect(() => {
+    boardTokensRef.current = boardTokens;
+  }, [boardTokens]);
+  const [hoveredTokenMechanics, setHoveredTokenMechanics] = useState<{
+    token: Token;
+    mechanics: ActiveMechanic[];
+  } | null>(null);
+  const [mechanicsTooltipPosition, setMechanicsTooltipPosition] = useState({ x: 0, y: 0 });
   const [pendingLevelUpTokens, setPendingLevelUpTokens] = useState<Token[]>([]);
   const [currentLevelUpToken, setCurrentLevelUpToken] = useState<Token | null>(null);
 
-  function handleCloseSkillPanel()
-  {
+  function handleCloseSkillPanel() {
     setCurrentLevelUpToken(null);
 
     setPendingLevelUpTokens(prev =>
@@ -186,14 +226,14 @@ const BoardPage: React.FC = () => {
     );
   }
 
-  function pointsPerLevel(level: number)
+  function pointsPerLevel(level: number) //RETIRADA
   {
     return Math.ceil(
       Math.pow(level, 0.75)
     );
   }
 
-  function getLevelUpResult(token: Token)
+  function getLevelUpResult(token: Token) //RETIRADA
   {
     let xp =
       (token.attributes.xp ?? 0) +
@@ -206,8 +246,7 @@ const BoardPage: React.FC = () => {
 
     while (
       xp >= xpProgressionByLevel(level)
-    )
-    {
+    ) {
       xp -= xpProgressionByLevel(level);
 
       level++;
@@ -224,8 +263,7 @@ const BoardPage: React.FC = () => {
 
   function handleConfirmLevelUp(
     allocatedPoints: AllocatedPoints
-  )
-  {
+  ) {
     if (!currentLevelUpToken)
       return;
 
@@ -281,14 +319,14 @@ const BoardPage: React.FC = () => {
       })
     );
 
-  setCurrentLevelUpToken(null);
+    setCurrentLevelUpToken(null);
 
-  setPendingLevelUpTokens(prev =>
-    prev.slice(1)
-  );
-}
+    setPendingLevelUpTokens(prev =>
+      prev.slice(1)
+    );
+  }
 
-  const boardTokensRef = useRef<Token[]>([]);
+
   const [currentAI, setCurrentAI] = useState<Token | undefined>(undefined);
   const [enemies, setEnemies] = useState<Token[]>([]);
   const [alies, setAlies] = useState<Token[]>([]);
@@ -307,10 +345,6 @@ const BoardPage: React.FC = () => {
   }
 
   useEffect(() => {
-    boardTokensRef.current = boardTokens;
-  }, [boardTokens]);
-
-  useEffect(() => {
     setCurrentAI(
       boardTokens.find((t) => t.type === "ia")
     );
@@ -324,6 +358,7 @@ const BoardPage: React.FC = () => {
         t => t.type === "ia"
       )
     );
+    console.debug("BOARD TOKENS: ", boardTokens)
   }, [boardTokens]);
 
   useEffect(() => {
@@ -339,7 +374,6 @@ const BoardPage: React.FC = () => {
 
   const [rows, setRows] = useState(25);
   const [cols, setCols] = useState(25);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0 });
 
@@ -357,17 +391,261 @@ const BoardPage: React.FC = () => {
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isPanning) return;
 
-    setPan({
-      x: e.clientX - panStart.current.x,
-      y: e.clientY - panStart.current.y,
-    });
+    setViewportTransform((current) => ({
+      ...current,
+      pan: {
+        x: e.clientX - panStart.current.x,
+        y: e.clientY - panStart.current.y,
+      },
+    }));
   };
 
   const handleMouseUp = () => {
     setIsPanning(false);
   };
 
+  const handleBoardWheel = useCallback((event: WheelEvent) => {
+    event.preventDefault();
+
+    const viewport = boardViewportRef.current;
+    if (!viewport) return;
+
+    const viewportRect = viewport.getBoundingClientRect();
+    const cursorX = event.clientX - viewportRect.left;
+    const cursorY = event.clientY - viewportRect.top;
+    const deltaInPixels = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+      ? event.deltaY * 16
+      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+        ? event.deltaY * viewportRect.height
+        : event.deltaY;
+
+    setViewportTransform((current) => {
+      const nextZoom = Math.min(
+        MAX_BOARD_ZOOM,
+        Math.max(MIN_BOARD_ZOOM, current.zoom * Math.exp(-deltaInPixels * 0.0015)),
+      );
+
+      if (nextZoom === current.zoom) return current;
+
+      const zoomRatio = nextZoom / current.zoom;
+
+      return {
+        zoom: nextZoom,
+        pan: {
+          x: cursorX - (cursorX - current.pan.x) * zoomRatio,
+          y: cursorY - (cursorY - current.pan.y) * zoomRatio,
+        },
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    const viewport = boardViewportRef.current;
+    if (!viewport) return;
+
+    viewport.addEventListener("wheel", handleBoardWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", handleBoardWheel);
+  }, [handleBoardWheel]);
+
+  const clearRulerMeasurement = useCallback(() => {
+    setIsRulerMeasuring(false);
+    setRulerMeasurement(null);
+  }, []);
+
+  const handleToolSelection = (toolId: BoardToolId) => {
+    const nextTool = activeBoardTool === toolId ? null : toolId;
+
+    setActiveBoardTool(nextTool);
+    if (nextTool !== "ruler") {
+      clearRulerMeasurement();
+    }
+  };
+
+  const handleRulerMouseDown = (
+    event: React.MouseEvent,
+    point: GridPoint,
+  ) => {
+    if (activeBoardTool !== "ruler" || event.button !== 0) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    setRulerMeasurement(measureCells(point, point));
+    setIsRulerMeasuring(true);
+  };
+
+  const handleRulerMouseMove = (point: GridPoint) => {
+    if (activeBoardTool !== "ruler" || !isRulerMeasuring) return;
+
+    setRulerMeasurement((currentMeasurement) =>
+      currentMeasurement
+        ? measureCells(currentMeasurement.start, point)
+        : currentMeasurement,
+    );
+  };
+
+  useEffect(() => {
+    if (!isRulerMeasuring) return;
+
+    window.addEventListener("mouseup", clearRulerMeasurement);
+
+    return () => {
+      window.removeEventListener("mouseup", clearRulerMeasurement);
+    };
+  }, [isRulerMeasuring, clearRulerMeasurement]);
+
+  const crds = useCards()
+  const items = useItems(crds)
+
+  const [createdItems, setCreatedItems] = useState<Item[]>([]);
+
+  useEffect(() => {
+    setCreatedItems(items)
+  }, [items])
+
+  const cardsRef = useRef<Card[]>(crds);
+  const itemsRef = useRef<Item[]>(items);
+
+  useEffect(() => {
+    cardsRef.current = crds;
+  }, [crds]);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+
+  const [createdCards, setCreatedCards] = useState<Card[]>([]);
+
+  useEffect(() => {
+    setCreatedCards(crds)
+  }, [crds])
+
+
+  const maps = useMaps(createdCards, createdItems)
   const [mapas, setMapas] = useState<Mapa[]>([]);
+
+  useEffect(() => {
+    setMapas(maps)
+  }, [maps])
+
+  const fetchUsers = async () => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const campaignId = urlParams.get("campaignId");
+
+      if (!campaignId) {
+        console.warn("Parâmetro 'campaignId' não encontrado na URL.");
+        return;
+      }
+
+      // Retorno da API (Lista de CampaignMember)
+      const response = (await CampaignAPI.listByCampaign(campaignId)) as any[];
+
+      if (!Array.isArray(response)) {
+        console.error("A API não retornou um array válido:", response);
+        return;
+      }
+
+      // 🟢 Extrai a propriedade 'user' de dentro de cada registro do membro
+      const extractedUsers: User[] = response
+        .map((item) => item.user || item) // Pega item.user se existir, senão o próprio item
+        .filter(Boolean); // Remove nulos/undefineds
+
+      setUsers(extractedUsers);
+    } catch (error: any) {
+      console.error("Erro ao carregar usuários da campanha:", error);
+    }
+  };
+
+  const fetchCampaign = async() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const campaignId = urlParams.get("campaignId");
+      
+      if(!campaignId) {
+        throw new Error("O ID da campanha não pode ser encontrado.")
+      }
+
+      const campaign = (await CampaignAPI.getCampaign(campaignId)) as any
+      
+      if(!campaign) {
+        throw new Error("Campanha não é um objeto válido.")
+      }
+
+      setCampaign(campaign)
+    } catch (error: any) {
+      console.error(error)
+    }
+  }
+
+  const fetchUser = async() => {
+    try {
+      const userId = getLoggedUserId()
+
+      if(!userId) {
+        throw new Error("Não foi possível obter userId.")
+      }
+
+      setUserId(userId)
+
+    } catch (error: any) {
+      console.log(error)
+    }
+  }
+
+  /* GENERAL LISTENER */
+  useEffect(() => {
+
+    const tokenInstanceListener = new TokenInstanceSocketListener(socket, boardTokensRef, setBoardTokens, setTokenInAmbientPivotSelection, cardsRef, itemsRef)
+    const battleStateListener = new BattleSocketListener(socket, setBattleState)
+    const pendingListener = new PendingSocketListener(
+      socket,
+      setPendingAttack,
+      setPendingEsquivaRoll,
+      setPendingFreeResponse,
+      setPendingCardResolution,
+      setOffensivePendingCard,
+      setOffensiveCardAttackerId,
+      setPendingSpecialResponse,
+      () => selectedMapIdRef.current,
+    )
+    const frontendListener = new FrontendSocketListener(
+      socket,
+      setInCardSelection,
+      setIsInDefenseResolution,
+      setPreviewCells,
+      setSelectedTarget,
+      setOffensiveCardScore,
+      setOffensiveCardTestScore,
+      setInTargetSelection,
+      setIsAmbientPivotSelection,
+      setSelectedPivots,
+      setArmedCard,
+      setSelectedCell,
+      setAmbientPivotPhase
+    )
+
+    /* REGISTERS */
+    tokenInstanceListener.register()
+    battleStateListener.register()
+    pendingListener.register()
+    frontendListener.register()
+
+    /* FETCHs */
+    fetchUsers()
+    fetchUser()
+    fetchCampaign()
+
+    return () => {
+      tokenInstanceListener.unregister()
+      battleStateListener.unregister()
+      pendingListener.unregister()
+      frontendListener.unregister()
+    };
+
+  }, []);
+
   const [selectedMapa, setSelectedMapa] = useState<Mapa | undefined>(undefined);
   const [isMapSelectOpen, setIsMapSelectOpen] = useState(false);
   const [generateMazeOpen, setGenerateMazeOpen] = useState(false);
@@ -384,19 +662,169 @@ const BoardPage: React.FC = () => {
     setIsMapSelectOpen(false);
   };
 
+  useEffect(() => {
+    if (!campaign?.id || !userId) return;
+
+    CampaignAPI.getMapRouting(campaign.id)
+      .then(setMapRouting)
+      .catch((error) => console.error("Não foi possível carregar o direcionamento dos mapas:", error));
+  }, [campaign?.id, userId]);
+
+  useEffect(() => {
+    if (selectedMapa || mapas.length !== 1) return;
+
+    handleSelectMapa(mapas[0]);
+  }, [mapas, selectedMapa]);
+
+  const handleDirectMembersToMap = async (mapId: string, memberIds: string[]) => {
+    if (!campaign?.id) return;
+
+    const result = await CampaignAPI.directMembersToMap(campaign.id, mapId, memberIds);
+
+    setMapRouting((current) => current && {
+      ...current,
+      members: current.members.map((member) =>
+        result.userIds.includes(member.userId)
+          ? { ...member, currentMapId: result.mapId }
+          : member,
+      ),
+    });
+  };
+
+  useEffect(() => {
+    const campaignId = campaign?.id;
+    if (!campaignId) return;
+
+    const joinCampaign = () => socket.emit("join-campaign", {
+      campaignId,
+      token: sessionStorage.getItem("@app:token"),
+    });
+    joinCampaign();
+    socket.on("connect", joinCampaign);
+
+    return () => {
+      socket.off("connect", joinCampaign);
+      socket.emit("leave-campaign", { campaignId });
+    };
+  }, [campaign?.id]);
+
+  useEffect(() => {
+    const campaignId = campaign?.id;
+    if (!campaignId) {
+      setOnlineCampaignUsers([]);
+      return;
+    }
+
+    const handleCampaignPresence = (payload: unknown) => {
+      if (!payload || typeof payload !== "object") return;
+
+      const data = payload as {
+        campaignId?: unknown;
+        users?: unknown;
+      };
+
+      if (data.campaignId !== campaignId || !Array.isArray(data.users)) return;
+
+      const normalizedUsers = data.users.flatMap((user): OnlineCampaignUser[] => {
+        if (!user || typeof user !== "object") return [];
+
+        const presence = user as Partial<OnlineCampaignUser>;
+        if (
+          typeof presence.id !== "string" ||
+          typeof presence.name !== "string" ||
+          typeof presence.color !== "string"
+        ) {
+          return [];
+        }
+
+        return [{
+          id: presence.id,
+          name: presence.name,
+          color: presence.color,
+        }];
+      });
+
+      setOnlineCampaignUsers(normalizedUsers);
+    };
+
+    socket.on("campaign.presence.updated", handleCampaignPresence);
+
+    return () => {
+      socket.off("campaign.presence.updated", handleCampaignPresence);
+    };
+  }, [campaign?.id]);
+
+  useEffect(() => {
+    if (!campaign?.id || !userId) return;
+
+    const handleMapRoutingUpdate = (payload: unknown) => {
+      if (!payload || typeof payload !== "object") return;
+
+      const update = payload as { campaignId?: string; userIds?: string[] };
+      if (update.campaignId !== campaign.id || !update.userIds?.includes(userId)) return;
+
+      MapaAPI.getMaps(createdCards, createdItems)
+        .then((updatedMaps) => {
+          setMapas(updatedMaps);
+          const directedMap = updatedMaps[0];
+
+          if (directedMap) {
+            handleSelectMapa(directedMap);
+            return;
+          }
+
+          setSelectedMapa(undefined);
+          setBoardTokens([]);
+          setBoardMapObjects([]);
+        })
+        .catch((error) => console.error("Não foi possível sincronizar o mapa direcionado:", error));
+    };
+
+    socket.on("campaign.member.map.updated", handleMapRoutingUpdate);
+
+    return () => {
+      socket.off("campaign.member.map.updated", handleMapRoutingUpdate);
+    };
+  }, [campaign?.id, userId, createdCards, createdItems]);
+
+  useEffect(() => {
+    const mapId = selectedMapa?.id;
+    setPendingSpecialResponse(null);
+    selectedMapIdRef.current = mapId;
+    if (!mapId) return;
+
+    const joinCurrentMap = () => {
+      socket.emit("join-map", {
+        mapId,
+        token: sessionStorage.getItem("@app:token"),
+      });
+    };
+
+    joinCurrentMap();
+    socket.on("connect", joinCurrentMap);
+
+    return () => {
+      socket.off("connect", joinCurrentMap);
+      if (selectedMapIdRef.current === mapId) {
+        selectedMapIdRef.current = undefined;
+      }
+    };
+  }, [selectedMapa?.id]);
+
   const handleCreateMapa = (mapName: string) => {
 
+    const newId = generateUUID();
+
     const newMapa: Mapa = {
-      id: crypto.randomUUID(),
+      id: newId,
       name: mapName,
       rows: 25,
       cols: 25,
       img: "",
       mapObjs: [],
-      boardTokens: []
+      boardTokens: [],
+      campaignId: ""
     };
-
-    setMapas(prev => [...prev]);
 
     setMapas(prev => [...prev, newMapa]);
 
@@ -413,6 +841,7 @@ const BoardPage: React.FC = () => {
     setBoardTokens([]);
 
     setIsMapSelectOpen(false);
+    MapaAPI.createMaps(newMapa)
   };
 
   useEffect(() => {
@@ -422,16 +851,15 @@ const BoardPage: React.FC = () => {
     setCols(selectedMapa.cols);
     setBackgroundImage(selectedMapa.img);
     setBoardMapObjects(selectedMapa.mapObjs);
+
+    if (boardTokens.length > 0) console.debug("BOARD TOKENS CARD: ", boardTokens[0].cards)
+
   }, [selectedMapa]);
-
-
-
 
   type GridCell = {
     row: number;
     col: number;
   };
-
 
   const gridCells: GridCell[] = useMemo(() => {
     const cells: GridCell[] = [];
@@ -443,7 +871,6 @@ const BoardPage: React.FC = () => {
     return cells;
   }, [rows, cols]);
 
-  const [remainingPivots, setRemainingPivots] = useState<number>(0);
   const [selectedCell, setSelectedCell] = useState<string | null>(null);
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
@@ -466,65 +893,32 @@ const BoardPage: React.FC = () => {
           : m
       )
     );
+
+    const newMapa: Mapa = {
+      id: selectedMapa.id,
+      name: selectedMapa.name,
+      rows: rows,
+      cols: cols,
+      img: backgroundImage ?? "",
+      mapObjs: boardMapObjects,
+      boardTokens: boardTokens,
+      campaignId: ""
+    }
+
+    MapaAPI.updateMaps(newMapa)
   }, [rows, cols, backgroundImage, boardMapObjects, boardTokens]);
 
-
-  const [didActThisTurn, setDidActThisTurn] = useState<Record<string, boolean>>({});
   const [shouldAdvanceTurn, setShouldAdvanceTurn] = useState(false);
-  const [lastTurnActed, setLastTurnActed] = useState<Record<string, boolean>>({});
-  const [lastTurnMoved, setLastTurnMoved] = useState<Record<string, boolean>>({});
+
   const [tokenParalysis, setTokenParalysis] = useState<Record<string, ParalysisState>>({}); // tokenId -> state
   const [freeActionLock, setFreeActionLock] = useState<Record<string, string>>({});
   const [sidebarWidth, setSidebarWidth] = useState<number>(320); // inicial
-  const [cardEntities, setCardEntities] = useState<CardEntityInstance[]>([]);
-  const cardEntitiesRef = useRef<CardEntityInstance[]>([]);
+  const [mechanicEntitiesInstances, setCardEntities] = useState<MechanicOverlay[]>([]);
+  const cardEntitiesRef = useRef<MechanicOverlay[]>([]);
 
-  useEffect(() => {
-    cardEntitiesRef.current = cardEntities;
-  }, [cardEntities]);
-
-
-  function applyCardEntityEffect() {
-    cardEntities.forEach((c) => {
-      const affectedTokens = getTokensInCardEntityRadius(
-        boardTokens,
-        c.position,
-        c.pivotSettings.range,
-        c.triggerId
-      );
-
-      const triggerToken = boardTokens.find(t => t.id === c.triggerId);
-      const tokenProficiency = Math.ceil(
-        (((triggerToken?.attributes.level ?? 1) - 10) / 4) + 4
-      );
-
-      affectedTokens
-        // ⛔ ignora aliados
-        .filter(t => t.team !== c.friendlyTeam)
-        .forEach(t => {
-          c.effectToApply.forEach(e => {
-            applyTokenEffect(
-              engineContext,
-              t,
-              "neutro",
-              e,
-              undefined,
-              tokenProficiency,
-              "AllTurn",
-              true,
-              c.id
-            );
-          })
-
-        });
-    });
-  }
-
-  const [prevReaction, setPrevReaction] = useState<Record<string, string>>({});
   const [lastAllUsedResponse, setLastAllUsedResponse] = useState<Record<string, boolean>>({});
   const [postParalyse, setPostParalyse] = useState<PostParalyse | null>(null);
 
-  const lastTurnKeyRef = useRef<string>("");
   const [pendingFreeResponse, setPendingFreeResponse] = useState<{
     responderId: string;  // quem ganhou a ação livre
     paralyzedId: string;  // quem ficou sem poder reagir a este próximo ataque
@@ -532,25 +926,34 @@ const BoardPage: React.FC = () => {
 
   const [inDefenseCardResolution, setInDefenseCardResolution] = useState<boolean>(false);
   const [pendingCardResolution, setPendingCardResolution] = useState<Token | null>(null);
-  const [showDefenseResolution, setShowDefenseResolution] = useState<{
-    reactionResult: number;
-    reactionType: "destreza";
-  } | null>(null);
 
-  const isAdvancingTurnRef = useRef(false);
+  const [tokensRefreshKey, setTokensRefreshKey] = useState(0);
+  const tokens = useTokens(
+    createdCards,
+    createdItems,
+    campaign?.id,
+    tokensRefreshKey,
+  )
 
   const [createdTokens, setCreatedTokens] = useState<Token[]>([]);
-  const [createdItems, setCreatedItems] = useState<Item[]>([]);
+
+  useEffect(() => {
+    setCreatedTokens(tokens)
+  }, [tokens])
+
+
   const [tokenBeingEdited, setTokenBeingEdited] = useState<Token | null>(null);
   const [cardBeingEdited, setCardBeingEdited] = useState<Card | null>(null);
   const [itemBeingEdited, setItemBeingEdited] = useState<Item | null>(null);
 
-  function addItem(item: Item) {
-    setCreatedItems(prev => [...prev, item])
+  async function addItem(item: Item) {
+    const persistedItem = await ItemAPI.createItem(item, createdCards);
+    setCreatedItems(prev => [...prev, persistedItem]);
   }
 
   function removeItem(itemId: string) {
     setCreatedItems(prev => prev.filter((i) => i.id !== itemId))
+    ItemAPI.deleteItem(itemId)
   }
 
   function handleEditToken(token: Token) {
@@ -565,11 +968,15 @@ const BoardPage: React.FC = () => {
     setItemBeingEdited(item);
   }
 
-  function handleSaveEditedToken(editedToken: Token) {
-    setCreatedTokens(prev =>
-      prev.map(t => t.id === editedToken.id ? editedToken : t)
+  async function handleSaveEditedToken(editedToken: Token) {
+    const persistedToken = await TokenAPI.updateToken(
+      editedToken,
+      createdCards,
+      createdItems,
     );
-
+    setCreatedTokens(prev =>
+      prev.map(t => t.id === persistedToken.id ? persistedToken : t)
+    );
     setTokenBeingEdited(null);
   }
 
@@ -629,39 +1036,44 @@ const BoardPage: React.FC = () => {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const [cards, setCards] = useState<Card[]>([]);
 
-  const addCard = (card: Card) => {
-    setCards((prev) => [...prev, card]);
+  const addCard = async (card: Card) => {
+    const persistedCard = await CardAPI.createCard(card);
+    setCreatedCards((prev) => [...prev, persistedCard]);
   };
 
   const removeCard = (cardId: string) => {
-    setCards((prev) => prev.filter((c) => c.id !== cardId));
+    setCreatedCards((prev) => prev.filter((c) => c.id !== cardId));
+    CardAPI.deleteCard(cardId)
   };
 
-  function handleSaveEditedCard(editedCard: Card) {
-    setCards(prev =>
-      prev.map(c => c.id === editedCard.id ? editedCard : c)
+  async function handleSaveEditedCard(editedCard: Card) {
+    const persistedCard = await CardAPI.updateCard(editedCard);
+    setCreatedCards(prev =>
+      prev.map(c => c.id === persistedCard.id ? persistedCard : c)
     );
-
     setCardBeingEdited(null)
   }
 
-  function handleSaveEditedItem(editedItem: Item) {
+  async function handleSaveEditedItem(editedItem: Item) {
+    const persistedItem = await ItemAPI.updateItem(editedItem, createdCards);
     setCreatedItems(prev =>
-      prev.map(i => i.id === editedItem.id ? editedItem : i)
+      prev.map(i => i.id === persistedItem.id ? persistedItem : i)
     );
-
     setItemBeingEdited(null);
   }
 
 
+  const battle = useBattleState(selectedMapa?.id ?? "")
+
   const [battleState, setBattleState] = useState<BattleState>({
+    id: "",
     status: "Not in Battle",
     round: 0,
     turnOrder: [],
     currentTurnIndex: 0,
     currentActorId: null,
+    currentActorUserId: "",
     phase: "Initiative",
     locks: {
       aiActing: false,
@@ -674,15 +1086,58 @@ const BoardPage: React.FC = () => {
     isReallocatingTurns: false,
     isAIActing: false,
     turnVersion: 0,
+    previsionActions: {},
+    mapId: selectedMapa?.id ?? "",
+    cardsNotRechargeds: {},
+    timeToRechargeCard: {},
+    tokensInOffensiveCard: [],
+    maxSelectablePivots: 0,
+    remainingPivots: 0,
+    mechanicEntitiesInstances: []
   });
 
-  function searchAccumulatedActions(tokenId: string): number
-  {
+  useEffect(() => {
+    console.log("[BATTLE MECHANICS]: ", battleState.mechanicEntitiesInstances)
+  }, [battleState])
+
+  useEffect(() => {
+    console.log("BATALHA: ", battle)
+    setBattleState(battle ?? {
+      id: "",
+      status: "Not in Battle",
+      round: 0,
+      turnOrder: [],
+      currentTurnIndex: 0,
+      currentActorId: null,
+      currentActorUserId: "",
+      phase: "Initiative",
+      locks: {
+        aiActing: false,
+        reallocating: false,
+        resolvingAction: false
+      },
+      accumulatedActions: {},
+      activeEffects: {},
+      actionHistory: [],
+      isReallocatingTurns: false,
+      isAIActing: false,
+      turnVersion: 0,
+      previsionActions: {},
+      mapId: selectedMapa?.id ?? "",
+      cardsNotRechargeds: {},
+      timeToRechargeCard: {},
+      tokensInOffensiveCard: [],
+      maxSelectablePivots: 0,
+      remainingPivots: 0,
+      mechanicEntitiesInstances: []
+    })
+  }, [battle])
+
+  function searchAccumulatedActions(tokenId: string): number {
     return battleState.accumulatedActions[tokenId];
   }
 
-  function searchCurrentMana(token: Token): number
-  {
+  function searchCurrentMana(token: Token): number {
     return token.currentMana ?? 0
   }
 
@@ -702,13 +1157,6 @@ const BoardPage: React.FC = () => {
       actorId: returnActorID(),
       version: battleState.turnVersion,
     }
-  }
-
-  function setAILock() {
-    setBattleState(prev => ({
-      ...prev,
-      locks: { ...prev.locks, aiActing: true },
-    }));
   }
 
   function setAIUnlock() {
@@ -740,8 +1188,7 @@ const BoardPage: React.FC = () => {
 
   /* ESTADOS DE COMBATE DINÂMICO */
 
-  function canLevelUp(token: Token)
-  {
+  function canLevelUp(token: Token) {
     return (
       (token.attributes.xp ?? 0) +
       (token.pendingXPAllocating ?? 0)
@@ -750,8 +1197,7 @@ const BoardPage: React.FC = () => {
     );
   }
 
-  function calculateLevelGain(token: Token)
-  {
+  function calculateLevelGain(token: Token) {
     let xp =
       token.attributes.xp +
       token.pendingXPAllocating;
@@ -763,8 +1209,7 @@ const BoardPage: React.FC = () => {
 
     while (
       xp >= xpProgressionByLevel(level)
-    )
-    {
+    ) {
       xp -= xpProgressionByLevel(level);
 
       level++;
@@ -947,7 +1392,7 @@ const BoardPage: React.FC = () => {
         result
       );
 
-    });    
+    });
 
   }, [
     battleState.status,
@@ -977,6 +1422,14 @@ const BoardPage: React.FC = () => {
       return;
     }
 
+    console.log(
+      boardTokens.map(t => ({
+        id: t.id,
+        team: t.team,
+        life: t.currentLife
+      }))
+    );
+
     const aliveTeams = new Set(
 
       boardTokens
@@ -988,7 +1441,7 @@ const BoardPage: React.FC = () => {
         )
 
     );
-
+    console.log("QUANTOS TIMES EXISTEM?: ", aliveTeams.size <= 1)
     if (aliveTeams.size <= 1) {
       handleEndBattle();
     }
@@ -1000,28 +1453,13 @@ const BoardPage: React.FC = () => {
   /* * */
 
 
-  const [pendingAttack, setPendingAttack] = useState<{
-    attackerId: string;
-    targetId: string;
-    rawDamage: number;
-    attackRoll: number;
-    usedMana: number;
-    attackAttribute: ActionChoice['attribute'];
-    pendingReactions: PendingReaction[];
-    isReactionAllowed: boolean;
-    isFreeAttack?: boolean;
-    usedActions: number;
-    atackElement: TokenPrimaryElement;
-    usedItem?: Item;
-  } | null>(null);
-
+  const [pendingAttack, setPendingAttack] = useState<PendingAttack | null>(null);
   const pendingAttackRef = useRef(pendingAttack);
 
   const [inCardSelection, setInCardSelection] = useState<boolean>(false);
 
   useEffect(() => {
-    if(inCardSelection)
-    {
+    if (inCardSelection) {
       console.debug(
         "PendingCardResolution: ", pendingCardResolution,
         "InDefenseCardResolution: ", inDefenseCardResolution,
@@ -1061,9 +1499,6 @@ const BoardPage: React.FC = () => {
       remainingExtraActions.current = null;
     }
 
-    setTokensInOffensiveCard(prev =>
-      prev.filter(token => livingIds.has(token.id))
-    );
 
     if (
       pendingCardResolution &&
@@ -1077,12 +1512,13 @@ const BoardPage: React.FC = () => {
   const [pendingEsquivaRoll, setPendingEsquivaRoll] = useState<RollResult | null>(null);
   const [lastMoveTime, setLastMoveTime] = useState<number>(0);
   const [isCooling, setIsCooling] = useState<boolean>(false);
-  const [movedThisTurn, setMovedThisTurn] = useState<Record<string, boolean>>({});
+  const movementPendingRef = useRef(false);
   const hasEnteredFirstTurnRef = useRef<Record<string, boolean>>({});
 
   const [isInDefenseResolution, setIsInDefenseResolution] = useState(false);
-  const [tokensInOffensiveCard, setTokensInOffensiveCard] = useState<Token[]>([]);
+  ;
   const [offensivePendingCard, setOffensivePendingCard] = useState<Card>();
+  const [offensiveCardAttackerId, setOffensiveCardAttackerId] = useState<string | null>(null);
   const [armedCard, setArmedCard] = useState<Card>()
 
   useEffect(() => {
@@ -1094,7 +1530,7 @@ const BoardPage: React.FC = () => {
     if (armedCard) {
 
       if (armedCard.target.pivotSettings?.pivotType === "Trigger-Fix") {
-        confirmAmbientPivots();
+        void confirmAmbientPivots();
       }
     }
   }, [armedCard]);
@@ -1104,11 +1540,6 @@ const BoardPage: React.FC = () => {
   const [offensiveCardTestScore, setOffensiveCardTestScore] = useState<number | null>(null);
   const [tokensBattlePosition, setTokensBattlePosition] = useState<Record<string, number>>({})
 
-  function removeTokenFromOffensiveCard(tokenId: string) {
-    setTokensInOffensiveCard(prev =>
-      prev.filter(token => token.id !== tokenId)
-    );
-  }
 
   function searchTokenPosition(tokenId: string, attr: string) {
     const key = `${tokenId}->${attr}`;
@@ -1118,10 +1549,13 @@ const BoardPage: React.FC = () => {
   const [cardAreUsed, setCardAreUsed] = useState<boolean>(false);
 
   useEffect(() => {
-    if (tokensInOffensiveCard.length <= 0) {
+    if (battleState.tokensInOffensiveCard.length <= 0) {
+      setOffensivePendingCard(undefined);
+      setOffensiveCardAttackerId(null);
+      setOffensiveCardScore(null);
       setOffensiveCardTestScore(null);
     }
-  }, [tokensInOffensiveCard])
+  }, [battleState.tokensInOffensiveCard])
 
   useEffect(() => {
     if (!cardAreUsed) return;
@@ -1143,9 +1577,7 @@ const BoardPage: React.FC = () => {
 
 
   const remainingExtraActions = useRef<{ attackerId: string; extraActions: number } | null>(null); // Mudando para useRef para evitar assincronidade
-  const remainingPrevisionAttacks = useRef<Record<string, number>>({});
-  const cardsNotRechargeds = useRef<Record<string, string[]>>({});
-  const timeToRechargeCard = useRef<Record<string, number>>({});
+
 
 
   const [controllEndResponse, setControllEndResponse] = useState<boolean>(false);
@@ -1153,60 +1585,8 @@ const BoardPage: React.FC = () => {
   const totalActionsReturn = useRef(0);
 
   const attributeTable = useRef<Record<string, Record<string, number>>>({});
-  // USO: attributeTable.current["atlas"]["forca"] = 15;
 
 
-
-  function addLargeExplosionOverlay(
-    tokenId: string,
-    radius: number,
-    cellSize: number,
-    overlayType: string,
-    gifPath: string
-  ) {
-    const size = (radius * 2 + 1) * cellSize;
-
-    // Offset para centralizar no token
-    const offset = -radius * cellSize;
-
-    const overlay = {
-      id: crypto.randomUUID(),
-      type: overlayType ?? "overlay-explosao-area",
-      size,
-      offset,
-      gifPath: gifPath ?? "/effects/explosion.gif",
-    };
-
-    // ADICIONAR AO TOKEN CENTRAL
-    setBoardTokens(prev =>
-      prev.map(t =>
-        t.id === tokenId
-          ? {
-            ...t,
-            visualOverlays: [...(t.visualOverlays ?? []), overlay],
-          }
-          : t
-      )
-    );
-
-    // REMOVER AUTOMATICAMENTE APÓS 1000ms
-    setTimeout(() => {
-      setBoardTokens(prev =>
-        prev.map(t =>
-          t.id === tokenId
-            ? {
-              ...t,
-              visualOverlays: (t.visualOverlays ?? []).filter(
-                o => o.id !== overlay.id
-              ),
-            }
-            : t
-        )
-      );
-    }, 1000);
-  }
-
-  /* Seleção de Pivot, ambient */
   const [previewCells, setPreviewCells] = useState<Set<string>>(new Set());
 
   function addPreviewCells(cells: { col: number; row: number }[]) {
@@ -1223,8 +1603,14 @@ const BoardPage: React.FC = () => {
 
   const [isAmbientPivotSelection, setIsAmbientPivotSelection] = useState(false);
   const [tokenInAmbientPivotSelection, setTokenInAmbientPivotSelection] = useState<string>("");
+  const [isConfirmingAmbientPivots, setIsConfirmingAmbientPivots] = useState(false);
+  const ambientPivotConfirmationPendingRef = useRef(false);
 
   useEffect(() => {
+
+    console.debug("AMBIENT PIVOT SELECTION: ", isAmbientPivotSelection)
+    console.debug("ARMED CARD: ", armedCard?.name)
+
     if (!isAmbientPivotSelection) return;
 
     setAmbientPivotPhase("awaiting-pivot");
@@ -1240,18 +1626,28 @@ const BoardPage: React.FC = () => {
   // Zoom & delete
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "+" || e.key === "=") {
+      if (e.ctrlKey && e.key.toLowerCase() === "d") {
         e.preventDefault();
-        setZoom((z) => Math.min(z + 0.1, 3));
+        setSelectedCell(null);
+        setSelectedTokenId(null);
+      } else if (e.key === "+" || e.key === "=") {
+        e.preventDefault();
+        setViewportTransform((current) => ({
+          ...current,
+          zoom: Math.min(current.zoom + KEYBOARD_ZOOM_STEP, MAX_BOARD_ZOOM),
+        }));
       } else if (e.key === "-" || e.key === "_") {
         e.preventDefault();
-        setZoom((z) => Math.max(z - 0.1, 0.5));
+        setViewportTransform((current) => ({
+          ...current,
+          zoom: Math.max(current.zoom - KEYBOARD_ZOOM_STEP, MIN_BOARD_ZOOM),
+        }));
       } else if (
         (e.key === "Delete" || e.key === "Backspace") &&
         selectedTokenId
       ) {
         e.preventDefault();
-        setBoardTokens((prev) => prev.filter((t) => t.id !== selectedTokenId));
+        TokenInstanceAPI.deleteTokenInstance(selectedTokenId)
         setSelectedTokenId(null);
         setSelectedCell(null);
       }
@@ -1270,7 +1666,7 @@ const BoardPage: React.FC = () => {
     console.log("TOKENS:", boardTokens.map(t => t.id));
   }, [selectedTokenId])
 
-  function replaceTokenInAnotherMap(
+  function replaceTokenInAnotherMap( //RETIRADA
     tokenId: string,
     door: MapObject,
     mapas: Mapa[]
@@ -1299,9 +1695,7 @@ const BoardPage: React.FC = () => {
     if (!targetDoor) return;
 
     // 🔥 remove token do mapa atual
-    setBoardTokens((prev) =>
-      prev.filter((t) => t.id !== tokenId)
-    );
+    TokenInstanceAPI.deleteTokenInstance(tokenId)
 
     // 🔥 cria token movido
     const movedToken = {
@@ -1324,6 +1718,10 @@ const BoardPage: React.FC = () => {
       })
     );
   }
+
+  useEffect(() => {
+    console.debug("TOKEN AMBIENT: ", tokenInAmbientPivotSelection)
+  }, [tokenInAmbientPivotSelection])
 
   useEffect(() => {
     const handleMoveKey = (e: KeyboardEvent) => {
@@ -1395,7 +1793,7 @@ const BoardPage: React.FC = () => {
 
       if (hasWall) return;
 
-      if (chest && haveSpaceInInventory(engineContext, selectedTokenId)) {
+      if (chest && haveSpaceInInventory(boardTokens, selectedTokenId)) {
         const item = chest.itemRelative;
 
 
@@ -1403,7 +1801,7 @@ const BoardPage: React.FC = () => {
           setPresentedItem(item);
 
           addItemToInventory(
-            engineContext,
+            setBoardTokens,
             selectedTokenId,
             item,
           );
@@ -1456,26 +1854,17 @@ const BoardPage: React.FC = () => {
   }, [selectedTokenId])
 
 
-  // Auto advance turn
-
   useEffect(() => {
-    console.warn("[HANDLE] Pode autopassar o turno?: ", shouldAdvanceTurn && battleStateRef.current.status === "In Battle" && !pendingAttackRef.current);
-    console.warn("[HANDLE] ShouldAdvance: ", shouldAdvanceTurn);
-    console.warn("[HANDLE] In Battle Ref?: ", battleStateRef.current.status === "In Battle")
-    console.warn("[HANDLE] Pendding Atack Ref?: ", !pendingAttackRef.current)
-    if (
-      shouldAdvanceTurn && battleStateRef.current.status === "In Battle" && !pendingAttackRef.current
-    ) {
-      setShouldAdvanceTurn(false);
-      handleNextTurn();
-    }
-  }, [shouldAdvanceTurn]); // ⬅️ APENAS shouldAdvanceTurn como dependência
 
+    console.info("IN CARD SELECTION: ", inCardSelection)
+    console.info("PENDING CARD RESOLUTION: ", !!pendingCardResolution)
+
+  }, [inCardSelection, pendingCardResolution])
 
   useEffect(() => {
     if (postParalyse && postParalyse.allowedPostAtack) {
       console.log("!!> Está entrando aqui");
-      combatInfo(`${postParalyse.responderId} fara resposta a ${postParalyse.forcedId}`);
+
       setPendingFreeResponse({
         responderId: postParalyse.responderId,
         paralyzedId: postParalyse.forcedId,
@@ -1490,15 +1879,7 @@ const BoardPage: React.FC = () => {
   }, [controllEndResponse])
 
 
-  // Adicione este useEffect após os outros useEffects em BoardPage.tsx
-  useEffect(() => {
-    if (showDefenseResolution && pendingAttack && pendingAttack.pendingReactions.length === 0) {
-      console.log("✅ DefenseResolutionForm PRONTO PARA RENDERIZAR!");
-      // O JSX renderizará automaticamente aqui
-    }
-  }, [showDefenseResolution, pendingAttack]);
-
-
+  /*
   useEffect(() => {
     if (battleState.status !== "In Battle") return;
     if (pendingEsquivaRoll != null) return;
@@ -1548,6 +1929,7 @@ const BoardPage: React.FC = () => {
       },
     }));
   }, [battleState.status, battleState.currentTurnIndex]);
+  /*
 
   /* AI Methods */
 
@@ -1579,12 +1961,18 @@ const BoardPage: React.FC = () => {
       return
     }
 
+    if (pendingSpecialResponse) {
+      setNotAITurn()
+      console.error("[TURN] Turno da IA aguardando uma resposta especial.");
+      return
+    }
+
     if (pendingAttack) {
       setNotAITurn()
       console.error("[TURN] Turno da IA tentou rodar, mas há um ataque pendente.");
       return
     }
-    console.info("[COMBATE] Verificações iniciais passadas, avaliando locks...");
+
     if (battleState.locks.aiActing) {
       if (aiTurnTokenRef.current !== current.tokenId) {
         setAIUnlock()
@@ -1645,7 +2033,7 @@ const BoardPage: React.FC = () => {
     }
 
     if (battleState.isReallocatingTurns) {
-      console.info("[COMBATE] Turno de IA bloqueado por realloc ou morte de token.");
+
       setIsAIThinking(false);
       setNotAITurn()
       console.error("[TURN] Turno da IA tentou rodar, mas um token está morto, ocorrendo realocação.");
@@ -1653,7 +2041,7 @@ const BoardPage: React.FC = () => {
     }
 
     console.error("[TURN] Passou dos locks, IA vai agir. Nome do token:", token.name);
-    combatInfo(`${token.name} esta pensando`);
+
 
 
     aiTurnTokenRef.current =
@@ -1754,7 +2142,7 @@ const BoardPage: React.FC = () => {
             setIsAIThinking(false);
 
             if (result?.actionStarted === false) {
-              handleNextTurn(true);
+              handleNextTurn();
             }
 
             setNotAITurn();
@@ -1815,7 +2203,7 @@ const BoardPage: React.FC = () => {
     }
 
     if (battleState.isReallocatingTurns) {
-      console.info("Reação de IA bloqueada por realloc ou morte de token.");
+
       setIsAIThinking(false);
       setNotAITurn()
       return;
@@ -1851,7 +2239,7 @@ const BoardPage: React.FC = () => {
         return;
       }
 
-      combatInfo(`${defender.id} reagiu a ${pendingAttack.attackerId}`);
+
 
       executeAIReaction({
 
@@ -1917,7 +2305,7 @@ const BoardPage: React.FC = () => {
     }
 
     if (battleState.isReallocatingTurns) {
-      console.info("Resposta de IA bloqueada por realloc ou morte de token.");
+
       setIsAIThinking(false);
       setNotAITurn()
 
@@ -1931,8 +2319,6 @@ const BoardPage: React.FC = () => {
     const cards = responder.cards;
 
     const aiRepertory = getAIRepertoryForToken(responder, actions, mana, cards);
-
-    console.error("Entro no useEffect de resposta da IA. Responder:", responder.id, "Target:", target.id, "Repertório:", aiRepertory);
 
     const timeout = setTimeout(() => {
 
@@ -2022,7 +2408,7 @@ const BoardPage: React.FC = () => {
     }
 
     if (battleState.isReallocatingTurns) {
-      console.info("Turno de IA bloqueado por realloc ou morte de token.");
+
       setIsAIThinking(false);
       setNotAITurn()
       return;
@@ -2039,7 +2425,7 @@ const BoardPage: React.FC = () => {
         return;
       }
 
-      combatInfo(`${attacker.id} resolveu defesa contra ${pendingAttack.targetId}`);
+
 
       executeAIDefenseResolution({
 
@@ -2131,9 +2517,13 @@ const BoardPage: React.FC = () => {
       return;
     }
 
+    if (pendingSpecialResponse) {
+      aiStateMachine.current.transition(AICombatPhase.IDLE);
+      return;
+    }
+
     // Usa a ref síncrona — battleState.isAIActing pode estar stale aqui.
     if (isAIActingRef.current) return;
-    console.info("[INFO] Passou dessa merda em algum momento?")
 
     const currentTurnToken =
       boardTokens.find(
@@ -2146,15 +2536,16 @@ const BoardPage: React.FC = () => {
 
     const isAITurn =
       currentTurnToken?.type === "ia";
-    
-    if(!isAITurn) return;
+
+    if (!isAITurn) return;
     console.error("[COMBATE] Efeito de controle de fase da IA disparou. isAITurn:", isAITurn, "Status do combate:", battleState.status, "Turno atual:", battleState.turnOrder[battleState.currentTurnIndex]?.tokenId)
 
     if (
       isAITurn &&
       !pendingAttack &&
       !pendingFreeResponse &&
-      !pendingEsquivaRoll
+      !pendingEsquivaRoll &&
+      !pendingSpecialResponse
     ) {
       console.error("[COMBATE] Transitando para fase de TURNO da IA");
       aiStateMachine.current.transition(AICombatPhase.TURN);
@@ -2184,6 +2575,7 @@ const BoardPage: React.FC = () => {
     pendingAttack,
     pendingFreeResponse,
     pendingEsquivaRoll,
+    pendingSpecialResponse,
     battleState.currentTurnIndex,
     battleState.isReallocatingTurns,
     battleState.status,
@@ -2194,15 +2586,36 @@ const BoardPage: React.FC = () => {
 
 
   // Token library ops
-  const addCreatedToken = (token: Token) =>
-    setCreatedTokens((prev) => [...prev, token]);
+  const addCreatedToken = async (token: Token) => {
+    const persistedToken = await TokenAPI.createToken(
+      token,
+      createdCards,
+      createdItems,
+    );
+
+    setCreatedTokens((previousTokens) => {
+      const alreadyExists = previousTokens.some(
+        (currentToken) => currentToken.id === persistedToken.id,
+      );
+
+      return alreadyExists
+        ? previousTokens.map((currentToken) =>
+            currentToken.id === persistedToken.id
+              ? persistedToken
+              : currentToken,
+          )
+        : [...previousTokens, persistedToken];
+    });
+    setTokensRefreshKey((current) => current + 1);
+  }
   const updateCreatedToken = (token: Token) =>
     setCreatedTokens((prev) =>
       prev.map((t) => (t.id === token.id ? token : t))
     );
-  const removeCreatedToken = (tokenId: string) =>
+  const removeCreatedToken = (tokenId: string) => {
     setCreatedTokens((prev) => prev.filter((t) => t.id !== tokenId));
-
+    TokenAPI.deleteToken(tokenId)
+  }
 
   // Place & move
   const placeTokenOnBoard = (tokenId: string, col: number, row: number) => {
@@ -2213,26 +2626,25 @@ const BoardPage: React.FC = () => {
       ...template,
 
       createId: template.createId,
-      // 🔥 NOVO ID
+      // NOVO ID
       id: `board_${Date.now()}_${Math.random().toString(36).slice(2)}`,
 
       position: { col, row },
 
-      // 🔥 CLONE PROFUNDO DO INVENTÁRIO
+      // CLONE PROFUNDO DO INVENTÁRIO
       inventory: {
         ...template.inventory,
         commonSlot: [...(template.inventory.commonSlot ?? [])],
       },
 
-      // 🔥 (RECOMENDADO) CLONAR ARRAYS IMPORTANTES
+      // (RECOMENDADO) CLONAR ARRAYS IMPORTANTES
       cards: [...template.cards],
       tokenCards: [...template.tokenCards],
       visualOverlays: template.visualOverlays
         ? template.visualOverlays.map(v => ({ ...v }))
         : [],
     };
-
-    setBoardTokens((prev) => [...prev, instance]);
+    TokenInstanceAPI.createTokenInstances(instance, selectedMapa?.id ?? "")
   };
 
   function reconcileCardEntityEffects(
@@ -2269,180 +2681,76 @@ const BoardPage: React.FC = () => {
 
   const [inTargetSelection, setInTargetSelection] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState<Token | null>(null)
-  const maxSelectablePivots = useRef<number>(0);
 
-  const engineContext = useMemo<EngineContext>(
-    () => ({
-      boardTokens,
-      boardTokensRef,
-      setBoardTokens,
-      shouldAdvanceTurn,
-      setShouldAdvanceTurn,
-      pendingAttack,
-      setPendingAttack,
-      pendingEsquivaRoll,
-      setPendingEsquivaRoll,
-      tokensBattlePosition,
-      setTokensBattlePosition,
-      cardEntities,
-      setCardEntities,
 
-      cellSize,
+  async function moveTokenOnBoard(id: string, col: number, row: number) {
+    const movingToken = boardTokens.find((token) => token.id === id);
+    if (!movingToken || movementPendingRef.current) return;
+    const isInBattle = battleState.status === "In Battle";
+    const distance = measureCells(movingToken.position, { col, row }).distance;
+    if (distance === 0) return;
+    if (isInBattle &&
+        (id !== battleState.currentActorId || battleState.movedThisTurn?.[id] ||
+         distance > (movingToken.naturalMovement ?? 6))) {
+      return;
+    }
 
-      attributeTable,
+    if (!isInBattle && !selectedMapa) return;
+    movementPendingRef.current = true;
+    let resolvedPosition = { col, row };
+    try {
+      if (isInBattle) {
+        const movement = await BattleEngineAPI.moveToken({
+          battleId: battleState.id,
+          tokenId: id,
+          to: { col, row },
+        });
 
-      remainingPrevisionAttacks,
-      timeToRechargeCard,
-      cardsNotRechargeds,
-
-      mapas,
-      setMapas,
-
-      selectedMapa,
-      setSelectedMapa,
-
-      tokenParalysis,
-      setTokenParalysis,
-
-      battleState,
-      battleStateRef,
-      setBattleState,
-
-      freeActionLock,
-      setFreeActionLock,
-
-      remainingExtraActions,
-      totalActionsReturn,
-
-      pendingFreeResponse,
-      setPendingFreeResponse,
-
-      armedCard,
-
-      pendingCardResolution,
-      setPendingCardResolution,
-      selectedPivots,
-      setSelectedPivots,
-      didActThisTurn,
-      setDidActThisTurn,
-      inCardSelection,
-      setInCardSelection,
-      isInDefenseResolution,
-      setIsInDefenseResolution,
-      selectedTarget,
-      setSelectedTarget,
-      prevReaction,
-      setPrevReaction,
-      inDefenseCardResolution,
-      setInDefenseCardResolution,
-      boardVfxElements,
-      setBoardVfxElements,
-      postParalyse,
-      setPostParalyse,
-      lastAllUsedResponse,
-      setLastAllUsedResponse,
-      lastTurnActed,
-      setLastTurnActed,
-      lastTurnMoved,
-      setLastTurnMoved,
-      hasEnteredFirstTurnRef,
-      movedThisTurn,
-      setMovedThisTurn,
-      maxSelectablePivots,
-      setAIUnlock,
-      aiTurnTokenRef,
-      aiPhaseCleanup,
-      isAIActingRef,
-      aiStateMachine,
-      setTokensInOffensiveCard,
-      setOffensiveCardScore,
-      setOffensiveCardTestScore,
-      setOffensivePendingCard,
-      setArmedCard,
-      setIsAmbientPivotSelection,
-      setPreviewCells,
-      setIsAIThinking,
-      setInTargetSelection,
-      isAdvancingTurnRef,
-      pendingAttackRef
-    }),
-    [
-      boardTokens,
-      pendingAttack,
-      pendingEsquivaRoll,
-      cardEntities,
-
-      cellSize,
-
-      mapas,
-      selectedMapa,
-
-      tokenParalysis,
-
-      battleState,
-
-      freeActionLock,
-
-      pendingFreeResponse,
-
-      armedCard,
-
-      pendingCardResolution,
-
-      selectedPivots,
-      inCardSelection,
-      isInDefenseResolution,
-      selectedTarget,
-      prevReaction,
-      inDefenseCardResolution,
-      boardVfxElements,
-      postParalyse,
-      lastTurnActed,
-      lastTurnMoved,
-      movedThisTurn
-    ]
-  );
-
-  function moveTokenOnBoard(id: string, col: number, row: number) {
-    const updatedTokens = boardTokensRef.current.map(t =>
-      t.id === id
-        ? { ...t, position: { col, row } }
-        : t
-    );
+        if (movement.cancelled) return;
+        resolvedPosition = movement.to;
+      } else {
+        await TokenInstanceAPI.updateTokenInstance(
+          { ...movingToken, position: resolvedPosition },
+          selectedMapa!.id,
+        );
+      }
+    } catch (error) {
+      console.error("Movimento recusado:", error);
+      return;
+    } finally {
+      movementPendingRef.current = false;
+    }
 
     const updatedCards = cardEntitiesRef.current.map(card => {
       const isTriggerFix =
         card.pivotSettings.pivotType === "Trigger-Fix" &&
         card.triggerId === id;
-
       const isTokenFix =
         card.pivotSettings.pivotType === "Token-Fix" &&
         card.anchorTokenId === id;
 
-      if (isTriggerFix || isTokenFix) {
-        return {
-          ...card,
-          position: { col, row }
-        };
-      }
-
-      return card;
+      return isTriggerFix || isTokenFix
+        ? { ...card, position: resolvedPosition }
+        : card;
     });
 
-    const reconciledTokens = reconcileCardEntityEffects(
-      updatedTokens,
-      updatedCards
-    );
-
-    boardTokensRef.current = reconciledTokens;
     cardEntitiesRef.current = updatedCards;
 
-    setBoardTokens(reconciledTokens);
+    setBoardTokens(prev => reconcileCardEntityEffects(
+      prev.map(token => token.id === id
+        ? { ...token, position: resolvedPosition }
+        : token),
+      updatedCards,
+    ));
     setCardEntities(updatedCards);
-    setMovedThisTurn(prev => ({ ...prev, [id]: true }));
+    if (isInBattle) {
+      setBattleState(prev => ({
+        ...prev,
+        movedThisTurn: { ...prev.movedThisTurn, [id]: true },
+      }));
+    }
+
   }
-
-
 
   const handleCellClick = (
     letter: string,
@@ -2456,10 +2764,8 @@ const BoardPage: React.FC = () => {
     const tokInCell = boardTokens.find((t) => t.position.col === position.col && t.position.row === position.row)
 
 
-    if(inTargetSelection)
-    {
-      if(tokInCell)
-      {
+    if (inTargetSelection) {
+      if (tokInCell) {
         setSelectedTarget(tokInCell);
       }
       return;
@@ -2483,1893 +2789,144 @@ const BoardPage: React.FC = () => {
 
   };
 
-  // Start battle
-  const handleStartBattle = () => {
-    const teams = new Set(boardTokens.map((t) => t.team));
-    console.warn("[BATTLE START STATE]", {
-      battleState: battleState,
-      pendingAttack,
-      pendingFreeResponse,
-      pendingEsquivaRoll,
-      aiTurnToken: aiTurnTokenRef.current,
-    });
-    if (teams.size < 2 || boardTokens.length < 2) {
-      alert("É necessário ter tokens de times diferentes para iniciar.");
+  const handleStartBattle = async () => {
+    if (campaign?.ownerId !== userId) {
       return;
     }
 
-    const initialized = boardTokens
-      .map(initializeBattleStats)
-      .map(t => ({
-        ...t,
-        ocassionalAddition: {
-          ...(t.ocassionalAddition ?? {}), // <-- primeiro os existentes
-
-          // Agora, garanta os que faltam
-          forca: t.ocassionalAddition?.forca ?? 0,
-          destreza: t.ocassionalAddition?.destreza ?? 0,
-          consistencia: t.ocassionalAddition?.consistencia ?? 0,
-          inteligencia: t.ocassionalAddition?.inteligencia ?? 0,
-          sabedoria: t.ocassionalAddition?.sabedoria ?? 0,
-          carisma: t.ocassionalAddition?.carisma ?? 0,
-        }
-      })) as Token[];
-
-    const attributeTableInit: Record<string, Record<string, number>> = {};
-
-    initialized.forEach(t => {
-      attributeTableInit[t.id] = {
-        forca: 0,
-        destreza: 0,
-        consistencia: 0,
-        inteligencia: 0,
-        sabedoria: 0,
-        carisma: 0
-      };
-    });
-
-    attributeTable.current = attributeTableInit;
-
-    setBoardTokens(initialized);
-    const inits: InitiativeData[] = initialized.map((token) => ({
-      tokenId: token.id,
-      initiative: rollInitiative(
-        token.attributes.destreza,
-        token.proficiencies.destreza,
-        token.attributes.level
-      ),
-      hasExtraTurn: false,
-    }));
-    inits.sort((a, b) => b.initiative - a.initiative);
-    if (inits[0]) inits[0].hasExtraTurn = true;
-
-    const acc: Record<string, number> = {};
-    const didActObj: Record<string, boolean> = {};
-    const movedObj: Record<string, boolean> = {};
-
-    inits.forEach((i, idx) => {
-      acc[i.tokenId] = idx === 0 ? 2 : 1;
-      didActObj[i.tokenId] = false;
-      movedObj[i.tokenId] = false;
-    });
-
-    Object.keys(acc).forEach((id) => {
-      acc[id] = Math.max(1, Math.min(5, acc[id]));
-    });
-
-    const firstId = inits[0]?.tokenId;
-    setBoardTokens((prev) =>
-      prev.map((t) =>
-        t.id === firstId ? { ...t, startPosition: { ...t.position } } : t
-      )
-    );
-
-    setBoardTokens(prev =>
-      prev.map(t => ({
-        ...t,
-        certaintyDiceRemaining: 2, // 2 por batalha
-      }))
-    );
-
-
-    const lastAct: Record<string, boolean> = {};
-    const lastMove: Record<string, boolean> = {};
-    inits.forEach(i => {
-      lastAct[i.tokenId] = false;
-      lastMove[i.tokenId] = false;
-    });
-    setLastTurnActed(lastAct);
-    setLastTurnMoved(lastMove);
-
-    hasEnteredFirstTurnRef.current = {};
-
-    setBattleState({
-      status: "In Battle",
-      round: 1,
-      turnOrder: inits,
-      currentTurnIndex: 0,
-      currentActorId: firstId,
-      phase: "Initiative",
-      locks: { aiActing: false, reallocating: false, resolvingAction: false },
-      accumulatedActions: acc,
-      activeEffects: {},
-      actionHistory: [],
-      isReallocatingTurns: false,
-      isAIActing: false,
-      turnVersion: 1,
-    });
-
-
-    setDidActThisTurn(didActObj);
-    setMovedThisTurn(movedObj);
-
-    if (boardBoss) {
-      setIntroductionAnimation(true);
+    try {
+      await BattleEngineAPI.startBattle(selectedMapa?.id ?? "");
+    } catch (error) {
+      console.error("Não foi possível iniciar a batalha:", error);
     }
-  };
+  }
 
+  useEffect(() => {
+    console.log("USER ID guardado em BATTLE STATE: ", battleState.currentActorUserId)
+    console.log("USER ID real: ", userId)    
+  }, [battleState.currentActorUserId])
 
   const mouseStyle = inTargetSelection ? `crosshair` : "auto";
 
+  const handleNextTurn = () => BattleEngineAPI.next(battleState.id)
 
-  const handleNextTurn = (isVoluntaryPass: boolean = false) => {
-    console.log("-----------------------------------------------------------------------------------------------");
-    console.warn("[HANDLE] Entrou no handleNextTurn");
-    const liveBattleState = battleStateRef.current;
-    const liveBoardTokens = boardTokensRef.current;
-
-    // Já está avançando? Evita reentrância
-    if (isAdvancingTurnRef.current) {
-      console.log("🚫 BLOQUEADO, JÁ ESTÁ AVANÇANDO");
-      return;
-    }
-
-    // Só funciona em batalha
-    if (liveBattleState.status !== "In Battle") {
-      console.log("⚠️ NOT IN BATTLE, ABORDANDO");
-      return;
-    }
-
-    // Não pode avançar com resolução pendente
-    if (pendingAttackRef.current || isInDefenseResolution || pendingEsquivaRoll != null) {
-      console.warn("[HANDLE] Há resolução de ataque/defesa pendente, abortando");
-      return;
-    }
-
-    const currentIdx = liveBattleState.currentTurnIndex;
-    const currentTokenId = liveBattleState.turnOrder[currentIdx]?.tokenId;
-
-    reduceTimeToRecharge(engineContext, currentTokenId);
-
-    // battleState.accumulatedActions[ battleState.turnOrder[battleState.currentTurnIndex]?.tokenId;] ?? 1
-
-    if (!currentTokenId) {
-      console.log("⚠️ Sem tokenId atual, abortando");
-      return;
-    }
-
-    const tokenName = liveBoardTokens.find(t => t.id === currentTokenId)?.name ?? "Desconhecido";
-    console.warn("[HANDLE] FINALIZANDO TURNO DE:", tokenName);
-    combatInfo(`${currentTokenId} tentou passar turno`);
-
-    // Se não é passe voluntário e ainda há ações, não pode auto-passar
-    const currentActions = liveBattleState.accumulatedActions[currentTokenId] ?? 1;
-    if (!isVoluntaryPass && currentActions > 0 && !(lastAllUsedResponse[currentTokenId] ?? false)) {
-      console.error("[HANDLE]🚫 BLOQUEADO, AINDA RESTAM AÇÕES");
-      return;
-    }
-
-    console.log("REMAINING EXTRA ACTIONS: ", (remainingExtraActions.current?.extraActions));
-    console.log("PEDDING ATACK: ", pendingAttackRef.current);
-    console.log("PEDDING FREE RESPONSE: ", pendingFreeResponse);
-    if (!pendingAttackRef.current && !pendingFreeResponse && !((remainingExtraActions.current?.extraActions ?? 0) > 0)) {
-      console.log("ESTÁ ENTRANDO NESSA CONDIÇÂO BIZARRA!");
-    }
-    // Inicia trava
-    isAdvancingTurnRef.current = true;
-    console.error("[HANDLE] handleNextTurn INICIADO");
-
-    try {
-
-      const actedNow = !!didActThisTurn[currentTokenId];
-      const movedNow = !!movedThisTurn[currentTokenId];
-
-      // Snapshot do turno que está encerrando
-      setLastTurnActed(prev => ({ ...prev, [currentTokenId]: actedNow }));
-      setLastTurnMoved(prev => ({ ...prev, [currentTokenId]: movedNow }));
-
-      const nextIdx = (currentIdx + 1) % liveBattleState.turnOrder.length;
-      const nextTokenId = liveBattleState.turnOrder[nextIdx]?.tokenId;
-      decreaseCardEntityDuration(engineContext, nextTokenId)
-      const nextTokenName = liveBoardTokens.find(t => t.id === nextTokenId)?.name ?? "Desconhecido";
-      const nextToken = liveBoardTokens.find(t => t.id === nextTokenId);
-      console.log(`➡️ AVANÇANDO: idx ${currentIdx} -> ${nextIdx} | Próximo: ${nextTokenName}`);
-
-      // Atualiza estado de batalha: índice, round e aplica efeitos de turno
-      setBattleState(prev => {
-        // Evita condição de corrida: garante que ainda estamos no mesmo índice
-        if (prev.currentTurnIndex !== currentIdx) {
-          console.log("⚠️ ESTADO JÁ FOI ATUALIZADO POR OUTRO FLUXO, IGNORANDO ESTA ETAPA.");
-          return prev;
-        }
-
-        const shouldIncrementRound = nextIdx === 0;
-        const newRound = shouldIncrementRound ? prev.round + 1 : prev.round;
-        const newTurnVersion = prev.turnVersion + 1;
-        const updated: BattleState = {
-          ...prev,
-          currentTurnIndex: nextIdx,
-          currentActorId: nextTokenId || null,
-          round: newRound,
-          turnVersion: newTurnVersion,
-        };
-
-        if (nextToken) {
-          if (!nextToken.tokenEffects || nextToken.tokenEffects.length === 0) {
-            console.log(`Token ${nextToken.id} não possui efeitos.`);
-          } else {
-            console.log(`Efeitos do token '${nextToken.id}':`);
-            nextToken.tokenEffects.forEach((e, i) => {
-              console.log(
-                `#${i + 1} | Tipo: ${e.effectType} | Duração: ${e.duration} | Intensidade: ${e.intensity}`
-              );
-            });
-          }
-
-          applyEffectsCausality(nextToken, engineContext);
-          stepTokenEffect(engineContext, nextToken);
-
-        };
-        applyCardEntityEffect()
-        return processTurnEffects(updated, liveBoardTokens);
-      });
-
-      // Marca a posição inicial do PRÓXIMO token para rastrear movimento dentro do turno
-      if (nextTokenId) {
-        setDidActThisTurn(prev => ({ ...prev, [nextTokenId]: false }));
-        setMovedThisTurn(prev => ({ ...prev, [nextTokenId]: false }));
-        setBoardTokens(prev =>
-          prev.map(t =>
-            t.id === nextTokenId
-              ? { ...t, startPosition: { ...t.position } }
-              : t
-          )
-        );
-      }
-
-      console.log("✅ handleNextTurn CONCLUÍDO");
-      combatInfo(`${currentTokenId} passou turno`, {
-        nextTokenId,
-        round: battleStateRef.current.round,
-      });
-    } finally {
-      isAdvancingTurnRef.current = false;
-      console.log("🔓 LOCK LIBERADO");
-    }
-  };
-
-  // End battle
   const handleEndBattle = () => {
 
-    setBattleState({
-      status: "Not in Battle",
-      round: 0,
-      turnOrder: [],
-      currentTurnIndex: 0,
-      currentActorId: null,
-      phase: "Initiative",
-      locks: {
-        aiActing: false,
-        reallocating: false,
-        resolvingAction: false
-      },
-      accumulatedActions: {},
-      activeEffects: {},
-      actionHistory: [],
-      isReallocatingTurns: false,
-      isAIActing: false,
-      turnVersion: 0,
-    });
-
-    console.warn("[BATTLE START STATE]", {
-      battleState: battleState,
-      pendingAttack,
-      pendingFreeResponse,
-      pendingEsquivaRoll,
-      aiTurnToken: aiTurnTokenRef.current,
-    });
-
-    setBoardTokens((prev) =>
-      prev.map((t) => ({
-        ...t,
-        currentLife: undefined,
-        maxLife: undefined,
-        currentMana: undefined,
-        maxMana: undefined,
-        startPosition: undefined,
-      }))
-    );
-    // Ao finalizar a batalha:
-    setBoardTokens(prev =>
-      prev.map(t => {
-        const { certaintyDiceRemaining, ...rest } = t as any;
-        return rest; // remove o campo de runtime
-      })
-    );
-
-    setBoardTokens(prev =>
-      prev.map(t => ({
-        ...t,
-        tokenEffects: [] // zera os efeitos
-      }))
-    );
-
-    setBoardTokens(prev =>
-      prev.map(t => ({
-        ...t,
-        ocassionalAddition: {
-          forca: 0,
-          destreza: 0,
-          consistencia: 0,
-          inteligencia: 0,
-          sabedoria: 0,
-          carisma: 0,
-        },
-      }))
-    );
-
-    setPendingAttack(null);
-    setMovedThisTurn({});
-    // Limpando estados de batalha.
-    setFreeActionLock({});
-    setTokenParalysis({});
-    setLastAllUsedResponse({});
-    setPostParalyse(null);
-    setPendingFreeResponse(null);
-    setIsInDefenseResolution(false);
-
-    remainingExtraActions.current = null;
-    remainingPrevisionAttacks.current = {};
-    cardsNotRechargeds.current = {};
-    timeToRechargeCard.current = {};
-
-    totalActionsReturn.current = 0;
-    hasEnteredFirstTurnRef.current = {}; // ⬅️ Limpar ref
-    remainingExtraActions.current = null; // Reset das ações extras no fim do turno
-    maxSelectablePivots.current = 0;
-    setAIUnlock();
-    aiTurnTokenRef.current = null;
-
-    // Cancela qualquer fase da IA em andamento (setTimeout de 500ms pendente).
-    // Sem isso, a IA pode disparar executeAITurn/executeAIReaction DEPOIS que
-    // handleEndBattle rodou, corrompendo o estado inicial da próxima batalha.
-    if (aiPhaseCleanup.current) {
-      aiPhaseCleanup.current();
-      aiPhaseCleanup.current = null;
-    }
-    // Zera o mutex síncrono junto com o reset do estado.
-    isAIActingRef.current = false;
-    aiStateMachine.current.transition(AICombatPhase.IDLE);
-
-    setInCardSelection(false);
-    setPendingCardResolution(null);
-    setTokensInOffensiveCard([]);
-    setOffensiveCardScore(null);
-    setOffensiveCardTestScore(null);
-    setTokensBattlePosition({});
-    setOffensivePendingCard(undefined);
-    setCardEntities([]);
-    setArmedCard(undefined);
-    setIsAmbientPivotSelection(false);
-    setSelectedPivots([]);
-    setPreviewCells(new Set());
-    setIsAIThinking(false);
-    setShouldAdvanceTurn(false);
-    setInDefenseCardResolution(false);
-    setInTargetSelection(false);
-    setSelectedTarget(null)
-  };
-
-  const handleExecuteAction = (choice: ExecuteChoice): boolean => {
-    if (battleState.status !== "In Battle") return false;
-    setInTargetSelection(false)
-    console.warn("[HANDLE] EXECUTE CHOICE RECEBIDA: ", choice);
-    const liveBattleState = battleStateRef.current;
-    const liveBoardTokens = boardTokensRef.current;
-    const current = liveBattleState.turnOrder[liveBattleState.currentTurnIndex];
-    if (!current) return false;
-    const tokenId = current.tokenId;
-
-    const token = liveBoardTokens.find((t) => t.id === tokenId);
-    const target = liveBoardTokens.find((t) => t.id === choice.targetId);
-
-    if (token && choice.actionType === "card_selection") {
-      console.log("ENTROU NA OPÇÂO DE SELEÇÂO DE CARD!")
-      setInCardSelection(true);
-      setPendingCardResolution(token);
-      return true;
+    const obj = {
+      battleId: battleState.id
     }
 
-    console.warn("[HANDLE] ACTION CHOICE RECEBIDA: ", choice);
-    if (token && choice.actionType === "mana_recover") {
+    BattleEngineAPI.end(obj)
+  }
 
-      const usedActions = Math.max(
-        1,
-        Math.min(choice.usedActions ?? 1, liveBattleState.accumulatedActions[tokenId] ?? 1)
-      );
-      const recovering = 3 * (Math.floor((((token.attributes.level - 10) / 4) + 4) / 2))
-      setBoardTokens((prev) =>
-        prev.map((t) =>
-          t.id === tokenId
-            ? { ...t, currentMana: Math.min(t.maxMana ?? 0, (t.currentMana ?? 0) + recovering * usedActions) }
-            : t
-        )
-      );
+  const handleExecuteAction = (choice: ExecuteChoice) => {
 
-      const currentActions = liveBattleState.accumulatedActions[tokenId] ?? 1;
-      const remainingActions = Math.max(0, currentActions - usedActions);
-      setBattleState((prev) => ({
-        ...prev,
-        accumulatedActions: { ...prev.accumulatedActions, [tokenId]: remainingActions },
-      }));
-
-      console.error(`[HANDLE] ${tokenId} recuperou mana usando ${usedActions} ações, recuperando ${recovering * usedActions} de mana. Ações restantes: ${remainingActions}`);
-      if (remainingActions <= 0) {
-        console.warn("[HANDLE] Mana recover usou todas as ações, avançando turno");
-        setShouldAdvanceTurn(true);
-      }
-      return true;
+    const newChoice = {
+      ...choice,
+      battleId: battleState.id
     }
 
-    if (!token || !target) return false;
-
-    const isPhysicalAttack = ["forca", "destreza"].includes(choice.attribute);
-    const attackType = isPhysicalAttack ? "fisico" : "magico";
-    if (!isInAttackRange(token, target, attackType)) {
-      const distance = calculateDistance(token, target);
-      const maxRange = isPhysicalAttack ? (token.bodytobodyRange || 1) : (token.magicalRange || 6);
-      console.warn(
-        `${token.id} está fora do alcance para atacar ${target.name}. ` +
-        `Distância: ${distance}, Alcance máximo: ${maxRange}`
-      );
-      combatInfo(`${tokenId} falhou ataque contra ${choice.targetId}: fora de alcance`);
-      return false;
-    }
-
-    // 2) Saneamento de custos (mesma lógica)
-    const usedMana = Math.min(choice.usedMana ?? 0, token.currentMana ?? 0);
-    const usedActions = Math.max(
-      1,
-      Math.min(choice.usedActions ?? 1, liveBattleState.accumulatedActions[tokenId] ?? 1)
-    );
-    const wasCertainty = !!choice.usedCertaintyDie;
-
-    // 3) Bônus de proficiência (mesma fórmula usada antes)
-    const proficiencyBonus = token.proficiencies[choice.attribute]
-      ? Math.ceil((token.attributes.level - 10) / 4 + 4)
-      : 0;
-
-
-
-    const elementalPos = (choice.attribute === "forca" && target.tokenPrimaryDisvantege === token.tokenPrimaryElement && usedMana > 0) ? 2 * (choice.pos ?? 1) : choice.pos ?? 1;
-    const attrPos = searchTokenPosition(token.id, choice.attribute);
-
-    const finalPos = (a: number, b: number) => {
-      if (a + b === 3) {
-        return 2;
-      }
-      else if (a + b === 1) {
-        return 0.5;
-      }
-      else if (a + b === 1.5) {
-        return 0.5;
-      }
-      else if (a + b === 2) {
-        return 1;
-      }
-      else if (a + b === 4) {
-        return 2;
-      }
-      else if (a + b === 2.5) {
-        return 1;
-      }
-      else if (a + b > 4) {
-        return 2;
-      }
-      else {
-        return 1;
-      }
-    }
-    // 2, 1, 0.5
-
-    const respectiveAtribute = choice.attribute;
-    const selectedItem = choice.item;
-    const itemOcasionalAdd = selectedItem?.ocasionalAdd;
-
-    const itemCoerentAdd = respectiveAtribute === selectedItem?.atributeToOcasionalAdd ? itemOcasionalAdd : 0;
-    const params = {
-      tokenId: tokenId,
-      Q: usedActions,
-      P: finalPos(elementalPos, attrPos),
-      A: token.attributes[choice.attribute],
-      PF: proficiencyBonus,
-      O: token.ocassionalAddition[choice.attribute] + (itemCoerentAdd ?? 0),
-      N:
-        choice.attribute === "forca" || choice.attribute === "sabedoria"
-          ? 0
-          : token.proficiencies[choice.attribute]
-            ? 1
-            : 0,
-      L: token.attributes.level,
-      M: usedMana,
-      certainty: wasCertainty,
-      attribute: choice.attribute,
-    };
-
-    // 5) Rolagem base
-    const baseRoll = calculateActionRoll(params) as RollResult;
-
-    // 6) Calcula ações restantes (mantém logs/estado)
-    setDidActThisTurn((prev) => ({ ...prev, [tokenId]: true }));
-    const currentActions = liveBattleState.accumulatedActions[tokenId] ?? 1;
-    const remainingActions = Math.max(0, currentActions - usedActions);
-    setBattleState((prev) => ({
-      ...prev,
-      accumulatedActions: { ...prev.accumulatedActions, [tokenId]: remainingActions },
-    }));
-
-
-    // 7) Dado Certo (MULT igual ao antigo)
-    const MULT = 4;
-
-    // Extrai d20s se existir rawRolls, para estimar mods por dado
-    const raw = Array.isArray((baseRoll as any).rawRolls)
-      ? ((baseRoll as any).rawRolls as number[])
-      : [];
-    const somaD20sBase =
-      raw.length >= usedActions
-        ? raw.slice(0, usedActions).reduce((a, b) => a + b, 0)
-        : raw.length > 0
-          ? raw.reduce((a, b) => a + b, 0)
-          : usedActions * 10;
-
-    const totalBase = baseRoll.total;
-    const modsTotaisAproximados = totalBase - somaD20sBase;
-    const modsPorDado = usedActions > 0 ? modsTotaisAproximados / usedActions : 0;
-
-    let displayRoll: RollResult = baseRoll;
-    let attackTotalForHistory = baseRoll.total;
-    let rawDamage = baseRoll.total;
-
-    if (wasCertainty) {
-      const forcedRaw = Array.from({ length: usedActions }, () => 20);
-      const critTotalPorDado = MULT * (20 + modsPorDado);
-      const critTotal = Math.round(critTotalPorDado * usedActions);
-
-      displayRoll = {
-        ...baseRoll,
-        rawRolls: forcedRaw,
-        total: critTotal,
-      };
-
-      attackTotalForHistory = critTotal;
-      rawDamage = critTotal;
-
-      // Consome 1 carga de Dado Certo do atacante
-      setBoardTokens((prev) =>
-        prev.map((t) =>
-          t.id === tokenId
-            ? { ...t, certaintyDiceRemaining: Math.max(0, (t.certaintyDiceRemaining ?? 0) - 1) }
-            : t
-        )
-      );
-    }
-
-    // 8) Atualiza histórico
-    if (baseRoll.rawRolls[0] === 1) {
-      setBattleState((prev) => ({
-        ...prev,
-        actionHistory: [
-          ...prev.actionHistory,
-          {
-            attribute: choice.attribute,
-            type: `${choice.type} | FALHA CRÍTICA!`,
-            rollResult: displayRoll,
-            attackerId: tokenId,
-            targetId: choice.targetId,
-            round: prev.round,
-          } as ActionChoice & { round: number; attackerId?: string; targetId?: string },
-        ],
-      }));
-    }
-    else {
-      setBattleState((prev) => ({
-        ...prev,
-        actionHistory: [
-          ...prev.actionHistory,
-          {
-            attribute: choice.attribute,
-            type: wasCertainty ? `${choice.type} | DADO CERTO` : choice.type,
-            rollResult: displayRoll,
-            attackerId: tokenId,
-            targetId: choice.targetId,
-            round: prev.round,
-          } as ActionChoice & { round: number; attackerId?: string; targetId?: string },
-        ],
-      }));
-    }
-
-
-    // 9) Desconta mana do atacante somente após os registros (mantém ordem da função antiga)
-    if (usedMana > 0) {
-      setBoardTokens((prev) =>
-        prev.map((t) =>
-          t.id === tokenId
-            ? { ...t, currentMana: Math.max(0, (t.currentMana ?? 0) - usedMana) }
-            : t
-        )
-      );
-    }
-
-    // 10) Agenda reações com o dano “travado” (fora de qualquer if de mana)
-    const defenderParalysis = getParalysis(engineContext, choice.targetId);
-    if (defenderParalysis !== "none") {
-      console.log("ESTADO DE PARALISIA DE UM TOKEN ESTÁ COMO: ", defenderParalysis);
-    }
-
-    // Lock de ação livre (sem reação) — consome se existir
-    const lockKey = `${tokenId}->${choice.targetId}`;
-    const hasLock = !!freeActionLock[lockKey];
-    if (hasLock) {
-      setFreeActionLock((prev) => {
-        const cp = { ...prev };
-        delete cp[lockKey];
-        return cp;
-      });
-    }
-
-    // Permissão por Paralisia/Paralisia Rápida
-    const reactionPermittedByParalysis = canDefenderReact(usedMana, defenderParalysis);
-    const isReactionAllowed = hasLock ? false : reactionPermittedByParalysis;
-
-    // Apenas se permitido, ofereça Destreza/Consistência
-    const reactions: PendingReaction[] = isReactionAllowed
-      ? [
-        { type: "destreza", targetToken: target },
-        { type: "consistencia", targetToken: target },
-      ]
-      : [];
-
-
-    const elementUsed = usedMana > 0 ? token.tokenPrimaryElement ?? "neutro" : "neutro"
-    combatInfo(`${tokenId} atacou ${choice.targetId}`, {
-      total: attackTotalForHistory,
-      rawDamage,
-      reactionAllowed: isReactionAllowed,
-    });
-    setPendingAttack({
-      attackerId: tokenId,
-      targetId: choice.targetId,
-      rawDamage, // já crítico se Dado Certo
-      attackRoll: attackTotalForHistory,
-      usedMana: usedMana,
-      attackAttribute: choice.attribute, // 'forca' | 'destreza' | ...
-      pendingReactions: reactions,
-      isReactionAllowed,
-      isFreeAttack: hasLock || false,
-      usedActions: usedActions,
-      atackElement: elementUsed,
-      usedItem: (choice.item === null ? undefined : choice.item),
-    });
-
-    // 11) Se não pode reagir, aplica dano e trata Paralisia já neste passo
-    console.log("> VALOR DE REACTION ALLOWED: ", isReactionAllowed);
-    if (!isReactionAllowed) {
-      applyTokenDamage(tokenId, choice.targetId, rawDamage);
-      const currentParalysis = getParalysis(engineContext, choice.targetId);
-      const nextState = nextParalysisAfterHit(currentParalysis, usedMana, (remainingExtraActions.current?.extraActions ?? 0));
-      if (nextState !== currentParalysis) {
-        grantFreeActionNoReaction(engineContext, tokenId, choice.targetId, nextState, 1)
-      }
-
-      setPendingAttack(null);
-      setPendingEsquivaRoll(null);
-      setIsInDefenseResolution(false);
-      if (remainingActions <= 0) {
-        console.warn("[HANDLE] Setando como pode passar o turno")
-        setShouldAdvanceTurn(true);
-      }
-      return true;
-    }
-
-    // 12) Caso possa reagir, não faz mais nada aqui — o ReactionPrompt será exibido pelo JSX
-    setSelectedTarget(null)
-    return true;
-  };
+    return BattleEngineAPI.executeAction(newChoice)
+  }
 
   // Reação do defensor: Defesa (consistência) ou Esquiva (destreza)
   // Observações:
   // - Se usedCertaintyDie = true: imunidade total imediata (encerra o ataque), apenas exibindo rolagem "travada" no histórico.
   // - Se destreza (esquiva) sem Dado Certo: inicia fluxo de resolução binária (handleDefenseResolution).
   // - Se consistência sem Dado Certo: reduz dano conforme rolagem e aplica dano restante.
-  function handleEndReaction()
-  {
-      setPendingAttack(null);
-      setPendingEsquivaRoll(null);
-      setIsInDefenseResolution(false);
+  function handleEndReaction() {
+    setPendingAttack(null);
+    setPendingEsquivaRoll(null);
+    setIsInDefenseResolution(false);
   }
 
-  function handleDefenseCardResolution(triggerToken: Token)
-  {
+  function handleDefenseCardResolution(triggerToken: Token) {
     setPendingCardResolution(triggerToken);
     setPendingAttack(null);
     setInDefenseCardResolution(true);
     setInCardSelection(true);
   }
 
-  const handleReaction = (
-    reactionType: "consistencia" | "destreza" | "inteligencia" | "sabedoria" | "card",
-    usedMana: number,
-    usedActions: number,
-    roll: RollResult,
-    usedCertaintyDie: boolean
-  ) => {
+  useEffect(() => {
+    console.debug(pendingFreeResponse)
+  }, [pendingFreeResponse])
 
-    if (!pendingAttack) return;
-    if (battleState.status !== "In Battle") return;
-
-    const attackerId = pendingAttack.attackerId;
-    const defenderId = pendingAttack.targetId;
-
-    const attackerToken = boardTokens.find(t => t.id === attackerId);
-    const defenderToken = boardTokens.find(t => t.id === defenderId);
-    const defender = boardTokens.find((t) => t.id === defenderId);
-
-    if (!defender) return;
-
-    if(reactionType === "card" && defenderToken)
-    {
-      console.debug("Chegando aqui: ", defenderToken.name)
-      handleDefenseCardResolution(defenderToken);
-      handleEndReaction();
-      return;
+  const handleReaction = (choice: any) => {
+    const newChoice = {
+      ...choice,
+      type: choice.reactionType,
+      battleId: battleState.id
     }
 
-    // Saneamento de custos do defensor
-    const availableActionsDef = battleState.accumulatedActions[defenderId] ?? 1;
-    const usedActionsClamped = Math.max(1, Math.min(usedActions ?? 1, availableActionsDef));
-    const usedManaClamped = Math.min(usedMana ?? 0, defender.currentMana ?? 0);
+    console.log(battleState.id)
 
-    // Consome mana do defensor (se houver)
-    if (usedManaClamped > 0) {
-      setBoardTokens((prev) =>
-        prev.map((t) =>
-          t.id === defenderId
-            ? { ...t, currentMana: Math.max(0, (t.currentMana ?? 0) - usedManaClamped) }
-            : t
-        )
-      );
-    }
+    return BattleEngineAPI.reaction(newChoice)
+  }
 
-    // Marca que o defensor agiu
-    setDidActThisTurn((prev) => ({ ...prev, [defenderId]: true }));
+  const handleCancelReaction = () => BattleEngineAPI.cancelReaction(battleState.id)
 
-    // Atualiza ações do defensor (TA padrão: gastar exatamente usedActionsClamped)
-    const currentActionsDef = battleState.accumulatedActions[defenderId] ?? 1;
-    const remainingActionsDef = Math.max(0, currentActionsDef - usedActionsClamped);
-    setBattleState((prev) => ({
-      ...prev,
-      accumulatedActions: {
-        ...prev.accumulatedActions,
-        [defenderId]: remainingActionsDef,
-      },
-    }));
+  const handlePrevAction = () => BattleEngineAPI.prev(battleState.id)
 
-    // Caso especial: Dado Certo na reação → imunidade imediata
-    if (usedCertaintyDie) {
-      console.log("🟣 ENTROU NO USO DO DADO CERTO");
-
-      // Consome 1 carga de Dado Certo do defensor
-      setBoardTokens((prev) =>
-        prev.map((t) =>
-          t.id === defenderId
-            ? {
-              ...t,
-              certaintyDiceRemaining: Math.max(0, (t.certaintyDiceRemaining ?? 0) - 1),
-            }
-            : t
-        )
-      );
-
-      // Apenas para exibição no histórico: replicar a mesma estética de "dados travados"
-      // Força Q dados a 20 e monta total crítico visual.
-      const Q = usedActionsClamped;
-      const MULT = 4;
-
-      // Heurística para separar mods do roll do defensor, se necessário
-      const raw = Array.isArray((roll as any).rawRolls)
-        ? ((roll as any).rawRolls as number[])
-        : [];
-      const somaD20sBase =
-        raw.length >= Q
-          ? raw.slice(0, Q).reduce((a, b) => a + b, 0)
-          : raw.length > 0
-            ? raw.reduce((a, b) => a + b, 0)
-            : Q * 10; // aproximação (apenas para extrair mods)
-      const totalBase = roll.total;
-      const modsTotaisAproximados = totalBase - somaD20sBase;
-      const modsPorDado = Q > 0 ? modsTotaisAproximados / Q : 0;
-
-      const forcedRaw = Array.from({ length: Q }, () => 20);
-      const critTotalPorDado = MULT * (20 + modsPorDado);
-      const critTotal = Math.round(critTotalPorDado * Q);
-
-      const displayRoll: RollResult = {
-        ...roll,
-        rawRolls: forcedRaw,
-        total: critTotal,
-      };
-
-      // Histórico da reação com Dado Certo
-      setBattleState((prev) => ({
-        ...prev,
-        actionHistory: [
-          ...prev.actionHistory,
-          {
-            attribute: reactionType,
-            type:
-              reactionType === "destreza"
-                ? "Reação - Esquiva (Dado Certo)"
-                : "Reação - Defesa (Dado Certo)",
-            rollResult: displayRoll,
-            attackerId: defenderId,
-            targetId: attackerId,
-            round: prev.round,
-          } as ActionChoice & { round: number; attackerId?: string; targetId?: string },
-        ],
-      }));
-
-
-      handleEndReaction()
-
-      // Avança o turno do atacante se ele já não tiver ações
-      const attackerActions = battleState.accumulatedActions[attackerId] ?? 1;
-      console.log("ATACCKER ID: ", attackerActions);
-      if (attackerActions <= 0) setShouldAdvanceTurn(true);
-      return;
-    }
-
-    if (reactionType === "inteligencia" && pendingAttack.attackAttribute === "inteligencia") {
-      if (!pendingAttack) return;
-
-      if (pendingAttack.attackRoll > roll.total) {
-        defineRemainingPrevisionAttacks(engineContext, attackerId, defenderId, 1);
-      }
-
-      setBattleState((prev) => ({
-        ...prev,
-        actionHistory: [
-          ...prev.actionHistory,
-          {
-            attribute: "inteligencia",
-            type: "Reação - Prever",
-            rollResult: roll,
-            attackerId: defenderId,
-            targetId: attackerId,
-            round: prev.round,
-          } as ActionChoice & { round: number; attackerId?: string; targetId?: string },
-        ],
-      }));
-
-      handleEndReaction() 
-
-      const attackerActions = battleState.accumulatedActions[attackerId] ?? 1;
-      console.log("ATACCKER ID: ", attackerActions);
-      if (attackerActions <= 0) setShouldAdvanceTurn(true);
-
-      return;
-    }
-
-    if (reactionType === "sabedoria" && pendingAttack.attackAttribute === "sabedoria") {
-      if (roll.total > pendingAttack.attackRoll) {
-        setBattleState((prev) => ({
-          ...prev,
-          accumulatedActions: { ...prev.accumulatedActions, [defenderId]: Math.min(5, battleState.accumulatedActions[defenderId] + battleState.accumulatedActions[attackerId]) },
-        }));
-        setBattleState((prev) => ({
-          ...prev,
-          accumulatedActions: { ...prev.accumulatedActions, [attackerId]: 1 },
-        }));
-        const token = boardTokens.find(t => t.id === defenderId);
-        const targetToken = boardTokens.find(t => t.id === attackerId);
-
-        if (!token || !targetToken) {
-          console.warn("Token ou targetToken não encontrado");
-          return;
-        }
-
-        if (isInAttackRange(token, targetToken, 'fisico')) {
-          grantFreeActionNoReaction(engineContext, defenderId, attackerId, "paralisia", 1);
-        }
-
-      }
-      else if (roll.total < pendingAttack.attackRoll) {
-        setBattleState((prev) => ({
-          ...prev,
-          accumulatedActions: { ...prev.accumulatedActions, [attackerId]: Math.min(5, battleState.accumulatedActions[defenderId] + battleState.accumulatedActions[attackerId]) },
-        }));
-        setBattleState((prev) => ({
-          ...prev,
-          accumulatedActions: { ...prev.accumulatedActions, [defenderId]: 1 },
-        }));
-
-        const token = boardTokens.find(t => t.id === attackerId);
-        const targetToken = boardTokens.find(t => t.id === defenderId);
-
-        if (!token || !targetToken) {
-          console.warn("Token ou targetToken não encontrado");
-          return; // interrompe para evitar erro
-        }
-
-        if (isInAttackRange(token, targetToken, 'fisico')) {
-          grantFreeActionNoReaction(engineContext, defenderId, attackerId, "paralisia", 1);
-        }
-      }
-
-      setBattleState((prev) => ({
-        ...prev,
-        actionHistory: [
-          ...prev.actionHistory,
-          {
-            attribute: "sabedoria",
-            type: "Reação - Desnortear",
-            rollResult: roll,
-            attackerId: defenderId,
-            targetId: attackerId,
-            round: prev.round,
-          } as ActionChoice & { round: number; attackerId?: string; targetId?: string },
-        ],
-      }));
-      handleEndReaction()
-
-      const attackerActions = battleState.accumulatedActions[attackerId] ?? 1;
-      console.log("ATACCKER ID: ", attackerActions);
-      if (attackerActions <= 0) setShouldAdvanceTurn(true);
-
-      return;
-    }
-
-    if (reactionType === "destreza" && pendingAttack.attackAttribute === "destreza") {
-      if (!pendingAttack) return;
-
-      if (roll.total > pendingAttack.attackRoll) {
-        grantFreeActionNoReaction(engineContext, defenderId, attackerId, "paralisia", 1);
-      }
-      else if (roll.total < pendingAttack.attackRoll) {
-        grantFreeActionNoReaction(engineContext, defenderId, attackerId, "paralisia", 3);
-      }
-
-      setBattleState((prev) => ({
-        ...prev,
-        actionHistory: [
-          ...prev.actionHistory,
-          {
-            attribute: "destreza",
-            type: "Reação - Surpreender",
-            rollResult: roll,
-            attackerId: defenderId,
-            targetId: attackerId,
-            round: prev.round,
-          } as ActionChoice & { round: number; attackerId?: string; targetId?: string },
-        ],
-      }));
-
-      handleEndReaction()
-    }
-    else if (reactionType === "destreza") {
-      // Esquiva binária: guarda rolagem do defensor e vai para resolução com rolagem de definição do atacante
-      setPendingEsquivaRoll(roll);
-
-      setPrevReaction(prev => ({
-        ...prev,
-        [defenderId]: "destreza"
-      }));
-
-      setBattleState((prev) => ({
-        ...prev,
-        actionHistory: [
-          ...prev.actionHistory,
-          {
-            attribute: "destreza",
-            type: "Reação - Esquiva",
-            rollResult: roll,
-            attackerId: defenderId,
-            targetId: attackerId,
-            round: prev.round,
-          } as ActionChoice & { round: number; attackerId?: string; targetId?: string },
-        ],
-      }));
-
-      // Ativa UI de resolução (definição do atacante)
-      setIsInDefenseResolution(true);
-      return;
-    }
-
-    // Defesa por consistência: reduz o dano do ataque atual e aplica restante
-    if (reactionType === "consistencia") {
-
-
-      if (pendingAttack && pendingAttack.attackAttribute === 'forca' && roll.total > pendingAttack.attackRoll) {
-        console.log("⚠️ TOKEN SETADO COMO 'NÃO PODE REAGIR'");
-        grantFreeActionNoReaction(engineContext, defenderId, attackerId, "paralisia", 1);
-      }
-      if (!pendingAttack) return;
-
-      setPrevReaction(prev => ({
-        ...prev,
-        [defenderId]: "consistencia"
-      }));
-
-      const reduction = Math.max(0, roll.total);
-      const mitigatedRoll = Math.max(0, pendingAttack.attackRoll - reduction);
-      const finalDamage = Math.max(0, Math.min(pendingAttack.rawDamage, mitigatedRoll));
-
-      // Histórico da defesa
-      setBattleState((prev) => ({
-        ...prev,
-        actionHistory: [
-          ...prev.actionHistory,
-          {
-            attribute: "consistencia",
-            type: "Reação - Defesa",
-            rollResult: roll,
-            attackerId: defenderId,
-            targetId: attackerId,
-            round: prev.round,
-          } as ActionChoice & { round: number; attackerId?: string; targetId?: string },
-        ],
-      }));
-
-      // Aplica dano restante no defensor
-      if (finalDamage > 0) {
-
-
-        const intesityCalculus = Math.ceil(((attackerToken?.attributes.level ?? 1) - 10) / 4 + 4);
-
-        if (defenderToken) applyTokenEffect(engineContext, defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
-
-        spawnItemVFX(attackerId, defenderId, (pendingAttack.usedItem === null ? undefined : pendingAttack.usedItem), boardTokens, setBoardVfxElements, playSomeSFX)
-        playSomeSFX("public/sfx/impact.mp3");
-        applyTokenDamage(attackerId, defenderId, finalDamage)
-
-        if (pendingAttack.usedMana > 0) {
-          grantFreeActionNoReaction(engineContext, attackerId, defenderId, "paralisia_rapida", 1);
-        }
-      }
-
-      // Limpeza do ataque corrente
-      handleEndReaction()
-
-      // Avança turno do atacante se sem ações
-      const attackerActions = battleState.accumulatedActions[attackerId] ?? 1;
-      const isDefensesEqualAtack = pendingAttack.rawDamage === reduction;
-      if (attackerActions <= 0 && (remainingExtraActions.current?.extraActions ?? 0) <= 0 && (isDefensesEqualAtack || pendingAttack.usedMana === 0)) {
-        setShouldAdvanceTurn(true);
-      }
-
-      return;
-    }
-  };
-
-  const handleExecuteResponseAction = (attackerId: string, forcedTargetId: string, choice: ExecuteChoice): boolean => {
-
-    if (battleState.status !== "In Battle") return false;
-
-    const token = boardTokens.find((t) => t.id === attackerId);
-    const target = boardTokens.find((t) => t.id === forcedTargetId);
-
-    if (!token || !target) return false;
-
-    console.error("[HANDLE] Entrou em handleExecuteResponseAction, mas ele ainda não tem validações internas.");
-
-    const coercedChoice = { ...choice, targetId: forcedTargetId };
-
-
-    const isPhysicalAttack = ["forca", "destreza"].includes(coercedChoice.attribute);
-    const attackType = isPhysicalAttack ? "fisico" : "magico";
-    if (!isInAttackRange(token, target, attackType)) {
-      combatInfo(`${attackerId} falhou resposta a ${forcedTargetId}: fora de alcance`);
-      return false;
-    }
-
-    console.error("[HANDLE] Entrou em handleExecuteResponseAction.");
-    // 2) Saneamento
-    const usedMana = Math.min(coercedChoice.usedMana ?? 0, token.currentMana ?? 0);
-    const usedActions = Math.max(1, Math.min(coercedChoice.usedActions ?? 1, battleState.accumulatedActions[attackerId] ?? 1));
-    const wasCertainty = !!coercedChoice.usedCertaintyDie;
-
-    // 3) Proficiência
-    const proficiencyBonus = token.proficiencies[coercedChoice.attribute]
-      ? Math.ceil((token.attributes.level - 10) / 4 + 4)
-      : 0;
-
-
-    const elementalPos = (choice.attribute === "forca" && target.tokenPrimaryDisvantege === token.tokenPrimaryElement && usedMana > 0) ? 2 * (prevReaction[attackerId] === "destreza" ? 2 : 1) : prevReaction[attackerId] === "destreza" ? 2 : 1;
-    const attrPos = searchTokenPosition(token.id, choice.attribute)
-    const finalPos = (a: number, b: number) => {
-      if (a + b === 3) {
-        return 2;
-      }
-      else if (a + b === 1) {
-        return 0.5;
-      }
-      else if (a + b === 1.5) {
-        return 0.5;
-      }
-      else if (a + b === 2) {
-        return 1;
-      }
-      else if (a + b === 4) {
-        return 2;
-      }
-      else if (a + b === 2.5) {
-        return 1;
-      }
-      else if (a + b > 4) {
-        return 2;
-      }
-      else {
-        return 1;
-      }
-    }
-
-    const respectiveAtribute = choice.attribute;
-    const selectedItem = choice.item;
-    const itemOcasionalAdd = selectedItem?.ocasionalAdd;
-
-    const itemCoerentAdd = respectiveAtribute === selectedItem?.atributeToOcasionalAdd ? itemOcasionalAdd : 0;
-    const params = {
-      tokenId: attackerId,
-      Q: usedActions,
-      P: finalPos(elementalPos, attrPos),
-      A: token.attributes[coercedChoice.attribute],
-      PF: proficiencyBonus,
-      O: token.ocassionalAddition[choice.attribute] + (itemCoerentAdd ?? 0),
-      N:
-        coercedChoice.attribute === "forca" || coercedChoice.attribute === "sabedoria"
-          ? 0
-          : token.proficiencies[coercedChoice.attribute]
-            ? 1
-            : 0,
-      L: token.attributes.level,
-      M: usedMana,
-      certainty: wasCertainty,
-      attribute: coercedChoice.attribute,
-    };
-
-    const baseRoll = calculateActionRoll(params) as RollResult;
-
-    const currentActions = battleState.accumulatedActions[attackerId] ?? 1;
-    const remainingActions = Math.max(0, (currentActions) - usedActions);
-
-    setBattleState((prev) => ({
-      ...prev,
-      accumulatedActions: { ...prev.accumulatedActions, [attackerId]: remainingActions },
-    }));
-
-
-    const otherCurrentActions = (battleState.accumulatedActions[attackerId] ?? 0) - usedActions;
-    console.log("AÇÕES ACUMULADAS: ", (battleState.accumulatedActions[attackerId] ?? 0) - usedActions);
-    remainingExtraActions.current = { attackerId: attackerId, extraActions: Math.max(0, otherCurrentActions > 0 ? (remainingExtraActions.current?.extraActions ?? 1) - 1 : 0) };
-    console.log("REMAINING EXTRA ACTIONS: ", (remainingExtraActions.current?.extraActions));
-
-    // 6) Dado Certo: mesmo tratamento do handleExecuteAction
-    const raw = Array.isArray((baseRoll as any).rawRolls) ? ((baseRoll as any).rawRolls as number[]) : [];
-    const somaD20sBase = raw.length >= usedActions
-      ? raw.slice(0, usedActions).reduce((a, b) => a + b, 0)
-      : raw.length > 0 ? raw.reduce((a, b) => a + b, 0) : usedActions * 10;
-    const totalBase = baseRoll.total;
-    const modsTotaisAproximados = totalBase - somaD20sBase;
-    const modsPorDado = usedActions > 0 ? modsTotaisAproximados / usedActions : 0;
-
-    let displayRoll: RollResult = baseRoll;
-    let attackTotalForHistory = baseRoll.total;
-    let rawDamage = baseRoll.total;
-
-    if (wasCertainty) {
-      const forcedRaw = Array.from({ length: usedActions }, () => 20);
-      const MULT = 4;
-      const critTotalPorDado = MULT * (20 + modsPorDado);
-      const critTotal = Math.round(critTotalPorDado * usedActions);
-      displayRoll = { ...baseRoll, rawRolls: forcedRaw, total: critTotal };
-      attackTotalForHistory = critTotal;
-      rawDamage = critTotal;
-
-      setBoardTokens((prev) =>
-        prev.map((t) =>
-          t.id === attackerId ? { ...t, certaintyDiceRemaining: Math.max(0, (t.certaintyDiceRemaining ?? 0) - 1) } : t
-        )
-      );
-    }
-
-    // 7) Histórico
-    setBattleState((prev) => ({
-      ...prev,
-      actionHistory: [
-        ...prev.actionHistory,
-        {
-          attribute: coercedChoice.attribute,
-          type: wasCertainty ? `${coercedChoice.type} (Dado Certo)` : coercedChoice.type,
-          rollResult: displayRoll,
-          attackerId,
-          targetId: forcedTargetId,
-          round: prev.round,
-        } as ActionChoice & { round: number; attackerId?: string; targetId?: string },
-      ],
-    }));
-
-    // 8) Desconta mana do responder
-    if (usedMana > 0) {
-      setBoardTokens((prev) =>
-        prev.map((t) =>
-          t.id === attackerId ? { ...t, currentMana: Math.max(0, (t.currentMana ?? 0) - usedMana) } : t
-        )
-      );
-    }
-
-    // 9) Consumir lock e bloquear reação
-    const lockKey = `${attackerId}->${forcedTargetId}`;
-    const hasLock = !!freeActionLock[lockKey];
-    if (hasLock) {
-      setFreeActionLock((prev) => {
-        const cp = { ...prev };
-        delete cp[lockKey];
-        return cp;
-      });
-    }
-
-    const defenderParalysis = getParalysis(engineContext, forcedTargetId);
-    const reactionPermittedByParalysis = canDefenderReact(usedMana, defenderParalysis);
-    const isReactionAllowed = reactionPermittedByParalysis;
-
-    // TIPAGEM EXPLÍCITA AQUI
-    let reactions: PendingReaction[] = [];
-    if (isReactionAllowed) {
-      reactions = [
-        { type: "destreza" as const, targetToken: target },
-        { type: "consistencia" as const, targetToken: target },
-      ];
-    }
-
-    const elementUsed = usedMana > 0 ? token.tokenPrimaryElement ?? "neutro" : "neutro";
-    combatInfo(`${attackerId} respondeu atacando ${forcedTargetId}`, {
-      total: attackTotalForHistory,
-      rawDamage,
-      reactionAllowed: isReactionAllowed,
-    });
-    setPendingAttack({
-      attackerId,
+  const handleExecuteResponseAction = (attackerId: string, forcedTargetId: string, choice: ExecuteChoice) => {
+    const modChoiced = {
+      ...choice,
       targetId: forcedTargetId,
-      rawDamage,
-      attackRoll: attackTotalForHistory,
-      usedMana,
-      attackAttribute: coercedChoice.attribute,
-      pendingReactions: reactions,
-      isReactionAllowed,
-      isFreeAttack: hasLock || false,
-      usedActions: usedActions,
-      atackElement: elementUsed
-    });
-
-    const currentParalysis = getParalysis(engineContext, forcedTargetId);
-    const nextState = nextParalysisAfterHit(currentParalysis, usedMana, (remainingExtraActions.current.extraActions ?? 0));
-    console.log("QUAL PRÓXIMO ESTADO DE PARALISIA?: ", nextState);
-    console.log("CALCULANDO ESSE MALDITO REMAINING ACTIONS: ", remainingExtraActions.current.extraActions);
-    console.log("QUANTO QUE TÁ O BENDITO ACCUMULATED ACTIONS HEIN?: ", battleState.accumulatedActions[attackerId]);
-
-    if (nextState === "paralisia_rapida" && (remainingExtraActions.current.extraActions ?? 0) <= 0) {
-      grantFreeActionNoReaction(engineContext, attackerId, forcedTargetId, nextState, 1);
+      attackerId: attackerId,
+      battleId: battleState.id
     }
 
 
-    if (!isReactionAllowed) {
-      // Aplica dano direto + progressão de paralisia
-      spawnItemVFX(attackerId, forcedTargetId, pendingAttack?.usedItem, boardTokens, setBoardVfxElements, playSomeSFX);
-      playSomeSFX("public/sfx/impact.mp3");
-      applyTokenDamage(attackerId, forcedTargetId, rawDamage);
+    return BattleEngineAPI.response(modChoiced)
+  }
 
-      if (rawDamage > 0) {
+  const handleDefenseResolution = (choice: any) => {
 
-        const intesityCalculus = Math.ceil(((token?.attributes.level ?? 1) - 10) / 4 + 4);
-        if (target && usedMana > 0) applyTokenEffect(engineContext, target, token.tokenPrimaryElement ?? "neutro", elementToEffect[token.tokenPrimaryElement ?? "neutro"], 8, intesityCalculus, "InTurn");
-
-      }
-
-      if (nextState !== currentParalysis) {
-        setParalysis(engineContext, forcedTargetId, nextState);
-      }
-
-      const allowedNextAtackFlag = nextState === "paralisia_rapida" || nextState === "paralisia";
-      setPostParalyse({ responderId: attackerId, forcedId: forcedTargetId, allowedPostAtack: allowedNextAtackFlag });
-
-      setPendingAttack(null);
-      setPendingEsquivaRoll(null);
-      setIsInDefenseResolution(false);
-
-      if (!allowedNextAtackFlag) {
-        setPostParalyse(null);
-        setParalysis(engineContext, forcedTargetId, 'none');
-      }
-      else {
-        setParalysis(engineContext, forcedTargetId, nextState);
-      }
-
-      const lockKey = `${attackerId}->${forcedTargetId}`;
-      const hasLock = !!freeActionLock[lockKey];
-      if (hasLock) {
-        setFreeActionLock((prev) => {
-          const cp = { ...prev };
-          delete cp[lockKey];
-          return cp;
-        });
-      }
-
-      if ((remainingExtraActions.current.extraActions ?? 0) <= 0) {
-        console.log("> ENTROU NA FORÇAGEM DE PASSAR O TURNO");
-        setLastAllUsedResponse(prev => ({
-          ...prev,
-          [attackerId]: true,
-          [forcedTargetId]: true
-        }));
-        setShouldAdvanceTurn(true);
-        setPendingFreeResponse(null);
-      }
-      else if (battleState.accumulatedActions[forcedTargetId] === 0 && nextState === 'none') {
-        console.error("NÂO ERA PARA ESTAR ENTRANDO AQUI, ESTÁ?");
-        setShouldAdvanceTurn(true);
-        setPendingFreeResponse(null);
-      }
-
-      console.error("[HANDLE] Saindo de handleExecuteResponseAction pelo caminho de 'reação não permitida'.");
-      return true;
-    }
-    else {
-      console.warn("ENTROU AQUI!");
-      remainingExtraActions.current = null;
-      setPendingFreeResponse(null);
-      setParalysis(engineContext, forcedTargetId, "none");
-      console.error("[HANDLE] Saindo de handleExecuteResponseAction pelo caminho de 'reação permitida'.");
+    const newChoice = {
+      ...choice,
+      battleId: battleState.id,
+      type: "destreza"
     }
 
-    return true;
+    return BattleEngineAPI.defense(newChoice)
+  }
 
-  };
-
-  // Resolução da defesa por Destreza (Esquiva) com TA-1 aplicado ao ATACANTE
-  const handleDefenseResolution = (
-    usedActions: number,
-    definicaoRoll: RollResult,
-    usedMana: number
-  ) => {
-    // Precisa haver ataque e rolagem de esquiva armazenada
-    if (!pendingAttack || pendingEsquivaRoll == null) return;
-    if (battleState.status !== "In Battle") return;
-
-    const attackerId = pendingAttack.attackerId;
-    const defenderId = pendingAttack.targetId;
-    combatInfo(`${attackerId} resolveu esquiva de ${defenderId}`, {
-      defenseTotal: pendingEsquivaRoll.total,
-      resolutionTotal: definicaoRoll.total,
-      actions: usedActions,
-      mana: usedMana,
-    });
-
-    const attackerToken = boardTokens.find(t => t.id === attackerId);
-    const defenderToken = boardTokens.find(t => t.id === defenderId);
-
-    // Leitura das rolagens
-    const defenderEsquiva = pendingEsquivaRoll?.total ?? 0;
-    const atacanteDefinicao = definicaoRoll.total;
-
-    // TA-1 aplicado ao ATACANTE: consome (usedActions - 1), nunca negativo
-    const totalActionsToDecrement = Math.max(0, (usedActions ?? 0) - 1);
-
-    // Leia o saldo real
-    const currentActionsAttacker = battleState.accumulatedActions[attackerId] ?? 0;
-    const remainingActionsAttacker = Math.max(
-      0,
-      currentActionsAttacker - totalActionsToDecrement
-    );
-
-    // Marque o atacante como tendo agido
-    setDidActThisTurn((prev) => ({ ...prev, [attackerId]: true }));
-
-    // Desconta mana do atacante usada na definição (validada)
-    const attackerMana = boardTokens.find((t) => t.id === attackerId)?.currentMana ?? 0;
-    const validatedUsedMana = Math.min(usedMana ?? 0, attackerMana);
-    if (validatedUsedMana > 0) {
-      setBoardTokens((prev) =>
-        prev.map((t) =>
-          t.id === attackerId
-            ? {
-              ...t,
-              currentMana: Math.max(0, (t.currentMana ?? 0) - validatedUsedMana),
-            }
-            : t
-        )
-      );
-    }
-
-    // Atualize accumulatedActions do atacante apenas se mudou
-    if (remainingActionsAttacker !== currentActionsAttacker) {
-      setBattleState((prev) => ({
-        ...prev,
-        accumulatedActions: {
-          ...prev.accumulatedActions,
-          [attackerId]: remainingActionsAttacker,
-        },
-      }));
-    }
-
-    // Resultado binário: esquiva tem sucesso se a esquiva do defensor for >= definição do atacante
-    const esquivaSuccessful = defenderEsquiva >= atacanteDefinicao;
-
-    if (esquivaSuccessful) {
-      grantFreeActionNoReaction(engineContext, defenderId, attackerId, "paralisia", 1);
-    }
-
-    const finalDamage = esquivaSuccessful ? 0 : pendingAttack.rawDamage;
-
-    // Aplica dano no defensor quando houver
-    if (finalDamage > 0) {
-
-
-      const intesityCalculus = Math.ceil(((attackerToken?.attributes.level ?? 1) - 10) / 4 + 4);
-
-      if (defenderToken) applyTokenEffect(engineContext, defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
-      spawnItemVFX(attackerId, defenderId, pendingAttack.usedItem, boardTokens, setBoardVfxElements, playSomeSFX);
-      playSomeSFX("public/sfx/impact.mp3");
-      applyTokenDamage(attackerId, defenderId, finalDamage)
-    }
-
-
-    if (finalDamage > 0 && pendingAttack) {
-      const current = getParalysis(engineContext, defenderId);
-      const nextState = nextParalysisAfterHit(current, pendingAttack.usedMana, (remainingExtraActions.current?.extraActions ?? 0));
-      if (nextState !== current) {
-        grantFreeActionNoReaction(engineContext, attackerId, defenderId, nextState, 1);
-      }
-    }
-
-    // Registra histórico da resolução
-    setBattleState((prev) => ({
-      ...prev,
-      actionHistory: [
-        ...prev.actionHistory,
-        {
-          attribute: "destreza",
-          type: "Resolução de Esquiva",
-          rollResult: definicaoRoll,
-          attackerId: pendingAttack.attackerId,
-          targetId: pendingAttack.targetId,
-          round: prev.round,
-        } as ActionChoice & { round: number; attackerId?: string; targetId?: string },
-      ],
-    }));
-
-    // Limpeza do estado de resolução
-    setPendingEsquivaRoll(null);
-    setPendingAttack(null);
-    setIsInDefenseResolution(false);
-
-  };
-
-  const treatTarget = (
-    triggerToken: Token,
-    triggerTokenId: string,
-    target: Target,
-    card: Card
-  ) => {
-
-    const tokenProficiency = Math.ceil((triggerToken.attributes.level - 10) / 4 + 4)
-
-    if (!target) {
-      return 0;
-    }
-
-    const type = target.type;
-    const waitToApplyEffect = (card.causalityType === "Offensive") ? true : false;
-
-
-    if (type === "Self" || type === "Target") {
-      target.numbersTarget = 1;
-    }
-
-    if (type === "Self") {
-      target.tokenTarget = [triggerToken];
-    }
-
-    if (!target.tokenTarget || target.tokenTarget.length === 0) return 0;
-
-    const affectedTargets = target.tokenTarget.slice(
-      0,
-      target.numbersTarget ?? 1
-    );
-
-    const roll = calculateCardRoll(1, triggerToken, card);
-    const rollScore = (sum(roll.rawRolls) + roll.total) * roll.CRI;
-
-    const classAtributeConjure: Record<TokenClass, keyof TokenAttributes> =
-    {
-      Guerreiro: "consistencia",
-      Mago: "sabedoria",
-      Ladino: "destreza",
-      Bárbaro: "forca",
-      Feitiçeiro: "inteligencia",
-    }
-
-    const searchAtributeConjureProficiency: Record<TokenClass, keyof TokenProficiencies> =
-    {
-      Guerreiro: "consistencia",
-      Mago: "sabedoria",
-      Ladino: "destreza",
-      Bárbaro: "forca",
-      Feitiçeiro: "inteligencia",
-    }
-
-    const thisTokenClass = triggerToken.class
-
-    const testParams: Omit<ActionRollParams, "CRI"> =
-    {
-      tokenId: triggerTokenId,
-      Q: card.actionsRequired ?? 1,
-      P: 1,
-      A: triggerToken.attributes[classAtributeConjure[thisTokenClass]],
-      PF: triggerToken.proficiencies[searchAtributeConjureProficiency[thisTokenClass]] ? tokenProficiency : 0,
-      O: 0,
-      N: (card.manaRequired ?? 0) > 0 ? 1 : 0,
-      L: triggerToken.attributes.level,
-      M: (card.manaRequired ?? 0) * tokenProficiency,
-    }
-
-    const testCardRoll = calculateActionRoll(testParams);
-    const testCardScore = testCardRoll.total;
-
-    if ((card.manaRequired ?? 0) * tokenProficiency > 0) {
-      setBoardTokens((prev) =>
-        prev.map((t) =>
-          t.id === triggerToken.id
-            ? { ...t, currentMana: Math.max(0, (t.currentMana ?? 0) - (card.manaRequired ?? 0) * tokenProficiency) }
-            : t
-        )
-      );
-    }
-
-    setBattleState(prev => {
-      const prevActions = prev.accumulatedActions[triggerTokenId] ?? 0;
-      const nextActions = Math.max(0, prevActions - (card.actionsRequired ?? 0));
-
-      return {
-        ...prev,
-        accumulatedActions: {
-          ...prev.accumulatedActions,
-          [triggerTokenId]: nextActions
-        }
-      };
-    });
-
-    const causalitySwitch = card.causalityType === "Defensive" ? card.defenseReplicate : card.causalityType;
-    switch (causalitySwitch) {
-      case "Cure": {
-        setBoardTokens((prev) =>
-          prev.map((t) =>
-            affectedTargets.some((tt) => tt.id === t.id)
-              ? {
-                ...t,
-                currentLife: Math.min(t.maxLife ?? 0, (t.currentLife ?? 0) + rollScore),
-              }
-              : t
-          )
-        );
-        break;
-      }
-      case "Offensive":
-        setOffensivePendingCard(card);
-        setTokensInOffensiveCard(affectedTargets);
-        setOffensiveCardScore(rollScore);
-        setOffensiveCardTestScore(testCardScore);
-        break;
-      case "Direct-Damage":
-
-        setBoardTokens(prev => {
-          const next = [...prev];
-
-          affectedTargets.forEach(t => {
-            card.effectToApply.forEach(e => {
-              applyTokenEffect(
-                engineContext,
-                t,
-                "neutro",
-                e,
-                card.duration,
-                tokenProficiency,
-                "InTurn"
-              );
-            })
-          });
-
-          return next;
-        });
-
-        setBoardTokens((prev) =>
-          prev.map((t) =>
-            affectedTargets.some((tt) => tt.id === t.id)
-              ? {
-                ...t,
-                currentLife: Math.max(0, (t.currentLife ?? 0) - rollScore),
-              }
-              : t
-          )
-        );
-        break;
-      case "Only-Effect-Application": {
-        setBoardTokens(prev => {
-          const next = [...prev];
-
-          affectedTargets.forEach(t => {
-            card.effectToApply.forEach(e => {
-              applyTokenEffect(
-                engineContext,
-                t,
-                "neutro",
-                e,
-                card.duration,
-                tokenProficiency,
-                "InTurn"
-              );
-            })
-          });
-
-          return next;
-        });
-        break;
-      }
-      default:
-        break;
-    }
-
-    if (!waitToApplyEffect) {
-      setBoardTokens(prev => {
-        // 1) clonar o array
-        const next = [...prev];
-
-        // 2) obter tokens afetados A PARTIR DO ESTADO
-        // const affectedTokens = getTokensInRadius(next, center, 1);
-
-        // 3) aplicar efeito mutável (igual ao exemplo funcional)
-        affectedTargets.forEach(t => {
-          card.effectToApply.forEach(e => {
-            applyTokenEffect(
-              engineContext,
-              t,
-              "neutro",
-              e,
-              card.duration,
-              tokenProficiency,
-              "InTurn"
-            );
-          })
-        });
-
-        // 4) retornar o array atualizado UMA VEZ
-        return next;
-      });
-    }
-
-
-    return;
-  };
-
-  function closeCardForm()
-  {
+  function closeCardForm() {
     console.debug("[DEBUG] Pending Attack: ", pendingAttack);
     console.debug("[DEBUG] Pending Esquiva Roll: ", pendingEsquivaRoll);
     setInCardSelection(false);
   }
 
+  useEffect(() => {
+    console.warn("IN CARD SELECTION: ", inCardSelection)
+    console.warn("PENDING CARD RESOLUTION: ", pendingCardResolution)
+    console.warn("PENDING ATTACK: ", pendingAttack)
+  }, [
+    inCardSelection,
+    pendingCardResolution,
+    pendingAttack
+  ])
+
   const handleCardResolution = (currentId: string, target: Target, card: Card, isArtifice: boolean) => {
-    console.info("[CARD] Entrando no Handle Card Resolution")
-    const targetType = card.target.type
-    console.info("[CARD] Tipo de Alvo: ", targetType)
-    console.info("[CARD] Alvo em específico: ", target.tokenTarget)
-    const token = boardTokens.find((t) => t.id === currentId);
-    const tokenProficiency = Math.ceil(((token?.attributes.level ?? 1) - 10) / 4 + 4);
 
-    /* Usar card selecionado e aplicar sua recarga. Não inclui gasto de ação nem de mana */
-    if ((card.recharge as number) > 0) {
-      if (cardsNotRechargeds.current[currentId] === undefined) {
-        cardsNotRechargeds.current[currentId] = []
-        cardsNotRechargeds.current[currentId].push(card.id)
-        formatRechargeCardRecord(engineContext, currentId, card.id, card.recharge as number);
-      }
-      else if (!(cardsNotRechargeds.current[currentId].includes(card.id))) {
-        cardsNotRechargeds.current[currentId].push(card.id)
-        formatRechargeCardRecord(engineContext, currentId, card.id, card.recharge as number);
-      }
+    const choice = {
+      battleId: battleState.id,
+      currentId: currentId,
+      card: card,
+      target: target,
+      isArtifice: isArtifice
     }
-    /* * */
-    console.info("[CARD] Vai entrar no tratamento de Target?: ", pendingCardResolution)
-    if (pendingCardResolution || isArtifice) {
-      const currentTokenR = boardTokens.find((t) => t.id === currentId)
-      if (targetType !== "Ambient") {
-        console.info("[CARD] Vai entrar no tratamento de Target")
-        if(currentTokenR) treatTarget(currentTokenR, currentId, target, card);
-        setCardAreUsed(true);
-      }
-      else if (targetType === "Ambient") {
 
-        if ((card.manaRequired ?? 0) * tokenProficiency > 0) {
-          setBoardTokens((prev) =>
-            prev.map((t) =>
-              t.id === token?.id
-                ? { ...t, currentMana: Math.max(0, (t.currentMana ?? 0) - (card.manaRequired ?? 0) * tokenProficiency) }
-                : t
-            )
-          );
-        }
-
-        setArmedCard(card);
-        setTokenInAmbientPivotSelection(currentId);
-        if (card.target.pivotSettings?.pivotType === "Trigger-Fix") {
-          setIsAmbientPivotSelection(false);
-        }
-        else {
-          maxSelectablePivots.current = card.entityQuantity;
-          const remainingPivots = maxSelectablePivots.current - selectedPivots.length;
-          setRemainingPivots(remainingPivots);
-          setIsAmbientPivotSelection(true);
-        }
-
-      }
-
-      // Marca que o token AGIU voluntariamente neste turno
-      // (independente de gasto de ações)
-      setDidActThisTurn((prev) => ({ ...prev, [currentId]: true }));
-      setInCardSelection(false);
-    }
+    return BattleEngineAPI.card(choice)
   }
 
-
-
-  const handleOffensiveCardResponse = ({
-    usedCard,
-    rawCardResult,
-    rawTestResult,
-    usedMana,
-    usedActions,
-    usedCertainDie,
-    defenseRollResult,
-    token,
-    previewAction
-  }: OffensiveCardResponse, triggerOffensiveTokenId: Token | null) => {
-
-    removeTokenFromOffensiveCard(token.id);
-    // (sum(roll.rawRolls) + roll.total) * roll.CRI;
-
-
-    const rawDefenseRollResult = (sum(defenseRollResult.rawRolls) + defenseRollResult.total) * defenseRollResult.CRI;
-    const testSucess = rawDefenseRollResult >= rawTestResult;
-    const triggerTokenProficiency = triggerOffensiveTokenId ? Math.ceil((triggerOffensiveTokenId.attributes.level - 10) / 4 + 4) : 0;
-
-    if (!usedCertainDie) {
-      if (usedMana > 0) {
-        setBoardTokens((prev) =>
-          prev.map((t) =>
-            t.id === token.id
-              ? { ...t, currentMana: Math.max(0, (t.currentMana ?? 0) - usedMana) }
-              : t
-          )
-        );
-      }
-
-      const currentActions = battleState.accumulatedActions[token.id] ?? 1;
-      const remainingActions = Math.max(0, (currentActions + 1) - usedActions);
-
-      setBattleState((prev) => ({
-        ...prev,
-        accumulatedActions: { ...prev.accumulatedActions, [token.id]: remainingActions },
-      }));
-
-      if (!previewAction) {
-        if (usedCard.partialOffensive !== undefined && usedCard.partialOffensive === false) {
-          if (testSucess) {
-            usedCard.effectToApply.forEach(e => {
-              applyTokenEffect(
-                engineContext,
-                token,
-                "neutro",
-                e,
-                usedCard.duration,
-                triggerTokenProficiency,
-                "InTurn"
-              );
-            })
-
-            const rawDamage = Math.floor(rawCardResult / 2);
-            applyTokenDamage(triggerOffensiveTokenId?.id!, token.id, rawDamage);
-          }
-          else {
-            usedCard.effectToApply.forEach(e => {
-              applyTokenEffect(
-                engineContext,
-                token,
-                "neutro",
-                e,
-                usedCard.duration,
-                triggerTokenProficiency,
-                "InTurn"
-              );
-            })
-            applyTokenDamage(triggerOffensiveTokenId?.id!, token.id, rawCardResult);
-          }
-
-        }
-        else if (usedCard.partialOffensive !== undefined && usedCard.partialOffensive === true) {
-          if (testSucess) {
-            setBoardTokens((prev) =>
-              prev.map((t) =>
-                t.id === token.id
-                  ? {
-                    ...t,
-                    currentLife: Math.max(0, (t.currentLife ?? 0) - 0),
-                  }
-                  : t
-              )
-            );
-          }
-          else {
-            usedCard.effectToApply.forEach((e) => {
-              applyTokenEffect(
-                engineContext,
-
-                token,
-                "neutro",
-                e,
-                usedCard.duration,
-                triggerTokenProficiency,
-                "InTurn"
-              );
-            })
-            applyTokenDamage(triggerOffensiveTokenId?.id!, token.id, rawCardResult);
-          }
-
-        }
-      }
-      else {
-        const formatedKey = formatPrevisionAttackKey(token.id, triggerOffensiveTokenId?.id!);
-        remainingPrevisionAttacks.current[formatedKey] -= 1
-      }
-
-    }
-    else {
-      setBoardTokens((prev) =>
-        prev.map((t) =>
-          t.id === token.id
-            ? { ...t, certaintyDiceRemaining: Math.max(0, (t.certaintyDiceRemaining ?? 0) - 1) }
-            : t
-        )
-      );
-    }
-
-    /* REMOVER CARD DA RESOLUÇÃO DE TOKENS OFFENSIVOS */
-    if (tokensInOffensiveCard.length <= 0) {
-      setOffensivePendingCard(undefined);
-      setPendingCardResolution(null);
-    }
-    /* * */
+  const handleOffensiveCardResponse = async (choice: OffensiveCardResponse) => {
+    await BattleEngineAPI.offensiveCardResponse({
+      battleId: battleState.id,
+      ...choice,
+    });
 
   };
-  /* Handles para seleção de Pivot's */
+
 
   type BoardClickPayload =
     | {
@@ -4381,152 +2938,94 @@ const BoardPage: React.FC = () => {
       token: Token;
     };
 
-  function registerCardEntities(instances: CardEntityInstance[]) {
-    setCardEntities(prev => [...prev, ...instances]);
+
+  async function confirmAmbientPivots() {
+    if (!battleState.id || ambientPivotConfirmationPendingRef.current) return;
+
+    ambientPivotConfirmationPendingRef.current = true;
+    setIsConfirmingAmbientPivots(true);
+    try {
+      await BattleEngineAPI.confirmPivot({ battleId: battleState.id });
+    } catch (error) {
+      console.error("Não foi possível confirmar os pivots de ambiente:", error);
+    } finally {
+      ambientPivotConfirmationPendingRef.current = false;
+      setIsConfirmingAmbientPivots(false);
+    }
   }
-
-  function confirmAmbientPivots() {
-    if (!armedCard?.target?.pivotSettings) {
-      console.error("Entrou no confirm ambient vazio!")
-      return;
-    }
-
-    if (!armedCard?.target?.pivotSettings) {
-      throw new Error("Ambient card sem pivotSettings");
-    }
-
-    setBattleState(prev => {
-      const prevActions = prev.accumulatedActions[tokenInAmbientPivotSelection] ?? 0;
-      const nextActions = Math.max(0, prevActions - (armedCard.actionsRequired ?? 0));
-
-      return {
-        ...prev,
-        accumulatedActions: {
-          ...prev.accumulatedActions,
-          [tokenInAmbientPivotSelection]: nextActions
-        }
-      };
-    });
-
-    setCardAreUsed(true);
-
-    const triggerToken = boardTokens.find((t) => t.id === tokenInAmbientPivotSelection);
-    const pivotType = armedCard.target.pivotSettings?.pivotType;
-
-    if (pivotType === "Trigger-Fix") {
-      resolveTriggerFixPivot(engineContext, triggerToken!);
-      return;
-    }
-
-    const pivotSettings = armedCard.target.pivotSettings;
-
-    const instances: CardEntityInstance[] = selectedPivots.map(pivot => ({
-      id: crypto.randomUUID(),
-      pivotSettings,
-      effectToApply: armedCard.effectToApply,
-      triggerId: tokenInAmbientPivotSelection,
-      anchorTokenId: pivot.type === "token" ? pivot.tokenId : undefined,
-      duration: armedCard.duration ?? Infinity,
-      position: resolvePivotPosition(engineContext, pivot),
-      friendlyTeam: triggerToken?.team,
-    }));
-
-    instances.forEach(c => {
-      const affectedTokens = getTokensInCardEntityRadius(
-        boardTokens,
-        c.position,
-        c.pivotSettings.range,
-        c.triggerId
-      );
-
-      affectedTokens.forEach(t => {
-        applyCardEntityEffectToToken(engineContext, c, t);
-      });
-    });
-
-    registerCardEntities(instances);
-
-    setPreviewCells(new Set());
-    setAmbientPivotPhase("confirm");
-    setSelectedPivots([]);
-    setIsAmbientPivotSelection(false);
-    setTokenInAmbientPivotSelection("");
-  }
-
   const handleAmbientPivotSelection = (
     payload: BoardClickPayload,
     letter: string,
     number: number
   ) => {
-    const pivotType = armedCard!.target.pivotSettings!.pivotType;
 
-    // 🔢 controle de pivots
-    const rPivots = Math.max(remainingPivots - 1, 0);
-    setRemainingPivots(rPivots);
-    setAmbientPivotPhase("preview");
-
-    if (rPivots >= 0 && selectedPivots.length < maxSelectablePivots.current) {
-      if (pivotType === "Cell-Fix") {
-        if (payload.type !== "cell") return;
-
-        const pivot = {
-          col: letters.indexOf(letter) + 1,
-          row: number,
-        };
-
-        const range = armedCard!.target.pivotSettings!.range;
-        const cells = getCellsInRadius(pivot, range, gridCells);
-
-        addPreviewCells(cells);
-
-        addPivot(engineContext, { type: "cell", position: pivot });
-
-        return;
-      }
-
-      if (pivotType === "Token-Fix") {
-        if (payload.type !== "token") return;
-
-        const token = payload.token;
-
-        const range = armedCard!.target.pivotSettings!.range;
-        const cells = getCellsInRadius(token.position, range, gridCells);
-
-        addPreviewCells(cells);
-        setSelectedCell(null); // não há célula selecionada aqui
-
-        addPivot(engineContext, {
-          type: "token",
-          tokenId: token.id,
-        });
-
-        return;
-      }
-
-      if (pivotType === "Trigger-Fix") {
-        addPivot(engineContext, { type: "trigger" });
-        return;
-      }
+    const pack = {
+      battleId: battleState.id,
+      payload: payload,
+      letters: letters,
+      letter: letter,
+      number: number,
+      gridCells: gridCells
     }
-  };
 
-  
+    BattleEngineAPI.pivot(pack)
+  }
 
-  /* * */
   const currentData = battleState.turnOrder[battleState.currentTurnIndex];
   const currentId = currentData?.tokenId;
-  const currentToken = currentId
-    ? boardTokens.find((t) => t.id === currentId)
-    : undefined;
-  const isPlayerTurn =
-    battleState.status === "In Battle" &&
-    currentToken?.type === "player";
+  const currentToken = currentId ? boardTokens.find((t) => t.id === currentId) : undefined;
+  const isPlayerTurn = battleState.status === "In Battle" && currentToken?.type === "player";
+  const isGameMaster = campaign?.ownerId === userId;
+  const canAnswerSpecialResponse = Boolean(
+    pendingSpecialResponse &&
+    (isGameMaster || pendingSpecialResponse.responderUserId === userId),
+  );
+  const handleSubmitSpecialResponse = async (values: SpecialResponseValues) => {
+    if (!pendingSpecialResponse || !battleState.id) return;
+    await BattleEngineAPI.resolveSpecialResponse(
+      battleState.id,
+      pendingSpecialResponse.requestId,
+      "submit",
+      values,
+    );
+    setPendingSpecialResponse(null);
+  };
+  const handleCancelSpecialResponse = async () => {
+    if (!pendingSpecialResponse || !battleState.id) return;
+    await BattleEngineAPI.resolveSpecialResponse(
+      battleState.id,
+      pendingSpecialResponse.requestId,
+      "cancel",
+    );
+    setPendingSpecialResponse(null);
+  };
+  const activeMechanicsForToken = (tokenId: string): ActiveMechanic[] =>
+    (battleState.activeMechanics ?? []).filter((mechanic) => {
+      const targetId = mechanic.metadata?.targetId;
+      return typeof targetId === "string"
+        ? targetId === tokenId
+        : mechanic.sourceTokenId === tokenId;
+    });
+  const rulerLine = rulerMeasurement && isRulerMeasuring
+    ? {
+      startX: (rulerMeasurement.start.col - 0.5) * cellSize,
+      startY: (rulerMeasurement.start.row - 0.5) * cellSize,
+      endX: (rulerMeasurement.end.col - 0.5) * cellSize,
+      endY: (rulerMeasurement.end.row - 0.5) * cellSize,
+      labelOnLeft: rulerMeasurement.end.col === cols,
+    }
+    : null;
 
   return (
     <div className="relative flex w-full min-h-screen bg-gray-900 text-white overflow-x-hidden">
       <div className="relative flex-1" style={{ maxWidth: sidebarOpen ? `calc(100vw - ${sidebarWidth}px)` : "100vw" }}>
+        <BoardToolbox
+          activeTool={activeBoardTool}
+          isGameMaster={isGameMaster}
+          onSelectTool={handleToolSelection}
+        />
         {/* Controls */}
-        {battleState.status !== "In Battle" && (
+        {isGameMaster && battleState.status !== "In Battle" && (
           <div className="absolute flex items-center gap-4  z-20 rounded-md p-2" style={{ top: 6, left: 6 }}>
             <SettingsDropdown
               rows={rows}
@@ -4534,29 +3033,28 @@ const BoardPage: React.FC = () => {
               onChangeRows={(v) => setRows(Number(v))}
               onChangeCols={(v) => setCols(Number(v))}
               onChangeBackgroundImage={setBackgroundImage}
+              onGenerateMazeOpen={(v) => setGenerateMazeOpen(v)}
+              onMapSelect={(b) => setIsMapSelectOpen(b)}
             />
-            <div className="ml-4 font-semibold text-green-400 whitespace-nowrap">
-              {selectedCell ? `Célula selecionada: ${selectedCell}` : "Nenhuma célula selecionada"}
-            </div>
+
             <div className="ml-4 font-semibold text-blue-400 whitespace-nowrap">
               Zoom: {Math.round(zoom * 100)}%
             </div>
-            <button
-              onClick={() => setIsMapSelectOpen(true)}
-              className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-sm"
-            >
-              Mapas
-            </button>
-            <button
-              onClick={() => setGenerateMazeOpen(true)}
-              className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-sm"
-            >
-              Gerar Labirinto
-            </button>
+          </div>
+        )}
+        {!isGameMaster && campaign && !selectedMapa && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-gray-950/80 p-6 text-center">
+            <div className="max-w-md rounded-xl border border-cyan-900 bg-gray-900 p-6 shadow-2xl">
+              <h2 className="text-lg font-bold text-cyan-300">Aguardando direcionamento</h2>
+              <p className="mt-2 text-sm text-gray-300">
+                O mestre ainda não definiu o mapa que você deve visualizar nesta campanha.
+              </p>
+            </div>
           </div>
         )}
         {/* VIEWPORT */}
         <div
+          ref={boardViewportRef}
           className="w-full h-full overflow-hidden"
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -4637,7 +3135,7 @@ const BoardPage: React.FC = () => {
                     backgroundSize: "100% 100%",
                     backgroundRepeat: "no-repeat",
                     backgroundPosition: "center",
-                    
+
                   }}
                 >
                   {Array.from({ length: rows }, (_, row) =>
@@ -4663,7 +3161,7 @@ const BoardPage: React.FC = () => {
                           v.position.row === row + 1
                       );
 
-                      const cardInstances = cardEntities.find(
+                      const cardInstances = battleState.mechanicEntitiesInstances.find(
                         (c) =>
                           c.position.col === colIndex &&
                           c.position.row === row + 1
@@ -4686,8 +3184,27 @@ const BoardPage: React.FC = () => {
                       return (
                         <div
                           key={coord}
-                          onClick={() => handleCellClick(l, row + 1, tok)}
-                          
+                          onClick={(event) => {
+                            if (activeBoardTool === "ruler") {
+                              event.preventDefault();
+                              return;
+                            }
+
+                            handleCellClick(l, row + 1, tok);
+                          }}
+                          onMouseDown={(event) =>
+                            handleRulerMouseDown(event, {
+                              col: colIndex,
+                              row: row + 1,
+                            })
+                          }
+                          onMouseMove={() =>
+                            handleRulerMouseMove({
+                              col: colIndex,
+                              row: row + 1,
+                            })
+                          }
+
                           className={[
                             "border border-gray-700 flex items-center justify-center transition-colors duration-150 relative",
                             isSel
@@ -4700,11 +3217,25 @@ const BoardPage: React.FC = () => {
                           style={{
                             width: cellSize,
                             height: cellSize,
-                                                    
+
                           }}
-                          onDragOver={(e) => e.preventDefault()}
+                          onDragOver={(e) => {
+                            const dragged = draggedTokenRef.current;
+                            if (inB && dragged) {
+                              const measurement = measureCells(dragged.position, { col: colIndex, row: row + 1 });
+                              if ((battleState.movedThisTurn?.[dragged.id] && measurement.distance > 0) ||
+                                  measurement.distance > (dragged.naturalMovement ?? 6)) {
+                                e.dataTransfer.dropEffect = "none";
+                                return;
+                              }
+                              setRulerMeasurement(measurement);
+                            }
+                            e.preventDefault();
+                          }}
                           onDrop={(e) => {
                             e.preventDefault();
+                            draggedTokenRef.current = null;
+                            clearRulerMeasurement();
                             const id = e.dataTransfer.getData("tokenId");
                             const fromLib =
                               e.dataTransfer.getData("fromLibrary") === "true";
@@ -4717,7 +3248,22 @@ const BoardPage: React.FC = () => {
                           }}
                         >
                           {tok && (
-                            <div className="relative w-full h-full flex items-center justify-center">
+                            <div
+                              className="relative w-full h-full flex items-center justify-center"
+                              onMouseEnter={(event) => {
+                                if (!inB) return;
+                                const mechanics = activeMechanicsForToken(tok.id);
+                                if (mechanics.length === 0) return;
+
+                                setHoveredTokenMechanics({ token: tok, mechanics });
+                                setMechanicsTooltipPosition({ x: event.clientX, y: event.clientY });
+                              }}
+                              onMouseMove={(event) => {
+                                if (!inB || !hoveredTokenMechanics) return;
+                                setMechanicsTooltipPosition({ x: event.clientX, y: event.clientY });
+                              }}
+                              onMouseLeave={() => setHoveredTokenMechanics(null)}
+                            >
                               {inB &&
                                 tok.currentLife !== undefined &&
                                 tok.maxLife !== undefined &&
@@ -4737,9 +3283,12 @@ const BoardPage: React.FC = () => {
                                   key={o.id}
                                   className={o.type}
                                   style={{
+                                    // Overlays are purely visual. Let pointer and drag events
+                                    // reach the token image underneath them.
+                                    pointerEvents: "none",
                                     position: "absolute",
-                                    width: o.size,
-                                    height: o.size,
+                                    width: o.size * cellSize,
+                                    height: o.size * cellSize,
                                     left: "50%",
                                     top: "50%",
                                     transform: "translate(-50%, -50%)",
@@ -4755,7 +3304,7 @@ const BoardPage: React.FC = () => {
                               {effectOverlays.map((ov) => (
                                 <div
                                   key={ov.id}
-                                  className={`${ov.className} absolute inset-0 z-20`}
+                                  className={`${ov.className} pointer-events-none absolute inset-0 z-20`}
                                 />
                               ))}
 
@@ -4775,9 +3324,7 @@ const BoardPage: React.FC = () => {
                                     ? "grayscale brightness-50 opacity-70"
                                     : "",
 
-                                  getParalysis(engineContext, tok.id) !== "none"
-                                    ? "animate-white-blink"
-                                    : "",
+
 
                                 ].join(" ")}
                                 draggable={tok?.id === currentId}
@@ -4795,13 +3342,23 @@ const BoardPage: React.FC = () => {
                                     tok?.id !== currentId ||
                                     isTokenArrested
                                   )
-                                    return;
+                                    { e.preventDefault(); return; }
 
                                   e.dataTransfer.setData("tokenId", tok.id);
+                                  draggedTokenRef.current = tok;
+                                  if (inB) {
+                                    setRulerMeasurement(measureCells(tok.position, tok.position));
+                                    setIsRulerMeasuring(true);
+                                    setHoveredTokenMechanics(null);
+                                  }
                                   e.dataTransfer.setData(
                                     "fromLibrary",
                                     "false"
                                   );
+                                }}
+                                onDragEnd={() => {
+                                  draggedTokenRef.current = null;
+                                  clearRulerMeasurement();
                                 }}
                                 style={{
                                   width: cellSize * 0.95,
@@ -4888,6 +3445,57 @@ const BoardPage: React.FC = () => {
                       );
                     })
                   )}
+
+                  {rulerLine && rulerMeasurement && (
+                    <>
+                      <svg
+                        aria-hidden="true"
+                        className="pointer-events-none absolute left-0 top-0 z-[60] overflow-visible"
+                        style={{
+                          width: cols * cellSize,
+                          height: rows * cellSize,
+                        }}
+                      >
+                        <line
+                          x1={rulerLine.startX}
+                          y1={rulerLine.startY}
+                          x2={rulerLine.endX}
+                          y2={rulerLine.endY}
+                          stroke="#60a5fa"
+                          strokeWidth="2"
+                        />
+                        <circle
+                          cx={rulerLine.startX}
+                          cy={rulerLine.startY}
+                          r="4"
+                          fill="#93c5fd"
+                          stroke="#0f172a"
+                          strokeWidth="1.5"
+                        />
+                        <circle
+                          cx={rulerLine.endX}
+                          cy={rulerLine.endY}
+                          r="4"
+                          fill="#93c5fd"
+                          stroke="#0f172a"
+                          strokeWidth="1.5"
+                        />
+                      </svg>
+
+                      <div
+                        className="pointer-events-none absolute z-[70] whitespace-nowrap rounded border border-black bg-black/70 px-2 py-1 text-xs font-semibold text-white shadow-lg"
+                        style={{
+                          left: rulerLine.endX,
+                          top: rulerLine.endY,
+                          transform: rulerLine.labelOnLeft
+                            ? "translate(calc(-100% - 10px), -50%)"
+                            : "translate(10px, -50%)",
+                        }}
+                      >
+                        {formatCellDistance(rulerMeasurement.distance)}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -4897,17 +3505,31 @@ const BoardPage: React.FC = () => {
 
       </div>
 
+      {battleState.status === "In Battle" && hoveredTokenMechanics && (
+        <ActiveMechanicsTooltip
+          token={hoveredTokenMechanics.token}
+          mechanics={hoveredTokenMechanics.mechanics}
+          position={mechanicsTooltipPosition}
+        />
+      )}
+
+      {pendingSpecialResponse && canAnswerSpecialResponse && (
+        <SpecialResponseForm
+          pending={pendingSpecialResponse}
+          onSubmit={handleSubmitSpecialResponse}
+          onCancel={handleCancelSpecialResponse}
+        />
+      )}
+
       {/* Renderização do ActionForm de resposta imediata (modal central, sem pular) */}
-      {pendingFreeResponse && (remainingExtraActions.current?.extraActions ?? 0) > 0 && (() => {
+      {!pendingSpecialResponse && pendingFreeResponse && BattleViewRules.showForm(campaign, battleState, userId) && (() => {
         const responder = boardTokens.find(t => t.id === pendingFreeResponse.responderId);
         const target = boardTokens.find(t => t.id === pendingFreeResponse.paralyzedId);
         if (!responder || !target) return null;
         if (responder.type !== "player") return null;
 
         // Segurança extra: se por algum motivo range mudou, não renderiza
-        const hasPhys = isInAttackRange(responder, target, "fisico");
-        const hasMag = isInAttackRange(responder, target, "magico");
-        if (!hasPhys && !hasMag) return null;
+        if (!isInAttackRange(responder, target, "fisico")) return null;
 
         return (
           <div className="fixed inset-0 z-[40] flex items-center justify-center p-4">
@@ -4917,13 +3539,13 @@ const BoardPage: React.FC = () => {
                 token={responder}
                 findedTarget={selectedTarget}
                 availableActions={battleState.accumulatedActions[responder.id] ?? 1}
-                onExecute={(choice) => {
-                  handleExecuteResponseAction(responder.id, target.id, choice);
+                onExecute={async (choice) => {
+                  await handleExecuteResponseAction(responder.id, target.id, choice);
                   setControllEndResponse(false);
                   setControllEndResponse(true);
                 }}
-                onSelectionTarget={(b) => {setInTargetSelection(b);setSelectedTarget(null)}}
-                onPass={() => { }}
+                onSelectionTarget={(b) => { setInTargetSelection(b); setSelectedTarget(null) }}
+                onPass={() => Promise.resolve()}
                 possibleTargets={[target]}
                 hidePass
                 isResponseAttack={(defenderId) => defenderId === target.id}
@@ -4967,7 +3589,7 @@ const BoardPage: React.FC = () => {
         <Sidebar
           tokens={createdTokens}
           tokenBeingEdited={tokenBeingEdited}
-          cards={cards}
+          cards={createdCards}
           cardBeingEdited={cardBeingEdited}
           addToken={addCreatedToken}
           updateToken={updateCreatedToken}
@@ -5009,12 +3631,36 @@ const BoardPage: React.FC = () => {
           onStartBattle={handleStartBattle}
           boardBoss={boardBoss}
           boardTokens={boardTokens}
+          campaign={campaign}
+          userId={userId}
+          users={users}
         />
 
 
       </div>
+      {onlineCampaignUsers.length > 0 && (
+        <div
+          className="fixed bottom-4 left-4 z-50 flex max-w-[calc(100vw-2rem)] flex-wrap gap-2 pointer-events-none"
+          aria-label="Usuários online na campanha"
+        >
+          {onlineCampaignUsers.map((onlineUser) => (
+            <div
+              key={onlineUser.id}
+              className="flex items-center gap-2 border border-slate-600/80 bg-slate-950/85 px-2.5 py-1.5 text-xs font-medium text-slate-100 shadow-lg backdrop-blur-sm"
+              title={`${onlineUser.name} está online`}
+            >
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-sm shadow-[0_0_7px_currentColor]"
+                style={{ backgroundColor: onlineUser.color, color: onlineUser.color }}
+                aria-hidden="true"
+              />
+              <span className="max-w-36 truncate">{onlineUser.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
       {/* ActionForm during battle */}
-      {isPlayerTurn && currentToken && !pendingAttack && !pendingFreeResponse && !inCardSelection && tokensInOffensiveCard.length <= 0 && !isAmbientPivotSelection && (
+      {!pendingSpecialResponse && isPlayerTurn && currentToken && !pendingAttack && !pendingFreeResponse && !inCardSelection && battleState.tokensInOffensiveCard.length <= 0 && !isAmbientPivotSelection && BattleViewRules.showForm(campaign, battleState, userId) && (
         <div className="fixed bottom-4 left-4 z-30">
           <ActionForm
             token={currentToken}
@@ -5027,7 +3673,7 @@ const BoardPage: React.FC = () => {
             isResponseAttack={(defenderId, usedMana) => {
               const lockKey = `${currentId}->${defenderId}`;
               const hasLock = !!freeActionLock[lockKey];
-              const permittedByParalysis = canDefenderReact(usedMana, getParalysis(engineContext, defenderId));
+              const permittedByParalysis = canDefenderReact(usedMana, getParalysis(tokenParalysis, defenderId));
               return hasLock || !permittedByParalysis;
             }}
             restrictedMode={false}
@@ -5036,11 +3682,11 @@ const BoardPage: React.FC = () => {
       )}
 
       {/* ReactionPrompt */}
-      {pendingAttack &&
+      {!pendingSpecialResponse && pendingAttack &&
         boardTokens.find((t) => t.id === pendingAttack.targetId)?.type === "player" &&
         pendingAttack.isReactionAllowed &&
         pendingAttack.pendingReactions.length > 0 &&
-        !pendingEsquivaRoll && (
+        !pendingEsquivaRoll && BattleViewRules.showForm(campaign, battleState, userId) && (
           <ReactionPrompt
             actor={{
               ...(boardTokens.find((t) => t.id === pendingAttack.targetId) as Token),
@@ -5056,16 +3702,16 @@ const BoardPage: React.FC = () => {
             isReactionAllowed={pendingAttack.isReactionAllowed}
 
             disabledReason={!pendingAttack.isReactionAllowed ? "Reação bloqueada (Paralisia/ação livre)." : undefined}
-            prevActions={remainingPrevisionAttacks.current[formatPrevisionAttackKey(pendingAttack.targetId, pendingAttack.attackerId)]}
+            prevActions={battleState?.previsionActions?.[formatPrevisionAttackKey(pendingAttack.targetId, pendingAttack.attackerId)] ?? {}}
             onSkip={() => {
               if (!pendingAttack) return;
               applyTokenDamage(pendingAttack.attackerId, pendingAttack.targetId, pendingAttack.rawDamage);
 
               // transição Paralisia → Paralisia Rápida (se ataque usou mana)
-              const current = getParalysis(engineContext, pendingAttack.targetId);
+              const current = getParalysis(tokenParalysis, pendingAttack.targetId);
 
               const nextState = nextParalysisAfterHit(current, pendingAttack.usedMana, (remainingExtraActions.current?.extraActions ?? 0));
-              if (nextState !== current) setParalysis(engineContext, pendingAttack.targetId, nextState);
+              if (nextState !== current) setParalysis(setTokenParalysis, pendingAttack.targetId, nextState);
 
               // finalizar fluxo
               setPendingAttack(null);
@@ -5073,103 +3719,26 @@ const BoardPage: React.FC = () => {
               setIsInDefenseResolution(false);
               setShouldAdvanceTurn(true);
             }}
-            onPrev={() => {
-              const formatedKey = formatPrevisionAttackKey(pendingAttack.targetId, pendingAttack.attackerId);
-
-              if (remainingPrevisionAttacks.current[formatedKey] > 0) {
-                const currentActions = remainingPrevisionAttacks.current[formatedKey]
-                remainingPrevisionAttacks.current[formatedKey] = currentActions - 1
-                const emptyRoll: RollResult = {
-                  rawRolls: [],
-                  total: 0,
-                  usedMana: 0,
-                  CRI: 0,
-                };
-                setBattleState((prev) => ({
-                  ...prev,
-                  actionHistory: [
-                    ...prev.actionHistory,
-                    {
-                      attribute: "inteligencia",
-                      type: "Ação Prevista",
-                      rollResult: emptyRoll,
-                      attackerId: pendingAttack.targetId,
-                      targetId: pendingAttack.attackerId,
-                      round: prev.round,
-                    } as ActionChoice & { round: number; attackerId?: string; targetId?: string },
-                  ],
-                }));
-
-                setPendingAttack(null);
-                setPendingEsquivaRoll(null);
-                setIsInDefenseResolution(false);
-                setShouldAdvanceTurn(true);
-                return;
-              }
+            onPrev={handlePrevAction}
+            onReact={(actorId, reactionType, usedMana, usedActions, usedCertaintyDie, usedItem) => {
+              void actorId;
+              return handleReaction({
+                reactionType,
+                usedMana,
+                usedActions,
+                usedCertaintyDie,
+                usedItem,
+              });
             }}
-            onReact={(actorId, reactionType, usedMana, usedActions, usedCertaintyDie, roll) => {
-              console.debug(actorId)
-              const normalized: RollResult =
-                typeof roll === "number"
-                  ? { total: roll, rawRolls: [roll], usedMana: 0, CRI: 0 }
-                  : (roll ?? { total: 0, rawRolls: [], usedMana: 0, CRI: 0 });
-
-              console.debug("[DEBUG] Método onReact atingido.")
-              handleReaction(reactionType, usedMana, usedActions, normalized, !!usedCertaintyDie);
-            }}
-            onCancel={() => {
-              if (!pendingAttack) return;
-
-              const attackerToken = boardTokens.find(t => t.id === pendingAttack.attackerId);
-              const defenderToken = boardTokens.find(t => t.id === pendingAttack.targetId);
-
-              const intesityCalculus = Math.ceil(((attackerToken?.attributes.level ?? 1) - 10) / 4 + 4);
-
-              if (pendingAttack.attackAttribute === "forca") {
-
-                if (defenderToken) applyTokenEffect(engineContext, defenderToken, pendingAttack.atackElement, elementToEffect[pendingAttack.atackElement], 8, intesityCalculus, "InTurn");
-                spawnItemVFX(attackerToken!.id, defenderToken!.id, (pendingAttack.usedItem === null ? undefined : pendingAttack.usedItem), boardTokens, setBoardVfxElements, playSomeSFX)
-                playSomeSFX("public/sfx/impact.mp3");
-                applyTokenDamage(pendingAttack.attackerId, pendingAttack.targetId, pendingAttack.rawDamage);
-
-              }
-
-              if (pendingAttack.attackAttribute === "inteligencia") {
-                defineRemainingPrevisionAttacks(engineContext, pendingAttack.attackerId, pendingAttack.targetId, 1);
-              }
-
-              const current = getParalysis(engineContext, pendingAttack.targetId);
-              const nextState = nextParalysisAfterHit(current, pendingAttack.usedMana, (remainingExtraActions.current?.extraActions ?? 0));
-              if (nextState !== current) setParalysis(engineContext, pendingAttack.targetId, nextState);
-
-              if (pendingAttack.attackAttribute === "sabedoria") {
-                setBattleState((prev) => ({
-                  ...prev,
-                  accumulatedActions: { ...prev.accumulatedActions, [pendingAttack.attackerId]: Math.min(5, battleState.accumulatedActions[pendingAttack.targetId] + battleState.accumulatedActions[pendingAttack.attackerId]) },
-                }));
-                setBattleState((prev) => ({
-                  ...prev,
-                  accumulatedActions: { ...prev.accumulatedActions, [pendingAttack.targetId]: 1 },
-                }));
-                grantFreeActionNoReaction(engineContext, pendingAttack.attackerId, pendingAttack.targetId, "paralisia", 1);
-              }
-
-              if (pendingAttack.attackAttribute === "destreza") {
-                grantFreeActionNoReaction(engineContext, pendingAttack.attackerId, pendingAttack.targetId, "paralisia", 3);
-              }
-
-              setPendingAttack(null);
-              setPendingEsquivaRoll(null);
-              setIsInDefenseResolution(false);
-              setShouldAdvanceTurn(true);
-            }}
+            onCancel={handleCancelReaction}
           />
         )}
 
       {/* DefenseResolutionForm */}
-      {pendingEsquivaRoll !== null &&
+      {!pendingSpecialResponse && pendingEsquivaRoll !== null &&
         pendingAttack &&
-        boardTokens.find((t) => t.id === pendingAttack.attackerId)?.type === "player" && (
+        boardTokens.find((t) => t.id === pendingAttack.attackerId)?.type === "player" &&
+        BattleViewRules.showForm(campaign, battleState, userId) && (
           <div className="fixed bottom-4 left-4 z-40">
             <DefenseResolutionForm
               attacker={boardTokens.find((t) => t.id === pendingAttack?.attackerId)!}
@@ -5181,9 +3750,8 @@ const BoardPage: React.FC = () => {
               availableActions={
                 battleState.accumulatedActions[pendingAttack.attackerId] ?? 1
               }
-              onResolve={(usedActions, rollResult, usedMana) => {  // ⬅️ receber usedMana
-                handleDefenseResolution(usedActions, rollResult, usedMana);
-              }}
+              onResolve={(usedActions, usedMana) =>
+                handleDefenseResolution({ usedActions, usedMana })}
 
               onCancel={() => {
                 if (pendingAttack) {
@@ -5210,7 +3778,8 @@ const BoardPage: React.FC = () => {
         )}
 
       {/* Card Form */}
-      {inCardSelection && pendingCardResolution && pendingCardResolution?.type === "player" && !pendingAttack &&  (
+      {!pendingSpecialResponse && inCardSelection && pendingCardResolution && pendingCardResolution?.type === "player" && !pendingAttack &&
+        BattleViewRules.showForm(campaign, battleState, userId) && (
         <>
           <CardForm
             tokenTrigger={pendingCardResolution as Token}
@@ -5218,44 +3787,46 @@ const BoardPage: React.FC = () => {
             defensiveCards={inDefenseCardResolution}
             availableActions={searchAccumulatedActions(pendingCardResolution.id) ?? 1}
             availableMana={searchCurrentMana(pendingCardResolution)}
-            cardTimeToRecharge={(card) => formatRechargeCardRecordReturn(engineContext, (pendingCardResolution as Token).id, card.id)}
-            availableCardsIds={cardsNotRechargeds.current[(pendingCardResolution as Token).id]}
+            cardTimeToRecharge={(card) => formatRechargeCardRecordReturn(battleState.timeToRechargeCard, (pendingCardResolution as Token).id, card.id)}
+            availableCardsIds={battleState.cardsNotRechargeds[(pendingCardResolution as Token).id] ?? []}
             onClose={() => closeCardForm()}
             onConfirm={(card, target) => handleCardResolution(pendingCardResolution.id, target as Target, card, false)}
           />
         </>
       )}
 
+      {!pendingSpecialResponse && battleState.tokensInOffensiveCard.length > 0 &&
+        offensivePendingCard && offensiveCardAttackerId &&
+        offensiveCardScore !== null &&
+        offensiveCardTestScore !== null &&
+        BattleViewRules.showForm(campaign, battleState, userId) &&
+        battleState.tokensInOffensiveCard.slice(0, 1).map((queuedDefender) => {
+          const defenderToken = boardTokens.find((token) => token.id === queuedDefender.id);
+          if (!defenderToken) return null;
 
-      {tokensInOffensiveCard.length > 0 &&
-        offensivePendingCard && offensiveCardScore &&
-        offensiveCardTestScore &&
-        tokensInOffensiveCard.map((defenderToken) => (
-          <OffensiveCardResolution
-            key={defenderToken.id}
+          return (
+            <OffensiveCardResolution
+              key={defenderToken.id}
+              availableActions={battleState.accumulatedActions[defenderToken.id] ?? 1}
+              availableMana={defenderToken.currentMana ?? 0}
+              availableCertainyDie={defenderToken.certaintyDiceRemaining ?? 0}
+              card={offensivePendingCard}
+              cardResult={offensiveCardScore}
+              testResult={offensiveCardTestScore}
+              defenderToken={defenderToken}
+              defenderTokenPrevActions={battleState.previsionActions?.[formatPrevisionAttackKey(defenderToken.id, offensiveCardAttackerId)] ?? 0}
+              tokenBattlePosition={(attr) => searchTokenPosition(defenderToken.id, attr)}
+              onExecute={handleOffensiveCardResponse}
+            />
+          );
+        })}
 
-            availableActions={battleState.accumulatedActions[defenderToken.id] ?? 1}
-            availableMana={boardTokens.find((t) => t.id === defenderToken.id)?.currentMana ?? 0}
-            availableCertainyDie={boardTokens.find(t => t.id === defenderToken.id)?.certaintyDiceRemaining ?? 0}
-
-            card={offensivePendingCard}
-            cardResult={offensiveCardScore}
-            testResult={offensiveCardTestScore}
-            defenderToken={defenderToken}
-            defenderTokenPrevActions={remainingPrevisionAttacks.current[formatPrevisionAttackKey(defenderToken.id, pendingCardResolution!.id)]}
-            tokenBattlePosition={(attr) => searchTokenPosition(defenderToken.id, attr)}
-            onExecute={(choice) => {
-              handleOffensiveCardResponse(choice, pendingCardResolution)
-            }}
-          />
-        ))}
-
-      {isAmbientPivotSelection && armedCard && (
+      {!pendingSpecialResponse && isAmbientPivotSelection && armedCard && (
         <div className="fixed inset-0 z-[90] pointer-events-none">
           {/* painel flutuante — ESTE sim recebe clique */}
           <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-900 border border-orange-500 rounded p-3 shadow-lg pointer-events-auto">
             <h3 className="text-sm font-bold text-orange-400">
-              Selecionar Pivots ({remainingPivots} restantes)
+              Selecionar Pivots ({battleState.remainingPivots} restantes)
             </h3>
 
             <p className="text-xs text-gray-400">
@@ -5269,10 +3840,11 @@ const BoardPage: React.FC = () => {
 
             {ambientPivotPhase === "preview" && (
               <button
-                className="mt-2 w-full bg-orange-600 hover:bg-orange-700 text-sm font-semibold rounded p-1"
-                onClick={confirmAmbientPivots}
+                className="mt-2 w-full bg-orange-600 hover:bg-orange-700 text-sm font-semibold rounded p-1 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => void confirmAmbientPivots()}
+                disabled={isConfirmingAmbientPivots}
               >
-                Confirmar Área
+                {isConfirmingAmbientPivots ? "Confirmando..." : "Confirmar Área"}
               </button>
             )}
           </div>
@@ -5291,10 +3863,80 @@ const BoardPage: React.FC = () => {
             boardTokens={boardTokens}
             battleState={battleState}
             onClose={setInventoryOpen}
-            swap={(item, index) =>
-              swapItemInInventory(item, index, token.id, setBoardTokens)
-            }
-            useArtifice={(item, index, target) => useArtificeItem(engineContext, item, index, token.id, target, applyTokenEffect, boardTokens, setBoardTokens, battleState, handleCardResolution, setPendingCardResolution)}
+            swap={async (item, index) => {
+              try {
+                const updatedToken = await BattleEngineAPI.swapItem(
+                  {
+                    operation: "equip",
+                    tokenId: token.id,
+                    itemId: item.id,
+                    itemIndex: index,
+                  },
+                );
+
+                const hydratedToken = TokenInstaceMapper(
+                  updatedToken,
+                  cardsRef.current,
+                  itemsRef.current,
+                );
+
+                setBoardTokens((previousTokens) =>
+                  previousTokens.map((boardToken) =>
+                    boardToken.id === hydratedToken.id
+                      ? hydratedToken
+                      : boardToken,
+                  ),
+                );
+              } catch (error) {
+                console.error("Não foi possível equipar o item:", error);
+              }
+            }}
+            unequip={async (equippedSlot: EquippedInventorySlot) => {
+              try {
+                const updatedToken = await BattleEngineAPI.swapItem({
+                  operation: "unequip",
+                  tokenId: token.id,
+                  equippedSlot,
+                });
+
+                const hydratedToken = TokenInstaceMapper(
+                  updatedToken,
+                  cardsRef.current,
+                  itemsRef.current,
+                );
+
+                setBoardTokens((previousTokens) =>
+                  previousTokens.map((boardToken) =>
+                    boardToken.id === hydratedToken.id
+                      ? hydratedToken
+                      : boardToken,
+                  ),
+                );
+              } catch (error) {
+                console.error("Não foi possível remover o item equipado:", error);
+              }
+            }}
+            consumeArtifice={async (item, index, target) => {
+              const updatedToken = await BattleEngineAPI.consumeArtifice({
+                battleId: battleState.id,
+                tokenId: token.id,
+                itemId: item.id,
+                itemIndex: index,
+                target,
+              });
+              const hydratedToken = TokenInstaceMapper(
+                updatedToken,
+                cardsRef.current,
+                itemsRef.current,
+              );
+              setBoardTokens((previousTokens) =>
+                previousTokens.map((boardToken) =>
+                  boardToken.id === hydratedToken.id
+                    ? hydratedToken
+                    : boardToken,
+                ),
+              );
+            }}
           />
         );
       })()}
@@ -5306,13 +3948,15 @@ const BoardPage: React.FC = () => {
         />
       )}
 
-      {isMapSelectOpen && (
+      {isGameMaster && isMapSelectOpen && (
         <MapSelect
           mapas={mapas}
           selectedMapa={selectedMapa}
           onChoice={handleSelectMapa}
           onCreateNew={handleCreateMapa}
           onClose={() => setIsMapSelectOpen(false)}
+          members={mapRouting?.members}
+          onDirectMembers={mapRouting ? handleDirectMembersToMap : undefined}
         />
       )}
 

@@ -13,7 +13,7 @@ interface CardFormProps {
   target: Token[];
   availableCardsIds: string[];
   onClose?: () => void;
-  onConfirm?: (card: Card, target: Target | null) => void;
+  onConfirm?: (card: Card, target: Target | null) => void | Promise<void>;
 }
 
 const CardForm: React.FC<CardFormProps> = ({
@@ -30,6 +30,8 @@ const CardForm: React.FC<CardFormProps> = ({
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string>("");
   const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submissionLockRef = useRef(false);
 
   const targets = useRef<Target | null>({
     type: "Self",
@@ -96,6 +98,20 @@ useEffect(() => {
   };
 }, [selectedTargets, selectedCard, target]);
 
+
+  const handleConfirm = async () => {
+    if (!selectedCard || !targets.current || !canUseCard || submissionLockRef.current) return;
+
+    submissionLockRef.current = true;
+    setIsSubmitting(true);
+    try {
+      await onConfirm?.(selectedCard, targets.current);
+    } catch (error) {
+      console.error("Não foi possível usar o card:", error);
+      submissionLockRef.current = false;
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
@@ -280,7 +296,7 @@ useEffect(() => {
                   <button
                     key={card.id}
                     onClick={() => setSelectedCard(card)}
-                    disabled={disabled}
+                    disabled={disabled || isSubmitting}
                     className={`flex items-center gap-3 p-2 rounded border transition-colors text-left
                       ${
                         selectedCard?.id === card.id
@@ -313,7 +329,7 @@ useEffect(() => {
 
                       {(card.actionsRequired ?? 0) > availableActions && (
                         <p className="text-sm font-semibold text-red-400 opacity-100">
-                          {`Ações requiridas superiores ao total disponível. DISPONÍVEL: ${availableActions} | NECESSÁRIO: ${card.actionsRequired}`}
+                          {`Não possui ações suficientes. Requer ${card.actionsRequired}, mas atualmente possui ${availableActions}.`}
                         </p>
                       )}
 
@@ -342,11 +358,11 @@ useEffect(() => {
           </button>
 
           <button
-            onClick={() => selectedCard && targets.current && onConfirm?.(selectedCard, targets.current)}
-            disabled={!selectedCard || !canUseCard}
+            onClick={handleConfirm}
+            disabled={!selectedCard || !canUseCard || isSubmitting}
             className="px-6 py-2 bg-orange-600 hover:bg-orange-500 rounded text-white text-sm font-bold disabled:opacity-40 cursor-pointer"
           >
-            Usar Card
+            {isSubmitting ? "Usando..." : "Usar Card"}
           </button>
         </div>
       </div>

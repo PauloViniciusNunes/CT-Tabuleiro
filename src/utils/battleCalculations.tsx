@@ -174,6 +174,7 @@ export function rollInitiative(
 
   const rollResult = calculateActionRoll({
     tokenId: "initiative",
+    usedItemId: undefined,
     Q: 1, // 1d20
     P: 1, // P = 1 (Posição, sempre 1)
     A: destreza, // Atributo: Destreza

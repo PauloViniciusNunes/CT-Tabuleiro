@@ -2,6 +2,7 @@ import React from "react";
 import { useMusicPlayer } from "../context/MusicContext";
 import { Play, Pause, Music2 } from "lucide-react";
 import { useMusicLibrary } from "../../hooks/useMusicLibrary";
+import type { Track } from "../../types/music";
 
 import { MusicDJPanel } from "./MusicDJPanel";
 
@@ -14,11 +15,23 @@ const titleBase =
 const badgeBase =
   "ml-auto text-[10px] uppercase tracking-wide bg-gray-700 text-gray-200 rounded px-2 py-0.5";
 
-export const MusicList: React.FC = () => {
+interface MusicListProps {
+  searchQuery?: string;
+}
+
+const normalizeSearch = (value: string) => value
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLocaleLowerCase();
+
+export const MusicList: React.FC<MusicListProps> = ({ searchQuery = "" }) => {
   const { tracks } = useMusicLibrary();
   const { playTrack, stop, currentTrack, isPlaying } = useMusicPlayer();
+  const filteredTracks = tracks.filter((track) =>
+    normalizeSearch(track.name).includes(normalizeSearch(searchQuery)),
+  );
 
-  const handleClick = async (track: any) => {
+  const handleClick = async (track: Track) => {
     const isSameTrack = currentTrack?.id === track.id;
 
     if (isSameTrack && isPlaying) {
@@ -33,7 +46,11 @@ export const MusicList: React.FC = () => {
     <div className="flex flex-col gap-2">
       <MusicDJPanel />
 
-      {tracks.map((track) => {
+      {filteredTracks.length === 0 ? (
+        <p className="py-2 text-center text-sm text-gray-400">
+          {tracks.length === 0 ? "Nenhuma música disponível." : "Nenhuma música encontrada."}
+        </p>
+      ) : filteredTracks.map((track) => {
         const active =
           currentTrack?.id === track.id && isPlaying;
 

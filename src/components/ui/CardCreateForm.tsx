@@ -1,7 +1,9 @@
-import React, { useEffect, useEffectEvent, useState, type ChangeEvent, type ChangeEventHandler, type FormEvent } from "react";
+import React, { useEffect, useRef, useState, type FormEvent } from "react";
 import { type CardCausality, type Card, type CardDuration, type SpellCircle, type SpellType, type NonDefensiveCardCausality } from "../../types/card";
 import { type PivotType, type TargetType } from "../../types/target";
-import { EFFECT_TYPES, type EffectType } from "../../types/effects";
+import { type EffectType } from "../../types/effects";
+import { TokenPrimaryElement } from "../../types/effects";
+import { cardFromForm } from "../../models/forms/cardFormModel";
 
 export type DiceType = "d4" | "d6" | "d8" | "d10" | "d12" | "d20" | "d100";
 export type ManaCostScale =
@@ -12,48 +14,87 @@ export type ManaCostScale =
   | "Quintuplo";
 
 
-interface CardCreateProps {
-  onSave: (card: Card) => void;
+export interface CardModelFormProps {
+  onSave: (card: Card) => void | Promise<void>;
   onClose: () => void;
+  initialCard?: Card;
+  mode?: "create" | "edit";
 }
 
-const generateId = (): string =>
-  Math.random().toString(36).slice(2, 11);
+const MANA_SCALE_BY_COST: Record<number, ManaCostScale> = {
+  1: "Normal",
+  2: "Dobro",
+  3: "Triplo",
+  4: "Quadruplo",
+  5: "Quintuplo",
+};
 
-export const CardCreate: React.FC<CardCreateProps> = ({
+export const CardModelForm: React.FC<CardModelFormProps> = ({
   onSave,
   onClose,
+  initialCard,
+  mode = initialCard ? "edit" : "create",
 }) => {
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [description, setDescription] = useState("");
-  const [causality, setCausality] = useState("");
-  const [causalityType, setCausalityType] = useState<CardCausality>("Offensive");
-  const [defenseReplicate, setDefenseReplicate] = useState<NonDefensiveCardCausality>("Offensive");
-  const [actionsRequired, setActionsRequired] = useState(1);
-  const [typeTarget, setTypeTarget] = useState<string>("");
-  const [numbersTarget, setNumbersTarget] = useState<number>(1);
-    useEffect(() => {
-      setNumbersTarget(1);
-  },[typeTarget]);
+  const [imagePreview, setImagePreview] = useState<string | null>(initialCard?.img ?? null);
+  const [description, setDescription] = useState(initialCard?.desc ?? "");
+  const [causality, setCausality] = useState(initialCard?.causality ?? "");
+  const [causalityType, setCausalityType] = useState<CardCausality>(
+    initialCard?.causalityType ?? "Offensive",
+  );
+  const [defenseReplicate, setDefenseReplicate] = useState<NonDefensiveCardCausality>(
+    initialCard?.defenseReplicate ?? "Offensive",
+  );
+  const [actionsRequired, setActionsRequired] = useState(initialCard?.actionsRequired ?? 1);
+  // O select exibe a primeira opção quando seu value é vazio, mas esse valor
+  // vazio acabava persistido e a engine rejeitava o card ao usá-lo.
+  const [typeTarget, setTypeTarget] = useState<TargetType>(
+    initialCard?.target.type || "Self",
+  );
+  const [numbersTarget, setNumbersTarget] = useState(initialCard?.target.numbersTarget ?? 1);
+  const targetQuantityInitialized = useRef(false);
+  useEffect(() => {
+    if (initialCard && !targetQuantityInitialized.current) {
+      targetQuantityInitialized.current = true;
+      return;
+    }
+    targetQuantityInitialized.current = true;
+    setNumbersTarget(1);
+  }, [typeTarget, initialCard]);
   
-  const [numbersEntity, setNumbersEntity] = useState<number>(0);
-  const [cardDuration, setCardDuration] = useState<CardDuration>(4);
-  const [isSpell, setIsSpell]           = useState<boolean>(false);
-  const [spellType, setSpellType]       = useState<SpellType>("Abjuração");
-  const [spellCircle, setSpellCircle]   = useState<SpellCircle>(1);
-  const [haveEffectApplication, setHaveEffectApplication] = useState<boolean>(false);
-  const [effectApplication, setEffectApplication] = useState<EffectType[]>([]);
+  const [numbersEntity, setNumbersEntity] = useState(initialCard?.entityQuantity ?? 0);
+  const [cardDuration, setCardDuration] = useState<CardDuration>(initialCard?.duration ?? 0);
+  const [isSpell, setIsSpell] = useState(
+    typeof initialCard?.spellCircle === "number" && initialCard.spellCircle > 0,
+  );
+  const [spellType, setSpellType] = useState<SpellType>(initialCard?.spellType ?? "Abjuração");
+  const [spellCircle, setSpellCircle] = useState<SpellCircle>(initialCard?.spellCircle ?? 1);
+  const [haveEffectApplication, setHaveEffectApplication] = useState(
+    Boolean(initialCard?.effectToApply.length),
+  );
+  const [effectApplication, setEffectApplication] = useState<EffectType[]>(
+    initialCard?.effectToApply ?? [],
+  );
 
-  const [haveDuration, setHaveDuration] = useState<boolean>(false);
-  const [cardRecharge, setCardRecharge] = useState(4);
+  const [haveDuration, setHaveDuration] = useState((initialCard?.duration ?? 0) > 0);
+  const [cardRecharge, setCardRecharge] = useState(Number(initialCard?.recharge ?? 4));
   
   /* Configuráveis de Pivot */
-  const [pivotImgUrl, setPivotImgUrl] = useState<string>("");
-  const [pivotType, setPivotType]     = useState<PivotType>("Trigger-Fix");
-  const [pivotCellRange, setPivotCellRange] = useState<number>(1);
+  const [pivotImgUrl, setPivotImgUrl] = useState(initialCard?.target.pivotSettings?.areaImgUrl ?? "");
+  const [pivotType, setPivotType] = useState<PivotType>(
+    initialCard?.target.pivotSettings?.pivotType ?? "Trigger-Fix",
+  );
+  const [pivotCellRange, setPivotCellRange] = useState(
+    initialCard?.target.pivotSettings?.range ?? 1,
+  );
   /* * */
 
+  const spellInitialized = useRef(false);
   useEffect(() => {
+    if (initialCard && !spellInitialized.current) {
+      spellInitialized.current = true;
+      return;
+    }
+    spellInitialized.current = true;
     if(isSpell)
     {
       setSpellType("Abjuração");
@@ -64,7 +105,7 @@ export const CardCreate: React.FC<CardCreateProps> = ({
       setSpellType(null);
       setSpellCircle(null);
     }
-  }, [isSpell])
+  }, [isSpell, initialCard])
 
   useEffect(() => {
     if(!haveEffectApplication)
@@ -73,8 +114,14 @@ export const CardCreate: React.FC<CardCreateProps> = ({
     }
   }, [haveEffectApplication])
 
-  useEffect(() => 
+  const durationInitialized = useRef(false);
+  useEffect(() =>
     {
+      if (initialCard && !durationInitialized.current) {
+        durationInitialized.current = true;
+        return;
+      }
+      durationInitialized.current = true;
       if(haveDuration)
       {
         setCardDuration(4);
@@ -83,35 +130,53 @@ export const CardCreate: React.FC<CardCreateProps> = ({
       {
         setCardDuration(0);
       }
-    }, [haveDuration]);
+    }, [haveDuration, initialCard]);
 
   useEffect(() => {
     console.log(cardDuration);
   }, [cardDuration])
 
-  const [cardName, setCardName] = useState<string>("Generic");
-  const [useBaseDice, setUseBaseDice]   = useState(false);
-  const [diceQuantity, setDiceQuantity] = useState(1);
-  const [diceType, setDiceType] = useState<DiceType>("d6");
-  const [isPartilOffensive, setIsPartialOffensive] = useState<boolean | undefined>(false);
+  const [cardName, setCardName] = useState(initialCard?.name ?? "Generic");
+  const [useBaseDice, setUseBaseDice] = useState(Boolean(initialCard?.baseDice));
+  const [diceQuantity, setDiceQuantity] = useState(initialCard?.baseDice?.quantity ?? 1);
+  const [diceType, setDiceType] = useState<DiceType>(
+    (initialCard?.baseDice?.type ?? "d6") as DiceType,
+  );
+  const [isPartilOffensive, setIsPartialOffensive] = useState<boolean | undefined>(
+    initialCard?.partialOffensive ?? false,
+  );
 
-  const [useManaScale, setUseManaScale] = useState(false);
-  const [manaScale, setManaScale]       = useState<ManaCostScale>("Normal");
+  const [useManaScale, setUseManaScale] = useState((initialCard?.manaRequired ?? 0) > 0);
+  const [manaScale, setManaScale] = useState<ManaCostScale>(
+    MANA_SCALE_BY_COST[initialCard?.manaRequired ?? 1] ?? "Normal",
+  );
+  const targetLayoutInitialized = useRef(false);
   useEffect(() =>
   {
+    if (initialCard && !targetLayoutInitialized.current) {
+      targetLayoutInitialized.current = true;
+      return;
+    }
+    targetLayoutInitialized.current = true;
     if(causalityType !== "Offensive")
     {
       setIsPartialOffensive(undefined);
     }
-    else if(causality === "Offensive")
+    else
     {
       setIsPartialOffensive(false);
     }
 
-  },[causalityType])
+  }, [causalityType, initialCard])
 
+  const targetSettingsInitialized = useRef(false);
   useEffect(() =>
   {
+    if (initialCard && !targetSettingsInitialized.current) {
+      targetSettingsInitialized.current = true;
+      return;
+    }
+    targetSettingsInitialized.current = true;
     if(typeTarget === "Ambient")
     {
       setNumbersEntity(1);
@@ -124,7 +189,7 @@ export const CardCreate: React.FC<CardCreateProps> = ({
       setPivotCellRange(0);
       setPivotType("Trigger-Fix");
     }
-  }, [typeTarget]);
+  }, [typeTarget, initialCard]);
 
   useEffect(() =>
   {
@@ -144,31 +209,7 @@ export const CardCreate: React.FC<CardCreateProps> = ({
     }
   },[effectApplication]);
 
-  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) {
-      setImagePreview(null);
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () =>
-      setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
-  };
-
-  const handlePivotImageChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) {
-      setPivotImgUrl("");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () =>
-      setPivotImgUrl(reader.result as string);
-    reader.readAsDataURL(file);    
-  }
-
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
     if (!imagePreview || !description.trim() || !causality.trim()) {
@@ -176,70 +217,38 @@ export const CardCreate: React.FC<CardCreateProps> = ({
       return;
     }
 
-    const card: Card = {
+    const manaRequired = useManaScale
+      ? ["Normal", "Dobro", "Triplo", "Quadruplo", "Quintuplo"].indexOf(manaScale) + 1
+      : undefined;
+    const card = cardFromForm({
+      existing: initialCard,
       name: cardName,
-      id: generateId(),
-      img: imagePreview,
-      desc: description.trim(),
-      causality: causality.trim(),
-      causalityType: causalityType,
-      defenseReplicate: defenseReplicate,
-      spellCircle: spellCircle,
-      spellType: spellType,
+      imageUrl: imagePreview,
+      description,
+      causality,
+      causalityType,
+      defenseReplicate,
+      spellCircle,
+      spellType,
       entityQuantity: numbersEntity,
       partialOffensive: isPartilOffensive,
-      actionsRequired: Math.max(1, actionsRequired),
-      target: {
-        type: typeTarget as TargetType,
-        pivot: [1,1],
-        pivotSettings: {
-          areaImgUrl: pivotImgUrl,
-          pivotType: pivotType as PivotType,
-          range: pivotCellRange,
-        },
-        numbersTarget: numbersTarget,
-        tokenTarget: null
-      },
+      actionsRequired,
+      targetType: typeTarget,
+      targetQuantity: numbersTarget,
+      pivotImageUrl: pivotImgUrl,
+      pivotType: pivotType as PivotType,
+      pivotRange: pivotCellRange,
       duration: cardDuration,
       recharge: cardRecharge,
-      remainingDuration: cardDuration as number,
-      itsLoaded: true,
-      effectToApply: effectApplication,
-    };
-
-    if (useBaseDice) {
-      card.baseDice = {
+      effects: effectApplication,
+      baseDice: useBaseDice ? {
         quantity: Math.max(1, diceQuantity),
         type: diceType,
-      };
-    }
+      } : undefined,
+      manaRequired,
+    });
 
-    if (useManaScale) {
-      switch (manaScale) {
-        case "Normal":
-          card.manaRequired = 1;
-          break;
-        case "Dobro":
-          card.manaRequired = 2;
-          break;
-        case "Triplo":
-          card.manaRequired = 3;
-          break;
-        case "Quadruplo":
-          card.manaRequired = 4;
-          break;
-        case "Quintuplo":
-          card.manaRequired = 5;
-          break
-        default:
-          card.manaRequired = 1;
-          break;
-      }
-    }
-
-
-
-    onSave(card);
+    await onSave(card);
     onClose();
   };
 
@@ -251,7 +260,7 @@ export const CardCreate: React.FC<CardCreateProps> = ({
                    max-h-[90vh] overflow-y-auto"
       >
         <h2 className="text-2xl font-bold text-purple-400">
-          Criar Novo Card
+          {mode === "edit" ? "Editar Card" : "Criar Novo Card"}
         </h2>
         
         {/* Nome do Card */}
@@ -259,6 +268,7 @@ export const CardCreate: React.FC<CardCreateProps> = ({
           <span className="font-semibold text-sm">Nome do Card</span>
           <input 
             type="text" 
+            value={cardName}
             onChange={(e) => setCardName(e.target.value)}
             required
             className="p-2 rounded bg-gray-700 border border-gray-600"
@@ -269,9 +279,9 @@ export const CardCreate: React.FC<CardCreateProps> = ({
         <label className="flex flex-col gap-1">
           <span className="font-semibold text-sm">Imagem</span>
           <input
-            type="file"
-            accept="image/*"
-            onChange={handleImageChange}
+            type="text"
+            value={imagePreview ?? ""}
+            onChange={(e) => setImagePreview(e.target.value)}
             required
             className="p-2 rounded bg-gray-700 border border-gray-600"
           />
@@ -422,7 +432,7 @@ export const CardCreate: React.FC<CardCreateProps> = ({
           </span>
           <input
             type="number"
-            min={1}
+            min={0}
             max={5}
             value={actionsRequired}
             onChange={(e) =>
@@ -533,6 +543,7 @@ export const CardCreate: React.FC<CardCreateProps> = ({
                     >
                       {effect}
                       <button
+                        type="button"
                         onClick={() =>
                           setEffectApplication(prev =>
                             prev.filter(e => e !== effect)
@@ -565,7 +576,7 @@ export const CardCreate: React.FC<CardCreateProps> = ({
                     Adicionar efeito...
                   </option>
 
-                  {EFFECT_TYPES.map((effect) => (
+                  {TokenPrimaryElement.map((effect) => (
                     <option key={effect} value={effect}>
                       {effect}
                     </option>
@@ -637,9 +648,9 @@ export const CardCreate: React.FC<CardCreateProps> = ({
             <label className="w-50 flex flex-col gap-1">
               <span className="font-semibold text-sm">Imagem</span>
               <input
-                type="file"
-                accept="image/*"
-                onChange={handlePivotImageChange}
+                type="text"
+                value={pivotImgUrl}
+                onChange={(e)=>setPivotImgUrl(e.target.value)}
                 required
                 className="p-2 rounded bg-gray-700 border border-gray-600"
               />
@@ -736,7 +747,7 @@ export const CardCreate: React.FC<CardCreateProps> = ({
             type="submit"
             className="bg-purple-600 hover:bg-purple-500 px-6 py-2 rounded font-semibold cursor-pointer"
           >
-            Criar Card
+            {mode === "edit" ? "Salvar Card" : "Criar Card"}
           </button>
         </div>
       </form>
@@ -744,4 +755,8 @@ export const CardCreate: React.FC<CardCreateProps> = ({
   );
 };
 
-export default CardCreate;
+export const CardCreateForm: React.FC<Omit<CardModelFormProps, "initialCard" | "mode">> = (props) => (
+  <CardModelForm {...props} mode="create" />
+);
+
+export default CardCreateForm;

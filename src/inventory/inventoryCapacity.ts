@@ -1,9 +1,11 @@
-import type { EngineContext } from "../types/BoardEngineContext";
+import type React from "react";
 import type { Item } from "../types/item";
+import type { Token } from "../types/token";
+import type { SetStateAction } from "react";
 
-export function haveSpaceInInventory(context: EngineContext, tokenId: string) // Função válida únicamente quando há apenas um token com ID único
+export function haveSpaceInInventory(boardTokens: Token[], tokenId: string) // Função válida únicamente quando há apenas um token com ID único
 {
-    const token = context.boardTokens.find((t) => t.id === tokenId);
+    const token = boardTokens.find((t) => t.id === tokenId);
 
     if (!token) return false;
 
@@ -14,12 +16,12 @@ export function haveSpaceInInventory(context: EngineContext, tokenId: string) //
 }
 
 export function addItemToInventory(
-    context: EngineContext,
+    setBoardTokens: React.Dispatch<SetStateAction<Token[]>>,
     tokenId: string,
     item: Item
 ) {
 
-    context.setBoardTokens(prev => {
+    setBoardTokens(prev => {
         return prev.map(t => {
             if (t.id !== tokenId) return t;
 

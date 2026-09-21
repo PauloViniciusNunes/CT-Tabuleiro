@@ -13,7 +13,7 @@ import type { Token } from "../../types/token";
 import { elementToEffect } from "../../types/effects";
 import { setParalysis } from "../../state/stateParalysis";
 import { rollInitiative } from "../../utils/battleCalculations";
-import type { InitiativeData,BattleState } from "../../types/battle";
+import type { InitiativeData, BattleState } from "../../types/battle";
 import { initializeBattleStats } from "../../utils/battleCalculations";
 import { AICombatPhase } from "../../types/ai/AICombatPhase";
 import { applyCardEntityEffect, decreaseCardEntityDuration } from "../../cards/cardEffects";
@@ -21,6 +21,10 @@ import { stepTokenEffect } from "../../effects/stepSystem";
 import { reduceTimeToRecharge } from "../combatRecharge";
 import { applyEffectsCausality } from "../../effects/effectsApplication";
 import processTurnEffects from "../../utils/battleEffects";
+import {
+    getTokenMechanicForAction,
+    hasMechanicDisadvantage,
+} from "../../utils/tokenMechanics";
 
 export class BattleEngine {
     private context!: EngineContext;
@@ -439,6 +443,11 @@ export class BattleEngine {
             Math.min(choice.usedActions ?? 1, liveBattleState.accumulatedActions[tokenId] ?? 1)
         );
         const wasCertainty = !!choice.usedCertaintyDie;
+        const elementUsed = getTokenMechanicForAction(
+            token.tokenPrimaryElement,
+            choice.selectedMechanic,
+            usedMana,
+        );
 
         // 3) Bônus de proficiência (mesma fórmula usada antes)
         const proficiencyBonus = token.proficiencies[choice.attribute]
@@ -447,7 +456,11 @@ export class BattleEngine {
 
 
 
-        const elementalPos = (choice.attribute === "forca" && target.tokenPrimaryDisvantege === token.tokenPrimaryElement && usedMana > 0) ? 2 * (choice.pos ?? 1) : choice.pos ?? 1;
+        const elementalPos = (
+            choice.attribute === "forca" &&
+            hasMechanicDisadvantage(target.tokenPrimaryDisvantege, elementUsed) &&
+            usedMana > 0
+        ) ? 2 * (choice.pos ?? 1) : choice.pos ?? 1;
         const attrPos = this.searchTokenPosition(token.id, choice.attribute);
 
         const respectiveAtribute = choice.attribute;
@@ -457,6 +470,7 @@ export class BattleEngine {
         const itemCoerentAdd = respectiveAtribute === selectedItem?.atributeToOcasionalAdd ? itemOcasionalAdd : 0;
         const params = {
             tokenId: tokenId,
+            usedItemId: selectedItem?.id,
             Q: usedActions,
             P: finalPos(elementalPos, attrPos),
             A: token.attributes[choice.attribute],
@@ -608,8 +622,6 @@ export class BattleEngine {
             ]
             : [];
 
-
-        const elementUsed = usedMana > 0 ? token.tokenPrimaryElement ?? "neutro" : "neutro"
 
         this.context.setPendingAttack({
             attackerId: tokenId,
@@ -1021,7 +1033,7 @@ export class BattleEngine {
         }
 
         // Não pode avançar com resolução pendente
-        if (this.context.pendingAttackRef.current ||this.context.isInDefenseResolution || this.context.pendingEsquivaRoll != null) {
+        if (this.context.pendingAttackRef.current || this.context.isInDefenseResolution || this.context.pendingEsquivaRoll != null) {
             console.warn("[HANDLE] Há resolução de ataque/defesa pendente, abortando");
             return;
         }
@@ -1040,7 +1052,7 @@ export class BattleEngine {
 
         const tokenName = liveBoardTokens.find(t => t.id === currentTokenId)?.name ?? "Desconhecido";
         console.warn("[HANDLE] FINALIZANDO TURNO DE:", tokenName);
-        
+
 
         // Se não é passe voluntário e ainda há ações, não pode auto-passar
         const currentActions = liveBattleState.accumulatedActions[currentTokenId] ?? 1;
@@ -1272,6 +1284,11 @@ export class BattleEngine {
         const usedMana = Math.min(coercedChoice.usedMana ?? 0, token.currentMana ?? 0);
         const usedActions = Math.max(1, Math.min(coercedChoice.usedActions ?? 1, this.context.battleState.accumulatedActions[attackerId] ?? 1));
         const wasCertainty = !!coercedChoice.usedCertaintyDie;
+        const elementUsed = getTokenMechanicForAction(
+            token.tokenPrimaryElement,
+            coercedChoice.selectedMechanic,
+            usedMana,
+        );
 
         // 3) Proficiência
         const proficiencyBonus = token.proficiencies[coercedChoice.attribute]
@@ -1279,7 +1296,11 @@ export class BattleEngine {
             : 0;
 
 
-        const elementalPos = (choice.attribute === "forca" && target.tokenPrimaryDisvantege === token.tokenPrimaryElement && usedMana > 0) ? 2 * (this.context.prevReaction[attackerId] === "destreza" ? 2 : 1) : this.context.prevReaction[attackerId] === "destreza" ? 2 : 1;
+        const elementalPos = (
+            choice.attribute === "forca" &&
+            hasMechanicDisadvantage(target.tokenPrimaryDisvantege, elementUsed) &&
+            usedMana > 0
+        ) ? 2 * (this.context.prevReaction[attackerId] === "destreza" ? 2 : 1) : this.context.prevReaction[attackerId] === "destreza" ? 2 : 1;
         const attrPos = this.searchTokenPosition(token.id, choice.attribute)
 
 
@@ -1290,6 +1311,7 @@ export class BattleEngine {
         const itemCoerentAdd = respectiveAtribute === selectedItem?.atributeToOcasionalAdd ? itemOcasionalAdd : 0;
         const params = {
             tokenId: attackerId,
+            usedItemId: selectedItem?.id,
             Q: usedActions,
             P: finalPos(elementalPos, attrPos),
             A: token.attributes[coercedChoice.attribute],
@@ -1401,7 +1423,6 @@ export class BattleEngine {
             ];
         }
 
-        const elementUsed = usedMana > 0 ? token.tokenPrimaryElement ?? "neutro" : "neutro";
         this.context.setPendingAttack({
             attackerId,
             targetId: forcedTargetId,
@@ -1436,7 +1457,7 @@ export class BattleEngine {
             if (rawDamage > 0) {
 
                 const intesityCalculus = Math.ceil(((token?.attributes.level ?? 1) - 10) / 4 + 4);
-                if (target && usedMana > 0) applyTokenEffect(this.context, target, token.tokenPrimaryElement ?? "neutro", elementToEffect[token.tokenPrimaryElement ?? "neutro"], 8, intesityCalculus, "InTurn");
+                if (target && usedMana > 0) applyTokenEffect(this.context, target, elementUsed, elementToEffect[elementUsed], 8, intesityCalculus, "InTurn");
 
             }
 

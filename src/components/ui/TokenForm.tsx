@@ -1,5 +1,10 @@
-import React, { useState, type ChangeEvent, type FormEvent } from "react";
-import type {TokenPrimaryElement, TokenPrimaryDisvantage} from "../../types/effects.ts"
+import React, { useState, type FormEvent } from "react";
+import { useEffect } from "react";
+import {
+  TokenPrimaryElement,
+  type TokenPrimaryDisvantage,
+  type PrimaryMechanic,
+} from "../../types/effects.ts"
 import {
   type Token,
   type TokenAttributes,
@@ -8,57 +13,38 @@ import {
   type TokenStatus,
   type TokenTeam,
   type TokenClass,
-  type TokenType
+  type TokenType,
+  type TokenAttributeMultipliers,
+  type TokenMultipliableAttribute,
 } from "../../types/token";
 import type { Card } from "../../types/card";
 import type { Item } from "../../types/item";
 import { type ItemSlot } from "../../types/item";
 import { type BossInterfaceColors } from "../../types/token";
+import type { Campaign, User } from "../../types/campaign.ts";
+import { tokenFromForm } from "../../models/forms/tokenFormModel";
+import {
+  DEFAULT_TOKEN_ATTRIBUTE_MULTIPLIERS,
+  MULTIPLIABLE_TOKEN_ATTRIBUTES,
+} from "../../api/mappers/tokenTransformationMapper";
 
-interface TokenFormProps {
-  onSave: (token: Token) => void;
+export interface TokenModelFormProps {
+  onSave: (token: Token) => void | Promise<void>;
   onClose: () => void;
   cards: Card[];
   items: Item[];
+  users: User[];
+  campaign: Campaign | null;
+  tokens?: Token[];
+  initialToken?: Token;
+  mode?: "create" | "edit";
 }
 
 const teams: TokenTeam[] = ["Red", "Blue", "Green", "Yellow"];
 const statuses: TokenStatus[] = ["Vivo", "Morto"];
 const classes: TokenClass[] = ["Guerreiro", "Mago", "Bárbaro", "Ladino", "Feitiçeiro"];
-export const elements: TokenPrimaryElement[] = [
-  "neutro",
-  "fogo",
-  "terra",
-  "vento",
-  "agua",
-  "darkfire",
-  "arcano",
-  "acido",
-  "eletrico",
-  "veneno",
-  "som",
-  "gelo",
-  "sangue",
-  "darkelectric"
-];
-
-export const disvantages: TokenPrimaryDisvantage[] = [
-  "neutro",
-  "fogo",
-  "terra",
-  "vento",
-  "agua",
-  "darkfire",
-  "arcano",
-  "acido",
-  "eletrico",
-  "veneno",
-  "som",
-  "gelo",
-  "sangue",
-  "darkelectric",
-  "none", 
-];
+const elements: PrimaryMechanic[] = [...TokenPrimaryElement];
+const disvantages: TokenPrimaryDisvantage[] = [...TokenPrimaryElement, "none"];
 
 
 const initialAttributes: TokenAttributes = {
@@ -82,7 +68,7 @@ const initialProficiencies: TokenProficiencies = {
 };
 
 const initialInventory: TokenInventory = {
-  inventoryDimensions: {rows: 4, cols: 5},
+  inventoryDimensions: { rows: 4, cols: 5 },
   primaryHand: undefined,
   offHand: undefined,
   neck: undefined,
@@ -92,26 +78,52 @@ const initialInventory: TokenInventory = {
   economy: 0,
 };
 
-const generateId = (): string => Math.random().toString(36).slice(2, 11);
-
-export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, items }) => {
-  const [name, setName] = useState("");
-  const [type, setType] = useState<TokenType>("player");
-  const [bossSettings, setBossSettings] = useState<BossInterfaceColors>({
+export const TokenModelForm: React.FC<TokenModelFormProps> = ({
+  onSave,
+  onClose,
+  cards,
+  items,
+  users,
+  campaign,
+  tokens = [],
+  initialToken,
+  mode = initialToken ? "edit" : "create",
+}) => {
+  const [name, setName] = useState(initialToken?.name ?? "");
+  const [type, setType] = useState<TokenType>(initialToken?.type ?? "player");
+  const [bossSettings, setBossSettings] = useState<BossInterfaceColors>(initialToken?.bossSettings ?? {
     fill: "#000000",
     stroke: "#971e91",
     shadow_init: "#5e3f7c",
     shadow_mid: "#d645e4",
     shadow_end: "#db36c5"
-  });  
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [attributes, setAttributes] = useState<TokenAttributes>(initialAttributes);
-  const [proficiencies, setProficiencies] = useState<TokenProficiencies>(
-    initialProficiencies
+  });
+  const [imagePreview, setImagePreview] = useState<string | null>(initialToken?.imageUrl ?? null);
+  const [attributes, setAttributes] = useState<TokenAttributes>(
+    initialToken?.attributes ?? initialAttributes,
   );
-  const [inventory, setInventory]           = useState<TokenInventory>(initialInventory);
+  const [isTransformation, setIsTransformation] = useState(
+    Boolean(initialToken?.transformation),
+  );
+  const [baseTokenId, setBaseTokenId] = useState(
+    initialToken?.transformation?.baseTokenId ?? "",
+  );
+  const [inheritBaseCards, setInheritBaseCards] = useState(
+    initialToken?.transformation?.inheritBaseCards ?? true,
+  );
+  const [attributeMultipliers, setAttributeMultipliers] = useState<TokenAttributeMultipliers>(
+    initialToken?.transformation?.attributeMultipliers ?? {
+      ...DEFAULT_TOKEN_ATTRIBUTE_MULTIPLIERS,
+    },
+  );
+  const [proficiencies, setProficiencies] = useState<TokenProficiencies>(
+    initialToken?.proficiencies ?? initialProficiencies,
+  );
+  const [inventory, setInventory] = useState<TokenInventory>(
+    initialToken?.inventory ?? initialInventory,
+  );
 
-  const slotToTokenInventory: Record<ItemSlot, keyof TokenInventory> = 
+  const slotToTokenInventory: Record<ItemSlot, keyof TokenInventory> =
   {
     "primary-hand": "primaryHand",
     "off-hand": "offHand",
@@ -121,27 +133,72 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
     "inventory-only": "commonSlot",
   }
 
-  function addItemInCommonSlot(item: Item)
-  {
-    setInventory(prev => ({...prev, commonSlot: [...(prev.commonSlot ?? []), item]}));
+  function addItemInCommonSlot(item: Item) {
+    setInventory(prev => ({ ...prev, commonSlot: [...(prev.commonSlot ?? []), item] }));
   }
 
-  function removeItemInSlot(id: string)
-  {
-    setInventory(prev => ({...prev, commonSlot: prev.commonSlot?.filter(x => x.id !== id)}))
+  function removeItemInSlot(id: string) {
+    setInventory(prev => ({ ...prev, commonSlot: prev.commonSlot?.filter(x => x.id !== id) }))
   }
 
   const [itemChooseOpen, setItemChooseOpen] = useState<boolean>(false);
 
-  const [status, setStatus] = useState<TokenStatus>("Vivo");
-  const [team, setTeam] = useState<TokenTeam>("Red");
-  const [bodytobodyRange, setBodytobodyRange] = useState(1);
-  const [magicalRange, setMagicalRange] = useState(6);
-  const [tokenClass, setTokenClass] = useState<TokenClass>("Guerreiro");
-  const [primaryElement, setPrimaryElement] = useState<TokenPrimaryElement>("neutro");
-  const [primaryDisvantage, setPrimaryDisvantage] = useState<TokenPrimaryDisvantage>("none");
-  
-  const [selfCards, setSelfCards] = useState<Card[]>([]);
+  const [status, setStatus] = useState<TokenStatus>(initialToken?.status ?? "Vivo");
+  const [team, setTeam] = useState<TokenTeam>(initialToken?.team ?? "Red");
+  const [bodytobodyRange, setBodytobodyRange] = useState(initialToken?.bodytobodyRange ?? 1);
+  const [magicalRange, setMagicalRange] = useState(initialToken?.magicalRange ?? 6);
+  const [naturalMovement, setNaturalMovement] = useState(initialToken?.naturalMovement ?? 6);
+  const [tokenClass, setTokenClass] = useState<TokenClass>(initialToken?.class ?? "Guerreiro");
+  const [primaryElements, setPrimaryElements] = useState<PrimaryMechanic[]>(
+    initialToken?.transformation
+      ? initialToken.transformation.additionalMechanics
+      : initialToken?.tokenPrimaryElement?.length
+      ? initialToken.tokenPrimaryElement
+      : ["neutro"],
+  );
+  const [primaryDisvantages, setPrimaryDisvantages] = useState<TokenPrimaryDisvantage[]>(
+    initialToken?.transformation
+      ? initialToken.transformation.additionalDisadvantages
+      : initialToken?.tokenPrimaryDisvantege?.length
+      ? initialToken.tokenPrimaryDisvantege
+      : ["none"],
+  );
+  const [selectedUser, setSelectedUser] = useState<User | null>(
+    users.find((user) => user.id === initialToken?.ownerId) ?? null,
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const togglePrimaryElement = (element: PrimaryMechanic) => {
+    setPrimaryElements((current) => {
+      if (element === "neutro") return ["neutro"];
+      const active = current.filter((value) => value !== "neutro");
+      if (active.includes(element)) {
+        const next = active.filter((value) => value !== element);
+        return next.length ? next : ["neutro"];
+      }
+      return [...active, element];
+    });
+  };
+
+  const togglePrimaryDisvantage = (disvantage: TokenPrimaryDisvantage) => {
+    setPrimaryDisvantages((current) => {
+      if (disvantage === "none") return ["none"];
+      const active = current.filter((value) => value !== "none");
+      if (active.includes(disvantage)) {
+        const next = active.filter((value) => value !== disvantage);
+        return next.length ? next : ["none"];
+      }
+      return [...active, disvantage];
+    });
+  };
+
+  useEffect(() => {
+    console.log("[USER]: ", selectedUser?.name)
+  }, [selectedUser])
+
+  const [selfCards, setSelfCards] = useState<Card[]>(
+    initialToken?.transformation?.additionalCards ?? initialToken?.cards ?? [],
+  );
   const [cardPickerOpen, setCardPickerOpen] = useState(false);
 
   const equipSlots = [
@@ -159,19 +216,29 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
     setItemChooseOpen(true);
   };
 
-  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) {
-      setImagePreview(null);
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
-  };
-
   const handleAttrChange = (key: keyof TokenAttributes, val: number) => {
     setAttributes((a) => ({ ...a, [key]: val }));
+  };
+
+  const selectedBaseToken = tokens.find((token) => token.id === baseTokenId);
+  const transformationCandidates = tokens.filter(
+    (token) => token.id !== initialToken?.id && token.campaignId === (campaign?.id ?? initialToken?.campaignId),
+  );
+  const effectiveAttributes: TokenAttributes = selectedBaseToken
+    ? {
+        ...selectedBaseToken.attributes,
+        ...Object.fromEntries(
+          MULTIPLIABLE_TOKEN_ATTRIBUTES.map((attribute) => [
+            attribute,
+            Math.round(selectedBaseToken.attributes[attribute] * attributeMultipliers[attribute]),
+          ]),
+        ),
+      } as TokenAttributes
+    : attributes;
+
+  const handleMultiplierChange = (attribute: TokenMultipliableAttribute, value: number) => {
+    if (!Number.isFinite(value) || value < 0) return;
+    setAttributeMultipliers((current) => ({ ...current, [attribute]: value }));
   };
 
   const handleProfChange = (key: keyof TokenProficiencies, checked: boolean) => {
@@ -182,54 +249,75 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
     setInventory((inv) => ({ ...inv, [key]: val }));
   };
 
-  const handleEconomyChange = (val: number) =>
-  {
-    setInventory((inv) => ({...inv, ["economy" as keyof TokenInventory]: val}));
+  const handleEconomyChange = (val: number) => {
+    setInventory((inv) => ({ ...inv, ["economy" as keyof TokenInventory]: val }));
   }
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
+    if (!selectedUser && !initialToken?.ownerId) {
+      alert("Selecione um usuário para criar o token.");
+      return;
+    }
+
     if (!name.trim() || !imagePreview) {
       alert("Nome e imagem são obrigatórios.");
       return;
     }
 
-  const tokenId = generateId();
+    if (isTransformation && !selectedBaseToken) {
+      alert("Selecione um token base para a transformação.");
+      return;
+    }
 
-    const token: Token = {
-      createId: tokenId,
-      id: tokenId,
-      lastDamagerId: undefined,
-      name: name.trim(),
-      type: type,
+    const transformation = isTransformation && selectedBaseToken
+      ? {
+          baseTokenId: selectedBaseToken.id,
+          inheritBaseCards,
+          attributeMultipliers,
+          additionalCards: selfCards,
+          additionalMechanics: primaryElements.filter((mechanic) => mechanic !== "neutro"),
+          additionalDisadvantages: primaryDisvantages.filter((disadvantage) => disadvantage !== "none"),
+        }
+      : undefined;
+
+    const token = tokenFromForm({
+      existing: initialToken,
+      name,
+      type,
       imageUrl: imagePreview,
-      attributes,
+      attributes: isTransformation ? effectiveAttributes : attributes,
       proficiencies,
       inventory,
       status,
       team,
-      class: tokenClass,
-      pendingXPAllocating: 0,
-      tokenCards: selfCards,
-      cards: selfCards, 
-      position: { col: 1, row: 1 },
-      bodytobodyRange: Math.max(1, bodytobodyRange),
+      tokenClass,
+      cards: selfCards,
+      bodyToBodyRange: bodytobodyRange,
       magicalRange: Math.max(1, magicalRange),
-      tokenPrimaryElement: primaryElement,
-      tokenPrimaryDisvantege: primaryDisvantage,
-      ocassionalAddition: {
-        forca: 0,
-        destreza: 0,
-        consistencia: 0,
-        inteligencia: 0,
-        sabedoria: 0,
-        carisma: 0,
-      },
-      bossSettings: type === "boss" ? bossSettings : undefined
-    };
+      naturalMovement,
+      primaryElements,
+      primaryDisadvantages: primaryDisvantages,
+      bossSettings: type === "boss" ? bossSettings : undefined,
+      ownerId: selectedUser?.id ?? initialToken?.ownerId ?? "",
+      campaignId: campaign?.id ?? initialToken?.campaignId ?? "",
+      transformation,
+      baseToken: selectedBaseToken,
+    });
 
-    onSave(token);
-    onClose();
+    setIsSubmitting(true);
+
+    try {
+      await onSave(token);
+      onClose();
+    } catch (error) {
+      console.error("Não foi possível salvar o token:", error);
+      alert("Não foi possível salvar o token. Verifique os dados e tente novamente.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -239,7 +327,9 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
         className="w-full max-w-[520px] md:max-w-[560px] bg-gray-800 rounded-lg p-4 md:p-6 text-white shadow-2xl
                max-h-[90vh] overflow-y-auto"
       >
-        <h2 className="text-2xl font-bold text-green-400">Criar Novo Token</h2>
+        <h2 className="text-2xl font-bold text-green-400">
+          {mode === "edit" ? "Editar Token" : "Criar Novo Token"}
+        </h2>
 
         {/* Nome */}
         <label className="flex flex-col gap-1">
@@ -258,9 +348,10 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
         <label className="flex flex-col gap-1">
           <span className="font-semibold text-sm">Imagem</span>
           <input
-            type="file"
-            accept="image/*"
-            onChange={handleImageChange}
+            type="text"
+            value={imagePreview ?? ""}
+            onChange={(e) => setImagePreview(e.target.value)}
+            placeholder="Cole a URL da imagem"
             className="w-full min-w-0 p-2 rounded bg-gray-700 border border-gray-600 focus:border-green-400 focus:outline-none"
             required
           />
@@ -272,6 +363,76 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
             />
           )}
         </label>
+
+        <fieldset className="border border-cyan-700 p-3 rounded bg-cyan-950/20">
+          <legend className="font-semibold text-cyan-300 px-2">Transformação</legend>
+          <label className="flex items-center gap-2 text-sm font-semibold">
+            <input
+              type="checkbox"
+              checked={isTransformation}
+              onChange={(event) => setIsTransformation(event.target.checked)}
+              className="h-4 w-4 accent-cyan-400"
+            />
+            Este token é uma transformação
+          </label>
+
+          {isTransformation && (
+            <div className="mt-3 flex flex-col gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-sm font-semibold">Token base</span>
+                <select
+                  required
+                  value={baseTokenId}
+                  onChange={(event) => setBaseTokenId(event.target.value)}
+                  className="p-2 rounded bg-gray-700 border border-gray-600 focus:border-cyan-400 focus:outline-none"
+                >
+                  <option value="" disabled>Selecione o token base...</option>
+                  {transformationCandidates.map((token) => (
+                    <option key={token.id} value={token.id}>{token.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={inheritBaseCards}
+                  onChange={(event) => setInheritBaseCards(event.target.checked)}
+                  className="h-4 w-4 accent-cyan-400"
+                />
+                Herdar cards do token base
+              </label>
+
+              <div>
+                <p className="mb-2 text-sm font-semibold text-cyan-200">
+                  Multiplicadores de atributos
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {MULTIPLIABLE_TOKEN_ATTRIBUTES.map((attribute) => (
+                    <label key={attribute} className="flex items-center gap-2">
+                      <span className="w-24 text-xs capitalize">{attribute}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.05}
+                        value={attributeMultipliers[attribute]}
+                        onChange={(event) => handleMultiplierChange(attribute, Number(event.target.value))}
+                        className="min-w-0 flex-1 rounded border border-gray-500 bg-gray-700 p-1 text-center"
+                      />
+                      <span className="w-14 text-right text-xs text-gray-300">
+                        = {effectiveAttributes[attribute]}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-300">
+                Itens são copiados do token base. Cards, mecânicas e desvantagens abaixo são adicionais.
+              </p>
+            </div>
+          )}
+        </fieldset>
 
         {/* Atributos */}
         <fieldset className="border border-gray-600 p-3 rounded bg-gray-700 bg-opacity-50">
@@ -292,8 +453,9 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
                 <input
                   type="number"
                   min={1}
+                  disabled={isTransformation}
                   className="p-1 rounded bg-gray-600 border border-gray-500 focus:border-green-400 focus:outline-none text-center"
-                  value={attributes[key]}
+                  value={isTransformation ? effectiveAttributes[key] : attributes[key]}
                   onChange={(e) => handleAttrChange(key, Number(e.target.value))}
                 />
               </label>
@@ -314,7 +476,7 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
                 </option>
               ))}
             </select>
-          </label>            
+          </label>
 
           {/* Level e XP */}
           <div className="grid grid-cols-2 gap-3 mt-3">
@@ -323,8 +485,9 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
               <input
                 type="number"
                 min={1}
+                disabled={isTransformation}
                 className="p-1 rounded bg-gray-600 border border-gray-500 focus:border-green-400 focus:outline-none text-center"
-                value={attributes.level}
+                value={isTransformation ? effectiveAttributes.level : attributes.level}
                 onChange={(e) => handleAttrChange("level", Number(e.target.value))}
               />
             </label>
@@ -333,8 +496,9 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
               <input
                 type="number"
                 min={0}
+                disabled={isTransformation}
                 className="p-1 rounded bg-gray-600 border border-gray-500 focus:border-green-400 focus:outline-none text-center"
-                value={attributes.xp}
+                value={isTransformation ? effectiveAttributes.xp : attributes.xp}
                 onChange={(e) => handleAttrChange("xp", Number(e.target.value))}
               />
             </label>
@@ -347,12 +511,12 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
             Tipo de Token
           </legend>
           <select name="" id="" className="p-2 rounded bg-gray-700 border border-gray-600 focus:border-green-400 focus:outline-none"
-          value={type}
-          onChange={(e) => setType(e.target.value as TokenType)}>
-              <option value="player">Player</option>
-              <option value="ia">IA</option>
-              <option value="boss">Boss</option>
-          </select>              
+            value={type}
+            onChange={(e) => setType(e.target.value as TokenType)}>
+            <option value="player">Player</option>
+            <option value="ia">IA</option>
+            <option value="boss">Boss</option>
+          </select>
         </fieldset>
 
         {/* Boss Interface Settings */}
@@ -431,42 +595,48 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
 
             </div>
           </fieldset>
-        )}                      
+        )}
         {/* Elemento */}
         <fieldset className="border border-gray-600 p-3 rounded bg-gray-700 bg-opacity-50">
           <legend className="font-semibold text-green-400 px-2">
             Definição Elementar
           </legend>
 
-          <label className="flex flex-col gap-1">
-            <span className="font-semibold text-sm">Elemento Principal</span>
-            <select
-              value={primaryElement}
-              onChange={(e) => setPrimaryElement(e.target.value as TokenPrimaryElement)}
-              className="p-2 rounded bg-gray-700 border border-gray-600 focus:border-green-400 focus:outline-none"
-            >
-              {elements.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
+          <div className="flex flex-col gap-1">
+            <span className="font-semibold text-sm">
+              {isTransformation ? "Mecânicas adicionais" : "Mecânicas do token"}
+            </span>
+            <div className="grid max-h-40 grid-cols-2 gap-1 overflow-y-auto rounded border border-gray-600 bg-gray-800 p-2 sm:grid-cols-3">
+              {elements.map((element) => (
+                <button
+                  key={element}
+                  type="button"
+                  onClick={() => togglePrimaryElement(element)}
+                  className={`rounded px-2 py-1 text-xs capitalize ${primaryElements.includes(element) ? "bg-green-600 text-white" : "bg-gray-700 text-gray-300"}`}
+                >
+                  {element.replaceAll("_", " ")}
+                </button>
               ))}
-            </select>
-          </label> 
+            </div>
+          </div>
 
-          <label className="flex flex-col gap-1">
-            <span className="font-semibold text-sm">Desvantagem Principal</span>
-            <select
-              value={primaryDisvantage}
-              onChange={(e) => setPrimaryDisvantage(e.target.value as TokenPrimaryDisvantage)}
-              className="p-2 rounded bg-gray-700 border border-gray-600 focus:border-green-400 focus:outline-none"
-            >
-              {disvantages.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
+          <div className="mt-3 flex flex-col gap-1">
+            <span className="font-semibold text-sm">
+              {isTransformation ? "Desvantagens adicionais" : "Desvantagens mecânicas"}
+            </span>
+            <div className="grid max-h-40 grid-cols-2 gap-1 overflow-y-auto rounded border border-gray-600 bg-gray-800 p-2 sm:grid-cols-3">
+              {disvantages.map((disvantage) => (
+                <button
+                  key={disvantage}
+                  type="button"
+                  onClick={() => togglePrimaryDisvantage(disvantage)}
+                  className={`rounded px-2 py-1 text-xs capitalize ${primaryDisvantages.includes(disvantage) ? "bg-red-600 text-white" : "bg-gray-700 text-gray-300"}`}
+                >
+                  {disvantage.replaceAll("_", " ")}
+                </button>
               ))}
-            </select>
-          </label>                          
+            </div>
+          </div>
         </fieldset>
 
         {/* Proficiências */}
@@ -529,7 +699,36 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
           </div>
         </fieldset>
 
+        <label className="flex flex-col gap-1">
+          <span>Deslocamento natural (células)</span>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            required
+            value={naturalMovement}
+            onChange={(event) => setNaturalMovement(Number(event.target.value))}
+            className="p-2 rounded bg-gray-700 border border-gray-600"
+          />
+        </label>
+
         {/* Inventário */}
+        {isTransformation ? (
+          <fieldset className="border border-cyan-800 p-3 rounded bg-gray-700 bg-opacity-50">
+            <legend className="font-semibold text-cyan-300 px-2">Inventário herdado</legend>
+            {selectedBaseToken ? (
+              <div className="flex flex-col gap-2 text-sm text-gray-200">
+                <p>Os itens serão copiados de <strong>{selectedBaseToken.name}</strong>.</p>
+                <p>
+                  {(selectedBaseToken.inventory.commonSlot?.length ?? 0)} item(ns) na mochila e{" "}
+                  {equipSlots.filter((slot) => Boolean(selectedBaseToken.inventory[slot])).length} equipado(s).
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">Selecione um token base para visualizar o inventário.</p>
+            )}
+          </fieldset>
+        ) : (
         <fieldset className="border border-gray-600 p-3 rounded bg-gray-700 bg-opacity-50">
           <legend className="font-semibold text-green-400 px-2">Inventário</legend>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
@@ -542,11 +741,12 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
                     {slot === "primaryHand"
                       ? "Mão Primária"
                       : slot === "offHand"
-                      ? "Mão Secundária"
-                      : slot}
+                        ? "Mão Secundária"
+                        : slot}
                   </span>
 
                   <button
+                    type="button"
                     onClick={() => openItemSelector(slot)}
                     className="flex items-center gap-2 p-2 rounded bg-gray-700 hover:bg-gray-600 border border-gray-600"
                   >
@@ -584,19 +784,19 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
               />
             </label>
           </div>
-            
-            <fieldset className="border border-gray-600 rounded p-2">
-              <legend className="font-semibold text-green-400 px-2">Mochila</legend>
-              <button
-                type="button"
-                onClick={() => {
-                  setSlotTarget(null);
-                  setItemChooseOpen(true);
-                }}
-                className="w-full text-center bg-blue-600 hover:bg-blue-500 cursor-pointer px-6 py-2 rounded font-semibold transition-colors"
-              >
-                + Adicionar Item
-              </button>
+
+          <fieldset className="border border-gray-600 rounded p-2">
+            <legend className="font-semibold text-green-400 px-2">Mochila</legend>
+            <button
+              type="button"
+              onClick={() => {
+                setSlotTarget(null);
+                setItemChooseOpen(true);
+              }}
+              className="w-full text-center bg-blue-600 hover:bg-blue-500 cursor-pointer px-6 py-2 rounded font-semibold transition-colors"
+            >
+              + Adicionar Item
+            </button>
 
             <div className="pt-2">
               {inventory.commonSlot?.length === 0 ? (
@@ -609,124 +809,134 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
 
                   >
                     <div className="flex items-start gap-3">
-                        <img
-                          src={i.imgUrl}
-                          alt="Card"
-                          className="w-12 h-12 object-cover rounded border border-gray-600"
-                          draggable={false}
-                        />
+                      <img
+                        src={i.imgUrl}
+                        alt="Card"
+                        className="w-12 h-12 object-cover rounded border border-gray-600"
+                        draggable={false}
+                      />
 
-                        <div className="flex-1 overflow-hidden">
-                          <h2 className="text-sm font-bold text-white line-clamp-2">
-                            {i.name}
-                          </h2>
-                        </div>
-                        
-                        <div className="flex flex-wrap gap-2 text-xs text-gray-400">
+                      <div className="flex-1 overflow-hidden">
+                        <h2 className="text-sm font-bold text-white line-clamp-2">
+                          {i.name}
+                        </h2>
+                      </div>
 
-                          {i.rarity && (
-                            <span className="bg-gray-700 px-2 py-0.5 rounded">
-                              {i.rarity}
-                            </span>
-                          )}
+                      <div className="flex flex-wrap gap-2 text-xs text-gray-400">
 
-                          {i.value && (
-                            <span className="bg-blue-700/40 px-2 py-0.5 rounded text-blue-300">
-                              Valor: {i.value}
-                            </span>
-                          )}
-                        </div>
-
-                        <button
-                          onClick={() =>
-                            removeItemInSlot(i.id)
-                          }
-                          className="text-red-400 hover:text-red-300 text-sm"
-                          title="Remover card"
-                        >
-                          ✕
-                        </button>
-                                                                                                
-                    </div>
-                  </div>
-                ))
-              )
-              }
-            </div>              
-
-            </fieldset>
-        </fieldset>
-
-        {/* Cards */}
-        <fieldset className="border border-gray-600 p-3 rounded bg-gray-700 bg-opacity-50">
-            <legend className="font-semibold text-green-400 px-2">Cards</legend>
-            <button
-              type="button"
-              onClick={() => setCardPickerOpen(true)}
-              className="w-full text-center bg-green-600 hover:bg-green-500 cursor-pointer px-6 py-2 rounded font-semibold transition-colors"
-            >
-              + Adicionar Card
-            </button>
-            
-            <div className="pt-2">
-              {selfCards?.length === 0 ? (
-                <p className="text-gray-400 text-sm text-center">Nenhum card adicionado.</p>
-              ) : (
-                selfCards?.map((c) => (
-                  <div
-                    key={c.id}
-                    className="bg-gray-800 p-3 rounded flex flex-col gap-2 hover:bg-gray-750 transition-colors"
-
-                  >
-                    <div className="flex items-start gap-3">
-                        <img
-                          src={c.img}
-                          alt="Card"
-                          className="w-12 h-12 object-cover rounded border border-gray-600"
-                          draggable={false}
-                        />
-
-                        <div className="flex-1 overflow-hidden">
-                          <h2 className="text-sm font-bold text-white line-clamp-2">
-                            {c.name}
-                          </h2>
-                        </div>
-                        
-                        <div className="flex flex-wrap gap-2 text-xs text-gray-400">
+                        {i.rarity && (
                           <span className="bg-gray-700 px-2 py-0.5 rounded">
-                            Ações: {c.actionsRequired}
+                            {i.rarity}
                           </span>
+                        )}
 
-                          {c.baseDice && (
-                            <span className="bg-gray-700 px-2 py-0.5 rounded">
-                              {c.baseDice.quantity}
-                              {c.baseDice.type}
-                            </span>
-                          )}
+                        {i.value && (
+                          <span className="bg-blue-700/40 px-2 py-0.5 rounded text-blue-300">
+                            Valor: {i.value}
+                          </span>
+                        )}
+                      </div>
 
-                          {c.manaRequired && (
-                            <span className="bg-blue-700/40 px-2 py-0.5 rounded text-blue-300">
-                              Mana: {c.manaRequired}
-                            </span>
-                          )}
-                        </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          removeItemInSlot(i.id)
+                        }
+                        className="text-red-400 hover:text-red-300 text-sm"
+                        title="Remover card"
+                      >
+                        ✕
+                      </button>
 
-                        <button
-                          onClick={() =>
-                            setSelfCards((prev) => prev.filter((x) => x.id !== c.id))
-                          }
-                          className="text-red-400 hover:text-red-300 text-sm"
-                          title="Remover card"
-                        >
-                          ✕
-                        </button>
-                                                                                                
                     </div>
                   </div>
                 ))
               )
               }
             </div>
+
+          </fieldset>
+        </fieldset>
+        )}
+
+        {/* Cards */}
+        <fieldset className="border border-gray-600 p-3 rounded bg-gray-700 bg-opacity-50">
+          <legend className="font-semibold text-green-400 px-2">
+            {isTransformation ? "Cards adicionais" : "Cards"}
+          </legend>
+          {isTransformation && inheritBaseCards && selectedBaseToken && (
+            <p className="mb-2 text-xs text-cyan-200">
+              {selectedBaseToken.cards.length} card(s) herdado(s) de {selectedBaseToken.name}.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => setCardPickerOpen(true)}
+            className="w-full text-center bg-green-600 hover:bg-green-500 cursor-pointer px-6 py-2 rounded font-semibold transition-colors"
+          >
+            + Adicionar Card
+          </button>
+
+          <div className="pt-2">
+            {selfCards?.length === 0 ? (
+              <p className="text-gray-400 text-sm text-center">Nenhum card adicionado.</p>
+            ) : (
+              selfCards?.map((c) => (
+                <div
+                  key={c.id}
+                  className="bg-gray-800 p-3 rounded flex flex-col gap-2 hover:bg-gray-750 transition-colors"
+
+                >
+                  <div className="flex items-start gap-3">
+                    <img
+                      src={c.img}
+                      alt="Card"
+                      className="w-12 h-12 object-cover rounded border border-gray-600"
+                      draggable={false}
+                    />
+
+                    <div className="flex-1 overflow-hidden">
+                      <h2 className="text-sm font-bold text-white line-clamp-2">
+                        {c.name}
+                      </h2>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 text-xs text-gray-400">
+                      <span className="bg-gray-700 px-2 py-0.5 rounded">
+                        Ações: {c.actionsRequired}
+                      </span>
+
+                      {c.baseDice && (
+                        <span className="bg-gray-700 px-2 py-0.5 rounded">
+                          {c.baseDice.quantity}
+                          {c.baseDice.type}
+                        </span>
+                      )}
+
+                      {c.manaRequired && (
+                        <span className="bg-blue-700/40 px-2 py-0.5 rounded text-blue-300">
+                          Mana: {c.manaRequired}
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelfCards((prev) => prev.filter((x) => x.id !== c.id))
+                      }
+                      className="text-red-400 hover:text-red-300 text-sm"
+                      title="Remover card"
+                    >
+                      ✕
+                    </button>
+
+                  </div>
+                </div>
+              ))
+            )
+            }
+          </div>
 
         </fieldset>
 
@@ -762,6 +972,39 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
           </label>
         </div>
 
+        {/* Usuário */}
+        <fieldset className="border border-gray-600 p-3 rounded bg-gray-700 bg-opacity-50">
+          <legend className="font-semibold text-green-400 px-2">
+            Dono do Token
+          </legend>
+
+          <select
+            className="w-full p-2 rounded bg-gray-700 border border-gray-600 text-gray-200 focus:border-green-400 focus:outline-none cursor-pointer"
+            value={selectedUser?.id ?? initialToken?.ownerId ?? ""}
+            required
+            onChange={(e) => {
+              const user = users.find((u) => u.id === e.target.value);
+              setSelectedUser(user ?? null);
+            }}
+          >
+            {/* 🟢 Opção padrão quando nada estiver selecionado */}
+            <option value="" disabled>
+              Selecione um usuário...
+            </option>
+
+            {initialToken?.ownerId &&
+              !users.some((user) => user.id === initialToken.ownerId) && (
+                <option value={initialToken.ownerId}>Dono atual</option>
+              )}
+
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </select>
+        </fieldset>
+
         {/* Ações */}
         <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6 pt-4 border-t border-gray-600">
           <button
@@ -773,9 +1016,12 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
           </button>
           <button
             type="submit"
+            disabled={isSubmitting}
             className="w-full sm:w-auto bg-green-600 hover:bg-green-500 cursor-pointer px-6 py-2 rounded font-semibold transition-colors"
           >
-            Criar Token
+            {isSubmitting
+              ? "Salvando..."
+              : mode === "edit" ? "Salvar Token" : "Criar Token"}
           </button>
         </div>
       </form>
@@ -798,6 +1044,7 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
 
                   return (
                     <button
+                      type="button"
                       key={card.id}
                       disabled={alreadyAdded}
                       onClick={() => {
@@ -806,10 +1053,9 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
                         setCardPickerOpen(false);
                       }}
                       className={`w-full flex items-center gap-3 p-2 rounded
-                        ${
-                          alreadyAdded
-                            ? "bg-gray-700 opacity-50 cursor-not-allowed"
-                            : "bg-gray-700 hover:bg-gray-600"
+                        ${alreadyAdded
+                          ? "bg-gray-700 opacity-50 cursor-not-allowed"
+                          : "bg-gray-700 hover:bg-gray-600"
                         }`}
                     >
                       <img
@@ -832,6 +1078,7 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
             </div>
 
             <button
+              type="button"
               onClick={() => setCardPickerOpen(false)}
               className="mt-4 w-full bg-red-600 hover:bg-red-700 py-2 rounded font-semibold"
             >
@@ -841,7 +1088,7 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
         </div>
       )}
 
-      {itemChooseOpen && !slotTarget &&(
+      {itemChooseOpen && !slotTarget && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <div className="bg-gray-800 rounded-lg w-full max-w-md p-4 shadow-xl">
             <h3 className="text-lg font-bold text-blue-400 mb-3 text-center">
@@ -859,6 +1106,7 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
 
                   return (
                     <button
+                      type="button"
                       key={item.id}
                       disabled={alreadyAdded}
                       onClick={() => {
@@ -867,10 +1115,9 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
                         setItemChooseOpen(false);
                       }}
                       className={`w-full flex items-center gap-3 p-2 rounded
-                        ${
-                          alreadyAdded
-                            ? "bg-gray-700 opacity-50 cursor-not-allowed"
-                            : "bg-gray-700 hover:bg-gray-600"
+                        ${alreadyAdded
+                          ? "bg-gray-700 opacity-50 cursor-not-allowed"
+                          : "bg-gray-700 hover:bg-gray-600"
                         }`}
                     >
                       <img
@@ -891,13 +1138,14 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
             </div>
 
             <button
+              type="button"
               onClick={() => setItemChooseOpen(false)}
               className="mt-4 w-full bg-red-600 hover:bg-red-700 py-2 rounded font-semibold"
             >
               Fechar
             </button>
           </div>
-        </div>        
+        </div>
       )}
 
       {itemChooseOpen && slotTarget && slotTarget !== "commonSlot" && (
@@ -910,6 +1158,7 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
             <div className="max-h-[320px] overflow-y-auto space-y-2">
               {items.filter((i) => slotTarget === slotToTokenInventory[i.slot]).map((item) => (
                 <button
+                  type="button"
                   key={item.id}
                   onClick={() => {
                     handleInvChange(slotTarget, item);
@@ -930,6 +1179,7 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
             </div>
 
             <button
+              type="button"
               onClick={() => {
                 setItemChooseOpen(false);
                 setSlotTarget(null);
@@ -946,5 +1196,9 @@ export const TokenForm: React.FC<TokenFormProps> = ({ onSave, onClose, cards, it
 
   );
 };
+
+const TokenForm: React.FC<Omit<TokenModelFormProps, "initialToken" | "mode">> = (props) => (
+  <TokenModelForm {...props} mode="create" />
+);
 
 export default TokenForm;

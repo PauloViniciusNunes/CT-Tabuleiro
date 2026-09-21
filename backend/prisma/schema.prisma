@@ -1,0 +1,635 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id String @id @default(cuid())
+
+  name     String
+  email    String @unique
+  password String
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaignsOwned Campaign[] @relation("CampaignOwner")
+
+  campaignMemberships CampaignMember[]
+
+  token          Token[]
+  tokenInstances TokenInstance[]
+  cards          Card[]
+  items          Item[]
+}
+
+model Campaign {
+  id String @id @default(cuid())
+
+  name String
+
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownerId String
+
+  owner User @relation("CampaignOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  maps    Map[]
+  tokens  Token[]
+  members CampaignMember[]
+}
+
+model CampaignMember {
+  id String @id @default(cuid())
+
+  campaignId   String
+  userId       String
+  currentMapId String?
+
+  joinedAt DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentMap Map? @relation("CampaignMemberCurrentMap", fields: [currentMapId], references: [id], onDelete: SetNull)
+
+  @@unique([campaignId, userId])
+  @@index([currentMapId])
+}
+
+model Map {
+  id String @id @default(cuid())
+
+  img String? @default("")
+
+  name String
+
+  description String?
+
+  rows Int @default(25)
+  cols Int @default(25)
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  campaignId String
+
+  campaign       Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  boardTokens    TokenInstance[]
+  mapObjs        MapObject[]
+  currentViewers CampaignMember[] @relation("CampaignMemberCurrentMap")
+}
+
+enum MapObjectType {
+  wall
+  chest
+  article
+  door
+}
+
+model MapObject {
+  id   String        @id @default(cuid())
+  type MapObjectType @default(wall)
+
+  row Int @default(1)
+  col Int @default(1)
+
+  imgUrl String
+
+  itemRelativeId String
+
+  linkedMapId  String
+  linkedMap    Map     @relation(fields: [linkedMapId], references: [id], onDelete: Cascade)
+  linkedDoorId String?
+}
+
+enum TokenStatus {
+  Vivo
+  Morto
+}
+
+enum TokenTeam {
+  Red
+  Blue
+  Green
+  Yellow
+}
+
+enum TokenClass {
+  Guerreiro
+  Mago
+  Barbaro
+  Ladino
+  Feiticeiro
+}
+
+enum TokenType {
+  player
+  ia
+  boss
+}
+
+enum ParalysisState {
+  none
+  partial
+  full
+}
+
+enum TokenPrimaryElement {
+  neutro
+  fire
+  water
+  earth
+  air
+  light
+  dark
+}
+
+enum TokenPrimaryDisvantage {
+  none
+  fire
+  water
+  earth
+  air
+  light
+  dark
+}
+
+enum Attributes {
+  forca
+  destreza
+  consistencia
+  inteligencia
+  sabedoria
+  carisma
+}
+
+model Token {
+  id String @id @default(cuid())
+
+  // ===== Transformation =====
+
+  isTransformation        Boolean  @default(false)
+  baseTokenId             String?
+  inheritBaseCards        Boolean  @default(true)
+  attributeMultipliers    Json     @default("{\"forca\":1,\"destreza\":1,\"consistencia\":1,\"inteligencia\":1,\"sabedoria\":1,\"carisma\":1}")
+  additionalCards         Json     @default("[]")
+  additionalMechanics     String[] @default([])
+  additionalDisadvantages String[] @default([])
+
+  baseToken       Token?  @relation("TokenTransformations", fields: [baseTokenId], references: [id], onDelete: Restrict)
+  transformations Token[] @relation("TokenTransformations")
+
+  lastDamagerId String?
+
+  name String
+
+  type TokenType
+
+  imageUrl String
+
+  // ===== Inventory Settings =====
+
+  inventoryDimensionsCols Int      @default(5)
+  inventoryDimensionsRows Int      @default(4)
+  primaryHandId           String   @default("")
+  offHandId               String   @default("")
+  neckId                  String   @default("")
+  ringId                  String   @default("")
+  armorId                 String   @default("")
+  commonSlotIds           String[]
+  economy                 Int      @default(0)
+
+  // ===== Inventory Settings =====
+
+  // ===== Attributes =====
+
+  forca        Int @default(25)
+  destreza     Int @default(25)
+  consistencia Int @default(25)
+  inteligencia Int @default(25)
+  sabedoria    Int @default(25)
+  carisma      Int @default(25)
+
+  level Int @default(2)
+  xp    Int @default(0)
+
+  // ===== Occasional Addition =====
+
+  bonusForca        Int @default(0)
+  bonusDestreza     Int @default(0)
+  bonusConsistencia Int @default(0)
+  bonusInteligencia Int @default(0)
+  bonusSabedoria    Int @default(0)
+  bonusCarisma      Int @default(0)
+
+  // ===== Proficiencies =====
+
+  profForca        Boolean @default(false)
+  profDestreza     Boolean @default(false)
+  profConsistencia Boolean @default(false)
+  profInteligencia Boolean @default(false)
+  profSabedoria    Boolean @default(false)
+  profCarisma      Boolean @default(false)
+
+  // ===== Class =====
+
+  class TokenClass
+
+  // ===== Status =====
+
+  status TokenStatus @default(Vivo)
+
+  team TokenTeam
+
+  // ===== Position =====
+
+  col      Int
+  row      Int
+  startCol Int?
+  startRow Int?
+
+  // ===== Combat =====
+
+  bodyToBodyRange Int @default(1)
+  magicalRange    Int @default(6)
+  naturalMovement Int @default(6)
+
+  pendingXPAllocating Int @default(0)
+
+  currentLife Int
+  maxLife     Int
+
+  currentMana Int
+  maxMana     Int
+
+  certaintyDiceRemaining Int?
+
+  paralysisState ParalysisState?
+
+  tokenPrimaryElement String[] @default([])
+
+  tokenPrimaryDisvantage String[] @default([])
+
+  tokenCards Json @default("[]")
+  cards      Json @default("[]")
+
+  tokenEffects   Json  @default("[]")
+  visualOverlays Json  @default("[]")
+  bossSettings   Json?
+
+  // ===== Relations =====
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([baseTokenId])
+}
+
+model TokenInstance {
+  id String @id @default(cuid())
+
+  // Snapshot of the template transformation configuration. The effective
+  // attributes/cards are copied from the resolved template on instantiation.
+  templateTokenId         String?
+  isTransformation        Boolean  @default(false)
+  baseTokenId             String?
+  inheritBaseCards        Boolean  @default(true)
+  attributeMultipliers    Json     @default("{\"forca\":1,\"destreza\":1,\"consistencia\":1,\"inteligencia\":1,\"sabedoria\":1,\"carisma\":1}")
+  additionalCards         Json     @default("[]")
+  additionalMechanics     String[] @default([])
+  additionalDisadvantages String[] @default([])
+
+  lastDamagerId String?
+
+  name String
+
+  type TokenType
+
+  imageUrl String
+
+  // ===== Inventory Settings =====
+
+  inventoryDimensionsCols Int      @default(5)
+  inventoryDimensionsRows Int      @default(5)
+  primaryHandId           String
+  offHandId               String
+  neckId                  String
+  ringId                  String
+  armorId                 String
+  commonSlotIds           String[]
+  economy                 Int      @default(0)
+
+  // ===== Inventory Settings =====
+
+  // ===== Attributes =====
+
+  forca        Int @default(25)
+  destreza     Int @default(25)
+  consistencia Int @default(25)
+  inteligencia Int @default(25)
+  sabedoria    Int @default(25)
+  carisma      Int @default(25)
+
+  level Int @default(2)
+  xp    Int @default(0)
+
+  // ===== Occasional Addition =====
+
+  bonusForca        Int @default(0)
+  bonusDestreza     Int @default(0)
+  bonusConsistencia Int @default(0)
+  bonusInteligencia Int @default(0)
+  bonusSabedoria    Int @default(0)
+  bonusCarisma      Int @default(0)
+
+  // ===== Proficiencies =====
+
+  profForca        Boolean @default(false)
+  profDestreza     Boolean @default(false)
+  profConsistencia Boolean @default(false)
+  profInteligencia Boolean @default(false)
+  profSabedoria    Boolean @default(false)
+  profCarisma      Boolean @default(false)
+
+  // ===== Class =====
+
+  class TokenClass
+
+  // ===== Status =====
+
+  status TokenStatus @default(Vivo)
+
+  team TokenTeam
+
+  // ===== Position =====
+
+  col Int
+  row Int
+
+  startCol Int?
+  startRow Int?
+
+  // ===== Combat =====
+
+  bodyToBodyRange Int @default(1)
+  magicalRange    Int @default(6)
+  naturalMovement Int @default(6)
+
+  pendingXPAllocating Int @default(0)
+
+  currentLife Int
+  maxLife     Int
+
+  currentMana Int
+  maxMana     Int
+
+  certaintyDiceRemaining Int?
+
+  paralysisState ParalysisState?
+
+  tokenPrimaryElement String[] @default([])
+
+  tokenPrimaryDisvantage String[] @default([])
+
+  tokenCards Json                @default("[]")
+  cards      Json                @default("[]")
+  inventory  InstanceTokenItem[]
+
+  tokenEffects   Json  @default("[]")
+  visualOverlays Json  @default("[]")
+  bossSettings   Json?
+
+  // ===== Relations =====
+
+  mapId String
+  map   Map    @relation(fields: [mapId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([mapId])
+  @@index([userId])
+  @@index([templateTokenId])
+  @@index([baseTokenId])
+}
+
+model Card {
+  id String @id @default(cuid())
+
+  name String
+  desc String
+  img  String
+
+  spellType   String?
+  spellCircle Int?
+
+  baseDice        Json?
+  manaRequired    Int?
+  actionsRequired Int?
+  duration        Int?
+
+  recharge          Int     @default(0)
+  remainingDuration Int     @default(0)
+  itsLoaded         Boolean @default(true)
+
+  causality        String
+  causalityType    String
+  defenseReplicate String?
+  partialOffensive Boolean?
+  entityQuantity   Int      @default(0)
+
+  effectToApply Json @default("[]")
+  target        Json
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  instaceCardsIds String[] @default([])
+
+  @@index([userId])
+  @@index([name])
+}
+
+model Item {
+  id String @id @default(cuid())
+
+  name   String
+  imgUrl String
+  desc   String
+
+  slot                   String
+  ocasionalAdd           Int
+  atributeToOcasionalAdd String
+  rarity                 String
+  value                  Int
+  craftable              Boolean  @default(false)
+  craftableWith          Json?
+  isArtifice             Boolean  @default(false)
+  artficeSettings        Json
+  habilityCards          Json?
+  passiveMechanics       String[] @default([])
+  vfxUrl                 Json?
+  sfxUrl                 String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  cardsIds String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  instanceItems InstanceTokenItem[]
+
+  @@index([userId])
+  @@index([name])
+  @@index([slot])
+  @@index([rarity])
+}
+
+model InstanceTokenCard {
+  id String @id @default(cuid())
+
+  tokenId String
+
+  cardId String
+
+  remainingRecharge Int     @default(0)
+  remainingDuration Int     @default(0)
+  itsLoaded         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tokenId, cardId])
+  @@index([tokenId])
+  @@index([cardId])
+}
+
+model InstanceTokenItem {
+  id String @id @default(cuid())
+
+  tokenInstanceId String
+  tokenInstace    TokenInstance @relation(fields: [tokenInstanceId], references: [id], onDelete: Cascade)
+
+  itemInstanceId String
+  itemInstace    Item   @relation(fields: [itemInstanceId], references: [id], onDelete: Cascade)
+
+  quantity Int @default(1)
+
+  equipped Boolean @default(false)
+
+  durability    Int?
+  maxDurability Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tokenInstanceId, itemInstanceId])
+  @@index([tokenInstanceId])
+  @@index([itemInstanceId])
+}
+
+model PendingQueue {
+  id String @id @default(uuid())
+
+  // Alterado para JSON. Conversão correta através de auxílio de Mappers
+  pendingAttack          Json?
+  pendingReaction        Json?
+  pendingCardResolution  Json?
+  pendingOffensiveCard   Json?
+  pendingSpecialResponse Json?
+  pendingFreeResponse    Json?
+  pendingEsquivaRoll     Json?
+
+  // Lado "passivo" da relação 1-para-1 com o BattleState
+  battleState BattleState?
+}
+
+model BattleState {
+  id                  String  @id @default(uuid())
+  mapId               String  @unique
+  status              String // Mapeia "Not in Battle" | "In Battle"
+  round               Int
+  currentTurnIndex    Int
+  currentActorId      String? // Pode ser nulo
+  currentActorUserId  String?
+  phase               String
+  isReallocatingTurns Boolean
+  isAIActing          Boolean
+  turnVersion         Int
+
+  // ===== CAMPO DE BLOQUEIOS =====
+  locks Json
+
+  // ===== JSON ARRAYS / DICTS =====
+  turnOrder             Json
+  accumulatedActions    Json
+  activeEffects         Json
+  actionHistory         Json
+  tokensBattlePosition  Json @default("{}")
+  lastTurnActed         Json @default("{}")
+  lastTurnMoved         Json @default("{}")
+  lastAllUsedResponse   Json @default("{}")
+  tokensInOffensiveCard Json @default("[]")
+
+  didActThisTurn Json @default("{}")
+  movedThisTurn  Json @default("{}")
+
+  tokenParalysis Json @default("{}")
+
+  cardsNotRechargeds Json @default("{}")
+  timeToRechargeCard Json @default("{}")
+  armedCard          Json @default("{}")
+
+  selectedPivots Json @default("[]")
+
+  freeActionLock        Json @default("{}")
+  remainingExtraActions Json @default("{}")
+  previsionActions      Json @default("{}")
+  prevReaction          Json @default("{}")
+  postParalysis         Json @default("{}")
+
+  // ===== REFS =====
+  totalActionsReturn  Int @default(0)
+  maxSelectablePivots Int @default(0)
+  remainingPivots     Int @default(0)
+
+  activeMechanics           Json @default("{}")
+  mechanicEntitiesInstances Json @default("[]")
+
+  cardAreUsed                  Boolean @default(false)
+  tokenInAmbientPivotSelection String  @default("")
+
+  // Lado dono da relação 1-para-1 com PendingQueue: precisa do @unique no ID
+  pendingQueueId String       @unique
+  pendingQueue   PendingQueue @relation(fields: [pendingQueueId], references: [id], onDelete: Cascade)
+
+  // Timestamps de controle
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

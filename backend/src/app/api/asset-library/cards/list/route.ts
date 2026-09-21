@@ -1,0 +1,1 @@
+export {GET} from "@/modules/asset-library/cards/routes/list/route"

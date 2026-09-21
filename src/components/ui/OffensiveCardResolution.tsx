@@ -1,17 +1,13 @@
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { Shield, XCircle } from "lucide-react";
 import {GiDiceTwentyFacesTwenty } from "react-icons/gi";
 import { Brain } from "lucide-react";
 
-import type { Card } from "../../types/card";
-import type { Token, TokenAttributes } from "../../types/token";
-import type { RollResult } from "../../types/battle";
+import type { Card, OffensiveCardAttribute } from "../../types/card";
+import type { Token } from "../../types/token";
 import { type ResultType } from "../../utils/battleCalculations";
-import {
-  calculateActionRoll,
-  calculateMedianRoll,
-} from "../../utils/battleCalculations";
+import { calculateMedianRoll } from "../../utils/battleCalculations";
 
 interface OffensiveCardProps {
   card: Card;
@@ -24,19 +20,16 @@ interface OffensiveCardProps {
 
   defenderToken: Token;
   defenderTokenPrevActions: number,
-  tokenBattlePosition: (attr: keyof TokenAttributes) => number;
+  tokenBattlePosition: (attr: OffensiveCardAttribute) => number;
   onExecute: (choice: {
-    usedCard: Card;
-    rawCardResult: number;
-    rawTestResult: number;
+    defenderId: string;
+    attribute: OffensiveCardAttribute;
     usedMana: number;
     usedActions: number;
     usedCertainDie: boolean;
-    defenseRollResult: RollResult;
-    token: Token;
     previewAction: boolean;
-  }) => void;
-  onCancel?: () => void;
+  }) => void | Promise<void>;
+  onCancel?: () => void | Promise<void>;
 }
 
 
@@ -61,79 +54,80 @@ const OffensiveCardResolution: React.FC<OffensiveCardProps> = ({
   const [usedMana, setUsedMana] = useState(0);
   const [usedActions, setUsedActions] = useState(1);
   const [selectedAttribute, setSelectedAttribute] =
-    useState<keyof TokenAttributes>("forca");
+    useState<OffensiveCardAttribute>("forca");
   const [usedCertaintyDie, setUsedCertaintyDie] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submissionLockRef = useRef(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
 
-  const [previewDefenseRoll, setPreviewDefenseRoll] = useState(0);
-  const [resultType, setResultType] = useState<ResultType>("fail");
+  const previewDefenseRoll = calculateMedianRoll(
+    usedActions,
+    usedMana,
+    tokenBattlePosition(selectedAttribute),
+    tokenProficiency,
+    defenderToken.attributes[selectedAttribute],
+    0,
+  );
 
-  useEffect(() => {
-    const preview = calculateMedianRoll(
-      usedActions,
-      usedMana,
-      tokenBattlePosition(selectedAttribute),
-      tokenProficiency,
-      defenderToken.attributes[selectedAttribute],
-      0
-    );
-    setPreviewDefenseRoll(preview);
+  const resultType: ResultType = usedCertaintyDie
+    ? "total"
+    : previewDefenseRoll < testResult
+      ? "fail"
+      : previewDefenseRoll === testResult
+        ? "normal"
+        : previewDefenseRoll >= testResult + 10
+          ? "critical"
+          : "success";
 
-    if (usedCertaintyDie) setResultType("total");
-    else if (preview < testResult) setResultType("fail");
-    else if (preview === testResult) setResultType("normal");
-    else if (preview >= testResult + 10) setResultType("critical");
-    else setResultType("success");
-  }, [usedActions, usedMana, selectedAttribute, usedCertaintyDie, testResult]);
+  const submitResponse = async (previewAction: boolean) => {
+    if (isSubmitting || submissionLockRef.current) return;
 
-  const handleConfirm = () => {
-    const roll = calculateActionRoll({
-      tokenId: defenderToken.id,
-      Q: usedActions,
-      P: tokenBattlePosition(selectedAttribute),
-      A: defenderToken.attributes[selectedAttribute],
-      PF: tokenProficiency,
-      O: 0,
-      N: usedMana > 0 ? 1 : 0,
-      L: defenderToken.attributes.level,
-      M: usedMana,
-    });
-    onExecute({
-      usedCard: card,
-      rawCardResult: cardResult,
-      rawTestResult: testResult,
-      usedMana,
-      usedActions,
-      usedCertainDie: usedCertaintyDie,
-      defenseRollResult: roll,
-      token: defenderToken,
-      previewAction: false,
-    });
+    submissionLockRef.current = true;
+    setIsSubmitting(true);
+    setSubmissionError(null);
+    let submitted = false;
+    try {
+      await onExecute({
+        defenderId: defenderToken.id,
+        attribute: selectedAttribute,
+        usedMana,
+        usedActions,
+        usedCertainDie: usedCertaintyDie,
+        previewAction,
+      });
+      submitted = true;
+    } catch (error) {
+      setSubmissionError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível resolver a defesa.",
+      );
+    } finally {
+      // A tela será desmontada após sucesso. Em caso de erro, liberar para
+      // permitir uma nova tentativa sem permitir duplo envio em trânsito.
+      if (!submitted) {
+        submissionLockRef.current = false;
+        setIsSubmitting(false);
+      }
+    }
   };
 
-  const handlePreviewConfirm = () => {
-    const roll = calculateActionRoll({
-      tokenId: defenderToken.id,
-      Q: usedActions,
-      P: tokenBattlePosition(selectedAttribute),
-      A: defenderToken.attributes[selectedAttribute],
-      PF: tokenProficiency,
-      O: 0,
-      N: usedMana > 0 ? 1 : 0,
-      L: defenderToken.attributes.level,
-      M: usedMana,
-    });
+  const handleConfirm = () => void submitResponse(false);
+  const handlePreviewConfirm = () => void submitResponse(true);
+  const handleCancel = async () => {
+    if (!onCancel || submissionLockRef.current) return;
 
-    onExecute({
-      usedCard: card,
-      rawCardResult: cardResult,
-      rawTestResult: testResult,
-      usedMana,
-      usedActions,
-      usedCertainDie: usedCertaintyDie,
-      defenseRollResult: roll,
-      token: defenderToken,
-      previewAction: true,
-    });
+    submissionLockRef.current = true;
+    setIsSubmitting(true);
+    try {
+      await onCancel();
+    } catch (error) {
+      setSubmissionError(
+        error instanceof Error ? error.message : "Não foi possível cancelar a defesa.",
+      );
+      submissionLockRef.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   const resultColor =
@@ -196,7 +190,7 @@ const OffensiveCardResolution: React.FC<OffensiveCardProps> = ({
             <select
               value={selectedAttribute}
               onChange={(e) =>
-                setSelectedAttribute(e.target.value as keyof TokenAttributes)
+                setSelectedAttribute(e.target.value as OffensiveCardAttribute)
               }
               className="mt-1 w-full rounded border border-gray-700 bg-gray-900 p-2 text-sm"
             >
@@ -251,10 +245,15 @@ const OffensiveCardResolution: React.FC<OffensiveCardProps> = ({
         </div>
 
         {/* Actions */}
+        {submissionError && (
+          <p className="mt-4 text-right text-xs text-red-400">{submissionError}</p>
+        )}
+
         <div className="mt-5 flex items-center justify-end gap-2">
           {onCancel && (
             <button
-              onClick={onCancel}
+              onClick={() => void handleCancel()}
+              disabled={isSubmitting}
               className="flex items-center gap-1 rounded px-3 py-1 text-sm text-gray-300 hover:bg-gray-700"
             >
               <XCircle className="h-4 w-4" />
@@ -262,11 +261,12 @@ const OffensiveCardResolution: React.FC<OffensiveCardProps> = ({
             </button>
           )}
           {
-            defenderTokenPrevActions > 0 &&
+            defenderTokenPrevActions > 0 && !usedCertaintyDie &&
             (
             <button
                 onClick={handlePreviewConfirm}
-                className="flex items-center gap-2 rounded bg-pink-600 px-4 py-2 text-sm font-bold hover:bg-pink-700"
+                disabled={isSubmitting}
+                className="flex items-center gap-2 rounded bg-pink-600 px-4 py-2 text-sm font-bold hover:bg-pink-700 disabled:cursor-wait disabled:opacity-60"
             >
                 <Brain className="h-4 w-4" />
                 Prever Card
@@ -275,7 +275,8 @@ const OffensiveCardResolution: React.FC<OffensiveCardProps> = ({
           }
           <button
             onClick={handleConfirm}
-            className="flex items-center gap-2 rounded bg-orange-600 px-4 py-2 text-sm font-bold hover:bg-orange-700"
+            disabled={isSubmitting}
+            className="flex items-center gap-2 rounded bg-orange-600 px-4 py-2 text-sm font-bold hover:bg-orange-700 disabled:cursor-wait disabled:opacity-60"
           >
             <GiDiceTwentyFacesTwenty className="h-4 w-4" />
             Confirmar Defesa

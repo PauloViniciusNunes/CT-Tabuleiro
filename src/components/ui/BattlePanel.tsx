@@ -8,6 +8,7 @@ interface BattlePanelProps {
   onEndBattle: () => void;
   onNextTurn: () => void;
   boardBoss: Token | null;
+  isGameMaster: boolean;
 }
 
 export const BattlePanel: React.FC<BattlePanelProps> = ({
@@ -17,6 +18,7 @@ export const BattlePanel: React.FC<BattlePanelProps> = ({
   onEndBattle,
   onNextTurn,
   boardBoss,
+  isGameMaster,
 }) => {
 
   const canStartBattle = () => {
@@ -53,22 +55,26 @@ export const BattlePanel: React.FC<BattlePanelProps> = ({
           <div className="space-y-3">
             <p className="text-gray-400 text-sm">Nenhuma batalha em andamento</p>
 
-            <button
-              onClick={onStartBattle}
-              disabled={!canStartBattle()}
-              className={`w-full py-2 rounded font-bold text-white ${
-                canStartBattle()
-                  ? ( boardBoss ? "bg-purple-700 text-white": "bg-gray-900 text-gray-300")
-                  : "bg-gray-600 cursor-not-allowed"
-              }`}
-            >
-              Iniciar Batalha
-            </button>
+            {isGameMaster && (
+              <>
+                <button
+                  onClick={onStartBattle}
+                  disabled={!canStartBattle()}
+                  className={`w-full py-2 rounded font-bold text-white ${
+                    canStartBattle()
+                      ? (boardBoss ? "bg-purple-700 text-white" : "bg-gray-900 text-gray-300")
+                      : "bg-gray-600 cursor-not-allowed"
+                  }`}
+                >
+                  Iniciar Batalha
+                </button>
 
-            {!canStartBattle() && (
-              <p className="text-xs text-yellow-500">
-                Precisa de tokens de times diferentes no tabuleiro
-              </p>
+                {!canStartBattle() && (
+                  <p className="text-xs text-yellow-500">
+                    Precisa de tokens de times diferentes no tabuleiro
+                  </p>
+                )}
+              </>
             )}
           </div>
         ) : (

@@ -2,7 +2,7 @@ import type { Token } from "../types/token";
 import type {
     EffectType,
     EffectMoment,
-    TokenPrimaryElement,
+    PrimaryMechanic,
     CombinationResult
 } from "../types/effects";
 
@@ -51,7 +51,7 @@ export function applyAreaEffect(
     effect: EffectType,
     intensity: number,
     duration: number,
-    resultantElement: TokenPrimaryElement
+    resultantElement: PrimaryMechanic
 ) {
     const affectedTokens = getTokensInRadius(
         context.boardTokens,
@@ -175,7 +175,7 @@ export function triggerExplosion(
 export function applyTokenEffect(
     context: EngineContext,
     token: Token,
-    resultantElement: TokenPrimaryElement,
+    resultantElement: PrimaryMechanic,
     typeEffect: EffectType,
     duration: number | undefined,
     intensity: number,
@@ -375,7 +375,7 @@ export function applyTokenEffect(
         intensity *= combo.intensityMultiplier;
     }
 
-    const permanentEffects: TokenPrimaryElement[] = [
+    const permanentEffects: PrimaryMechanic[] = [
         "darkfire",
         "darkelectric"
     ];
@@ -442,7 +442,7 @@ export function applyEffectsCausality(token: Token, context: EngineContext  ) {
         context.setBoardTokens((prev) =>
           prev.map((t) =>
             t.id === token.id
-              ? { ...t, currentLife: Math.max(0, (t.currentLife ?? 0) - (effect.elementResultant === token.tokenPrimaryDisvantege ? 2 * (effect.intensity) : effect.intensity)) }
+              ? { ...t, currentLife: Math.max(0, (t.currentLife ?? 0) - (token.tokenPrimaryDisvantege?.includes(effect.elementResultant) ? 2 * effect.intensity : effect.intensity)) }
               : t
           )
         );

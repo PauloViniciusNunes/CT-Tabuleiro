@@ -1,0 +1,2 @@
+ALTER TABLE "Item"
+ADD COLUMN "passiveMechanics" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
