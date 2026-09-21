@@ -61,10 +61,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_ORIGIN
-        fromService:
-          type: web
-          name: ct-tabuleiro
-          envVarKey: RENDER_EXTERNAL_URL
+        value: https://ct-tabuleiro.onrender.com
       - key: SOCKET_URL
         fromService:
           type: web
@@ -95,10 +92,7 @@ services:
           name: ct-tabuleiro-api
           envVarKey: JWT_SECRET
       - key: FRONTEND_ORIGIN
-        fromService:
-          type: web
-          name: ct-tabuleiro
-          envVarKey: RENDER_EXTERNAL_URL
+        value: https://ct-tabuleiro.onrender.com
 
 databases:
   - name: ct-tabuleiro-db
