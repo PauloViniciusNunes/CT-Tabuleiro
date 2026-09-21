@@ -1,0 +1,111 @@
+# Render Blueprint for the CT-Tabuleiro monorepo.
+# The free plans are suitable for evaluation. For persistent campaigns, upgrade
+# the API, Socket.IO and PostgreSQL resources before the free database expires.
+
+services:
+  - type: web
+    name: ct-tabuleiro-frontend
+    runtime: static
+    autoDeployTrigger: commit
+    # The repository-wide TypeScript check currently includes legacy modules
+    # that are not part of the Vite bundle. Vite still performs the production
+    # transformation and emits the deployable static application.
+    buildCommand: npm ci && npx vite build
+    staticPublishPath: ./dist
+    buildFilter:
+      ignoredPaths:
+        - backend/**
+    envVars:
+      - key: NODE_VERSION
+        value: 22.20.0
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: ct-tabuleiro-api
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: VITE_SOCKET_URL
+        fromService:
+          type: web
+          name: ct-tabuleiro-socket
+          envVarKey: RENDER_EXTERNAL_URL
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  - type: web
+    name: ct-tabuleiro-api
+    runtime: node
+    rootDir: backend
+    region: virginia
+    plan: free
+    autoDeployTrigger: commit
+    buildCommand: npm ci && npx prisma generate && npm run build
+    # Free web services do not support pre-deploy commands. migrate deploy is
+    # idempotent, so it is safe to run before each process start.
+    startCommand: npx prisma migrate deploy && npm run start
+    healthCheckPath: /api/health
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: NODE_VERSION
+        value: 22.20.0
+      - key: NODE_ENV
+        value: production
+      - key: CT_SKIP_BUILD_TYPECHECK
+        value: "1"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ct-tabuleiro-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_ORIGIN
+        fromService:
+          type: web
+          name: ct-tabuleiro-frontend
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: SOCKET_URL
+        fromService:
+          type: web
+          name: ct-tabuleiro-socket
+          envVarKey: RENDER_EXTERNAL_URL
+
+  - type: web
+    name: ct-tabuleiro-socket
+    runtime: node
+    rootDir: backend
+    region: virginia
+    plan: free
+    autoDeployTrigger: commit
+    buildCommand: npm ci && npx prisma generate
+    startCommand: npm run socket
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: NODE_VERSION
+        value: 22.20.0
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ct-tabuleiro-db
+          property: connectionString
+      - key: JWT_SECRET
+        fromService:
+          type: web
+          name: ct-tabuleiro-api
+          envVarKey: JWT_SECRET
+      - key: FRONTEND_ORIGIN
+        fromService:
+          type: web
+          name: ct-tabuleiro-frontend
+          envVarKey: RENDER_EXTERNAL_URL
+
+databases:
+  - name: ct-tabuleiro-db
+    region: virginia
+    plan: free
+    postgresMajorVersion: "17"
+    databaseName: ct_tabuleiro
+    user: ct_tabuleiro
+    connectionPool: none
+    ipAllowList: []

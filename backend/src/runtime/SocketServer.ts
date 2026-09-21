@@ -411,7 +411,14 @@ export class SocketServer {
 
         });
 
-        httpServer.listen(3001, "0.0.0.0");
+        const configuredPort = Number(process.env.PORT ?? 3001);
+        const port = Number.isInteger(configuredPort) && configuredPort > 0
+            ? configuredPort
+            : 3001;
+
+        httpServer.listen(port, "0.0.0.0", () => {
+            console.log(`Socket Server escutando em 0.0.0.0:${port}`);
+        });
 
     }
 

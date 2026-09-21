@@ -8,16 +8,8 @@ export function TokenInstanceAndCardMapperTokenCard(tokenId: string, card: Card)
         remainingRecharge:0 ,
         remainingDuration: 0,
         itsLoaded: true,
-        token: {
-            connect: {
-                id: tokenId
-            }
-        },
-        card: {
-            connect: {
-                id: card.id
-            }
-        }
+        tokenId,
+        cardId: card.id,
 
     }
 }
