@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import type { Token } from "../../types/token";
 import type { ActionChoice } from "../../types/battle";
-import { calculateDistance, isInAttackRange, calculateActionRoll } from "../../utils/battleCalculations";
+import { isInAttackRange, calculateActionRoll } from "../../utils/battleCalculations";
 import { Sword, Brain, Book, Zap, Sparkles} from "lucide-react";
 import { GiCardRandom} from "react-icons/gi";
 import { type Item } from "../../types/item";
@@ -40,7 +40,6 @@ interface ActionFormProps {
   onSelectionTarget: (b: boolean) => void;
   possibleTargets: Token[];
   findedTarget: Token | null;
-  isResponseAttack?: (defenderId: string, usedMana: number) => boolean;
   hidePass?: boolean; // NOVO: oculta o botão de "pular"
   restrictedMode: boolean;
 }
@@ -53,7 +52,6 @@ const ActionForm: React.FC<ActionFormProps> = ({
   onPass,
   possibleTargets,
   findedTarget,
-  isResponseAttack,
   hidePass,
   restrictedMode,
 }) => {
@@ -61,8 +59,7 @@ const ActionForm: React.FC<ActionFormProps> = ({
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [usedMana, setUsedMana] = useState<number>(0);
   const [usedActions, setUsedActions] = useState<number>(1);
-  const [pos, setPos] = useState<number>(1);
-  const willBeResponse = selectedTarget ? !!isResponseAttack?.(selectedTarget, usedMana) : false;
+  const pos = 1;
   const [displayForm, setDisplayForm] = useState(true);
   const [formPage, setFormPage] = useState<number>(1);
   const availableMechanics = useMemo<PrimaryMechanic[]>(
@@ -88,7 +85,6 @@ const ActionForm: React.FC<ActionFormProps> = ({
   ]
   .filter(Boolean) as Item[];
 
-  const commonItems: Item[] = token.inventory.commonSlot ?? []; // Atualizar, para itens específicos usáveis na mochila
   const availableItems: Item[] = [...equippedItems];
 
   //Seleção de Ação
@@ -165,20 +161,9 @@ const ActionForm: React.FC<ActionFormProps> = ({
   }  
 
   // Seleção de alvo
-  const [inTargetSelection, setInTargetSelection] = useState(false);
-
   // Selecionar item
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
-  const [itemCoerentAdd, setItemCoerentAdd] = useState<boolean>(false);
   const [isOpen, setIsOpen] = useState(false);
-  const itemOcasionalAdd = useRef<number>(0);
-  useEffect(() => {
-    itemOcasionalAdd.current = (selectedItem?.ocasionalAdd ?? 0);
-    const r = selectedAction === "ataque_fisico" ? "forca": (selectedAction === "desnortear" ? "sabedoria": (selectedAction === "previnir" ? "inteligencia" : "destreza"));
-    const s = r === selectedItem?.atributeToOcasionalAdd ? true : false;
-    setItemCoerentAdd(s);
-    console.log(`Adição ocasional do item: ${itemOcasionalAdd.current}`);
-  },[selectedItem, selectedAction]);
 
   // Dado Certo
   const [usedCertaintyDie, setUsedCertaintyDie] = useState<boolean>(false);
@@ -191,9 +176,6 @@ const ActionForm: React.FC<ActionFormProps> = ({
   const isPhysicalAttack = !!selectedAction && (selectedAction === "ataque_fisico" || selectedAction === "surpreender");
   const isMagicalAttack  = !!selectedAction && (selectedAction === "desnortear" || selectedAction === "previnir")
   const canAttack = !targetToken || (isPhysicalAttack && isInAttackRange(token, targetToken, "fisico")) || (isMagicalAttack && isInAttackRange(token, targetToken, "magico"));
-  const distance = targetToken ? calculateDistance(token, targetToken) : 0;
-  const maxRange = isPhysicalAttack ? token.bodytobodyRange : token.magicalRange;
-
   const hasEnoughActions = usedActions >= 1 && usedActions <= Math.max(1, availableActions);
   const hasEnoughMana = usedMana >= 0 && usedMana <= (token.currentMana ?? 0);
   const isFormValid = !!selectedAction && !!selectedTarget && hasEnoughActions && hasEnoughMana && !!canAttack || selectedAction === "mana_recover" || selectedAction === "card_selection";
@@ -218,7 +200,6 @@ const ActionForm: React.FC<ActionFormProps> = ({
     {
       console.debug("Detecta?")
       setSelectedTarget(findedTarget.id)
-      setInTargetSelection(false)
       setDisplayForm(true)
     }
   }, [findedTarget])
@@ -233,7 +214,6 @@ const ActionForm: React.FC<ActionFormProps> = ({
 
   const openTargetSelection = () =>
   {
-    setInTargetSelection(true)
     onSelectionTarget(true)
     setDisplayForm(false)
   }
@@ -266,7 +246,7 @@ const ActionForm: React.FC<ActionFormProps> = ({
         L: token.attributes.level,
         M: usedMana,
       };
-      const rollResult = calculateActionRoll(params) as any; // garante o shape esperado de RollResult
+      const rollResult = calculateActionRoll(params);
 
       const actionType = selectedAction === "ataque_fisico" ? "Ataque Físico": (selectedAction === "desnortear" ? "Desnortear": (selectedAction === "previnir" ? "Previnir" : (selectedAction === "surpreender" ? "Surpreender" : (selectedAction === "mana_recover" ? "Recarga de Mana" : "Seleção de Card"))));
 

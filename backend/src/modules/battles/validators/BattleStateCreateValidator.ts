@@ -9,7 +9,6 @@ export const InitiativeDataSchema = z.object({
 });
 
 export const BattleLocksSchema = z.object({
-  aiActing: z.boolean(),
   reallocating: z.boolean(),
   resolvingAction: z.boolean(),
 });
@@ -56,7 +55,6 @@ export const BattleStateValidator = z.object({
   currentActorUserId: z.string(),
   phase: z.string(),
   isReallocatingTurns: z.boolean(),
-  isAIActing: z.boolean(),
   turnVersion: z.number().int().nonnegative(),
   
   // Objetos e Record Maps (Armazenados como Json no Prisma)
@@ -71,4 +69,3 @@ export const BattleStateValidator = z.object({
   // Chave do Relacionamento 1-para-1 com PendingQueue
   pendingQueueId: z.string(),
 });
-

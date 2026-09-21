@@ -6,9 +6,4 @@ export class UserAPI {
             method: "GET"
         })
     }
-
-    static async getId(token: string) {
-        return await api<unknown>('/')
-    }
-
 }

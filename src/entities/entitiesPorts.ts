@@ -1,15 +1,18 @@
 import type { MapObject } from "../types/mapObject";
 import { cartesianMirror } from "../components/mechanisms/doors";
-import type { EngineContext } from "../types/BoardEngineContext";
+import type { Mapa } from "../types/mapas";
 
-export function generatePairDoor(context: EngineContext, primaryDoor: MapObject) {
+export function generatePairDoor(
+    maps: Mapa[],
+    selectedMapId: string | undefined,
+    primaryDoor: MapObject,
+): Mapa[] {
     if (
         !primaryDoor.linkedMapId ||
         !primaryDoor.linkedDoorId
-    ) return;
+    ) return maps;
 
-    context.setMapas(prev =>
-        prev.map(mapa => {
+    return maps.map(mapa => {
 
             // 🔥 encontrou mapa alvo
             if (mapa.id !== primaryDoor.linkedMapId) {
@@ -43,7 +46,7 @@ export function generatePairDoor(context: EngineContext, primaryDoor: MapObject)
                 imgUrl: primaryDoor.imgUrl,
 
                 // 🔥 agora linka de volta
-                linkedMapId: context.selectedMapa?.id,
+                linkedMapId: selectedMapId,
 
                 // 🔥 aponta para original
                 linkedDoorId: primaryDoor.id,
@@ -53,6 +56,5 @@ export function generatePairDoor(context: EngineContext, primaryDoor: MapObject)
                 ...mapa,
                 mapObjs: [...mapa.mapObjs, pairDoor]
             };
-        })
-    );
+        });
 }

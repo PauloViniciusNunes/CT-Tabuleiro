@@ -1,5 +1,5 @@
 import { Socket } from "socket.io-client";
-import { SocketEvent } from "../../../backend/src/runtime/Events";
+import { SocketEvent } from "../socket/events";
 import type { Dispatch, SetStateAction } from "react";
 import { PendingAttackMapper } from "../mappers/pendingMappers";
 import { PendingEsquivaRollMapper } from "../mappers/pendingMappers";

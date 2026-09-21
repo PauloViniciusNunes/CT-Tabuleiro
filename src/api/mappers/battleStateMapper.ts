@@ -36,14 +36,15 @@ export function BattleStateMapper(json: any): BattleState {
         currentActorUserId: json.currentActorUserId ?? "",
         phase: json.phase ?? "",
         isReallocatingTurns: !!json.isReallocatingTurns,
-        isAIActing: !!json.isAIActing,
         turnVersion: json.turnVersion ?? 0,
         movedThisTurn: json.movedThisTurn && typeof json.movedThisTurn === "object" && !Array.isArray(json.movedThisTurn)
             ? json.movedThisTurn as Record<string, boolean>
             : {},
+        tokensBattlePosition: json.tokensBattlePosition && typeof json.tokensBattlePosition === "object" && !Array.isArray(json.tokensBattlePosition)
+            ? json.tokensBattlePosition as Record<string, number>
+            : {},
         
         locks: {
-            aiActing: !!json.locks?.aiActing,
             reallocating: !!json.locks?.reallocating,
             resolvingAction: !!json.locks?.resolvingAction,
         },
@@ -82,9 +83,9 @@ export function JsonBattleStateMapper(state: BattleState): any {
         currentActorUserId: state.currentActorUserId,
         phase: state.phase,
         isReallocatingTurns: state.isReallocatingTurns,
-        isAIActing: state.isAIActing,
         turnVersion: state.turnVersion,
         movedThisTurn: state.movedThisTurn ?? {},
+        tokensBattlePosition: state.tokensBattlePosition,
         locks: state.locks,
         turnOrder: state.turnOrder,
         actionHistory: state.actionHistory,

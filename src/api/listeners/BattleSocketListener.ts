@@ -1,5 +1,5 @@
 import { Socket } from "socket.io-client";
-import { SocketEvent } from "../../../backend/src/runtime/Events";
+import { SocketEvent } from "../socket/events";
 
 import type { BattleState } from "../../types/battle";
 import type { Dispatch, SetStateAction } from "react";
@@ -58,7 +58,6 @@ export class BattleSocketListener {
             currentActorUserId: "",
             phase: "Initiative",
             locks: {
-                aiActing: false,
                 reallocating: false,
                 resolvingAction: false
             },
@@ -66,8 +65,8 @@ export class BattleSocketListener {
             activeEffects: {},
             actionHistory: [],
             isReallocatingTurns: false,
-            isAIActing: false,
             turnVersion: 0,
+            tokensBattlePosition: {},
             previsionActions: {},
             mapId: "",
             cardsNotRechargeds: {},

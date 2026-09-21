@@ -1,7 +1,5 @@
 import React, { useRef, useState } from "react";
 import type { Token } from "../../types/token";
-import type { RollResult } from "../../types/battle";
-import { calculateActionRoll } from "../../utils/battleCalculations";
 import { Zap } from "lucide-react";
 
 interface DefenseResolutionFormProps {

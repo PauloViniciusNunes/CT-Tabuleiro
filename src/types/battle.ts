@@ -79,7 +79,6 @@ export interface ActiveMechanic {
 }
 
 export interface BattleLocks {
-  aiActing: boolean;
   reallocating: boolean;
   resolvingAction: boolean;
 }
@@ -125,9 +124,9 @@ export interface BattleState {
   activeEffects: Record<string, TurnEffect[]>;
   actionHistory: ActionChoice[];
   isReallocatingTurns: boolean;
-  isAIActing: boolean;
   turnVersion: number;
   movedThisTurn?: Record<string, boolean>;
+  tokensBattlePosition: Record<string, number>;
   previsionActions: Record<string, number>;
   mapId: string;
   cardsNotRechargeds: Record<string, string[]>,

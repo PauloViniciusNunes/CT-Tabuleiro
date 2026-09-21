@@ -65,7 +65,6 @@ export class BattleEngineEndBattleService extends BattleEngineService {
             currentActorUserId: "",
             phase: "Initiative",
             locks: {
-                aiActing: false,
                 reallocating: false,
                 resolvingAction: false
             },
@@ -73,7 +72,6 @@ export class BattleEngineEndBattleService extends BattleEngineService {
             activeEffects: {},
             actionHistory: [],
             isReallocatingTurns: false,
-            isAIActing: false,
             turnVersion: 0,
             mapId: mapId
         };

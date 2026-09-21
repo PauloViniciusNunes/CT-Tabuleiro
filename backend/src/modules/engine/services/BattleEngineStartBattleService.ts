@@ -133,34 +133,6 @@ export class BattleEngineStartBattleService extends BattleEngineService {
         //this.context.setLastTurnActed(lastAct);
         //this.context.setLastTurnMoved(lastMove);
 
-        //this.context.hasEnteredFirstTurnRef.current = {};
-
-        /*
-        
-        export interface BattleState {
-          id: string,
-          status: BattleStatus;
-          round: number;
-          turnOrder: InitiativeData[];
-          currentTurnIndex: number;
-          currentActorId: string | null;
-          phase: string;
-          locks: BattleLocks;
-          accumulatedActions: Record<string, number>;
-          activeEffects: Record<string, TurnEffect[]>;
-          actionHistory: ActionChoice[];
-          isReallocatingTurns: boolean;
-          isAIActing: boolean;
-          turnVersion: number;
-          previsionActions: Record<string, number>;
-          mapId: string;
-          tokensInOffensiveCard: Token[],
-          maxSelectablePivots: number,
-          remainingPivots: number
-        }
-
-        */
-
         const userCurrentId: string = await discoverCurrentUserId(firstId, mapId)
 
         console.log("CURRENT USER: ", userCurrentId);
@@ -174,12 +146,11 @@ export class BattleEngineStartBattleService extends BattleEngineService {
             currentActorId: firstId,
             currentActorUserId: userCurrentId,
             phase: "Initiative",
-            locks: { aiActing: false, reallocating: false, resolvingAction: false },
+            locks: { reallocating: false, resolvingAction: false },
             accumulatedActions: acc,
             activeEffects: {},
             actionHistory: [],
             isReallocatingTurns: false,
-            isAIActing: false,
             turnVersion: 1,
             mapId: mapId,
             pendingQueueId: "",

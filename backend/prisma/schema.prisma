@@ -580,7 +580,6 @@ model BattleState {
   currentActorUserId  String?
   phase               String
   isReallocatingTurns Boolean
-  isAIActing          Boolean
   turnVersion         Int
 
   // ===== CAMPO DE BLOQUEIOS =====

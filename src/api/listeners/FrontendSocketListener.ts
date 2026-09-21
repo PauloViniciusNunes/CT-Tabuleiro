@@ -1,8 +1,7 @@
 import { Socket } from "socket.io-client";
-import { SocketEvent } from "../../../backend/src/runtime/Events";
+import { SocketEvent } from "../socket/events";
 import type { Dispatch, SetStateAction } from "react";
 import type { Token } from "../../types/token";
-import type { PivotCandidate } from "../../types/pivot";
 import type { Card } from "../../types/card";
 import { CardMapper } from "../mappers/cardMapper";
 
@@ -23,7 +22,6 @@ export class FrontendSocketListener {
     private readonly setOffensiveCardTestScore: Dispatch<SetStateAction<number | null>>
     private readonly setInTargetSelection: Dispatch<SetStateAction<boolean>>
     private readonly setAmbientPivotSelection: Dispatch<SetStateAction<boolean>>
-    private readonly setSelectedPivots: Dispatch<SetStateAction<PivotCandidate[]>>
     private readonly setArmedCard: Dispatch<SetStateAction<Card | undefined>>
     private readonly setAmbientPivotPhase: Dispatch<SetStateAction<"awaiting-pivot" | "preview" | "confirm">>
 
@@ -37,7 +35,6 @@ export class FrontendSocketListener {
         setOffensiveCardTestScore: Dispatch<SetStateAction<number | null>>,
         setInTargetSelection: Dispatch<SetStateAction<boolean>>,
         setAmbientPivotSelection: Dispatch<SetStateAction<boolean>>,
-        setSelectedPivots: Dispatch<SetStateAction<PivotCandidate[]>>,
         setArmedCard: Dispatch<SetStateAction<Card | undefined>>,
         setSelectedCell: Dispatch<SetStateAction<string | null>>,
         setAmbientPivotPhase: Dispatch<SetStateAction<"awaiting-pivot" | "preview" | "confirm">>
@@ -51,7 +48,6 @@ export class FrontendSocketListener {
         this.setOffensiveCardTestScore = setOffensiveCardTestScore
         this.setInTargetSelection = setInTargetSelection
         this.setAmbientPivotSelection = setAmbientPivotSelection
-        this.setSelectedPivots = setSelectedPivots
         this.setArmedCard = setArmedCard
         this.setSelectedCell = setSelectedCell
         this.setAmbientPivotPhase = setAmbientPivotPhase
@@ -69,7 +65,6 @@ export class FrontendSocketListener {
         this.socket.on(SocketEvent.FRONTEND_IN_TARGET_SELECTION, this.onInTargetSelection)
         this.socket.on(SocketEvent.FRONTEND_AMBIENT_PIVOT_SELECTION, this.onAmbientPivotSelection)
         this.socket.on(SocketEvent.FRONTEND_AMBIENT_PIVOT_PHASE, this.onAmbientPivotPhase)
-        this.socket.on(SocketEvent.FRONTEND_SELECTED_PIVOTS, this.onSelectedPivots)
         this.socket.on(SocketEvent.FRONTEND_ARMED_CARD, this.onArmedCard)
     }
 
@@ -84,7 +79,6 @@ export class FrontendSocketListener {
         this.socket.off(SocketEvent.FRONTEND_IN_TARGET_SELECTION, this.onInTargetSelection)
         this.socket.off(SocketEvent.FRONTEND_AMBIENT_PIVOT_SELECTION, this.onAmbientPivotSelection)
         this.socket.off(SocketEvent.FRONTEND_AMBIENT_PIVOT_PHASE, this.onAmbientPivotPhase)
-        this.socket.off(SocketEvent.FRONTEND_SELECTED_PIVOTS, this.onSelectedPivots)
         this.socket.off(SocketEvent.FRONTEND_ARMED_CARD, this.onArmedCard)
     }
 
@@ -168,10 +162,6 @@ export class FrontendSocketListener {
     private onAmbientPivotPhase = (payload: unknown) => {
         const v = (payload as ("awaiting-pivot" | "preview" | "confirm"))
         this.setAmbientPivotPhase(v)
-    }
-
-    private onSelectedPivots = (payload: unknown) => {
-        this.setSelectedPivots(Array.isArray(payload) ? payload as PivotCandidate[] : [])
     }
 
     private onArmedCard = (payload: unknown) => {

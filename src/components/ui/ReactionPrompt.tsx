@@ -1,14 +1,10 @@
 // /src/components/ui/ReactionPrompt.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import * as RadioGroup from "@radix-ui/react-radio-group";
-import * as Switch from "@radix-ui/react-switch";
 import { cva, type VariantProps } from "class-variance-authority";
-import { Shield, Zap, XCircle, Brain, Book, CardSim, Sparkles } from "lucide-react";
+import { Shield, Zap, XCircle, Brain, Book } from "lucide-react";
 import { GiCardRandom } from "react-icons/gi";
 import { ChevronUp, ChevronDown } from "lucide-react";
-import { GiDiceTwentyFacesTwenty } from "react-icons/gi";
 import type { Token } from "../../types/token";
-import type { RollResult } from "../../types/battle";
 import { calculateMedianRoll } from "../../utils/battleCalculations";
 
 import LEFTARROW from "../../assets/buttons/LEFTARROW.svg"
@@ -17,9 +13,6 @@ import PANNEL2 from "../../assets/hud/PANNEL2.svg"
 
 import { type ResultType } from "../../utils/battleCalculations";
 import { type Item } from "../../types/item";
-import {
-  calculateActionRoll,
-} from "../../utils/battleCalculations";
 import type { Card } from "../../types/card";
 
 type ReactionAttr = "destreza" | "consistencia" | "inteligencia" | "sabedoria" | "card";
@@ -31,7 +24,6 @@ export interface ReactionPromptProps {
   defenderName?: string;
   diretionalActionType?: string;
   diretionalActionValue?: number;
-  attackerId?: string;
   availableActions: number;
   availableMana?: number;
   certaintyDieCharges?: number;
@@ -129,7 +121,6 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
   const {
     // normalizado ou legado
     defenderName,
-    attackerId,
     diretionalActionType,
     tokenCards,
     diretionalActionValue,
@@ -254,7 +245,6 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
   ]
     .filter(Boolean) as Item[];
 
-  const commonItems: Item[] = actor?.inventory.commonSlot ?? []; // Atualizar, para itens específicos usáveis na mochila
   const availableItems: Item[] = [...equippedItems];
 
   // Selecionar item
@@ -275,19 +265,12 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
     usedActions >= 1 && usedActions <= Math.max(1, maxAvailableActions);
   const canUseCertaintyDie = resolvedCertainty > 0;
 
-  const reactionTypeLabel =
-    selectedAttribute === "consistencia"
-      ? "Consistência"
-      : selectedAttribute === "destreza"
-        ? "Destreza"
-        : selectedAttribute === "sabedoria"
-          ? "Sabedoria"
-          : "Inteligência";
-
-
   const allowedOptions = reactionOptionsByActionType[diretionalActionType ?? ""] ?? [];
 
-  const filteredOptions = actionOptions.filter((a) => allowedOptions.includes(a.value as ReactionAttr))
+  const filteredOptions = actionOptions.filter((option) =>
+    allowedOptions.includes(option.value as ReactionAttr) &&
+    (option.value !== "card" || haveDefenseCards),
+  )
   const currentIndex =
     Math.max(
       0,
@@ -712,47 +695,6 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
   );
 };
 
-function RadioCard(props: {
-  value: ReactionAttr;
-  title: string;
-  description: string;
-  icon?: React.ReactNode;
-  selected?: boolean;
-}) {
-  const { value, title, description, icon, selected } = props;
-
-  return (
-    <RadioGroup.Item
-      value={value}
-      className={[
-        "flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors",
-        selected
-          ? "border-purple-500 bg-purple-500/10"
-          : "border-gray-700 bg-gray-900/40 hover:bg-gray-900/60",
-      ].join(" ")}
-    >
-      {/* Círculo do radio */}
-      <div className="relative mt-1 h-4 w-4">
-        {/* Círculo externo */}
-        <div className="absolute inset-0 rounded-full border-2 border-gray-400" />
-
-        {/* Bolinha interna (Indicator do Radix) */}
-        <RadioGroup.Indicator className="absolute inset-0 flex items-center justify-center">
-          <div className="h-2 w-2 rounded-full bg-gray-300" />
-        </RadioGroup.Indicator>
-      </div>
-
-      {/* Conteúdo textual e ícone */}
-      <div className="flex flex-1 flex-col">
-        <div className="flex items-center gap-2">
-          {icon}
-          <span className="text-sm font-semibold text-gray-100">{title}</span>
-        </div>
-        <span className="text-xs text-gray-400">{description}</span>
-      </div>
-    </RadioGroup.Item>
-  );
-}
 
 
 export default ReactionPrompt;

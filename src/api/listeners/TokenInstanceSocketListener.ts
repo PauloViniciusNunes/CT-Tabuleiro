@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 
 import { Socket } from "socket.io-client";
-import { SocketEvent } from "../../../backend/src/runtime/Events";
+import { SocketEvent } from "../socket/events";
 
 import { TokenInstaceMapper } from "../mappers/tokenInstanceMapper";
 import { inventoryItems } from "../mappers/tokenInventoryMapper";

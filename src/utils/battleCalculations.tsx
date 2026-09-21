@@ -1,7 +1,6 @@
 import type { Token, TokenClass } from "../types/token";
 import type { ActionRollParams, RollResult } from "../types/battle";
 import type { Card } from "../types/card";
-import TokenEditForm from "../components/ui/TokenEditForm";
 
 
 /**
