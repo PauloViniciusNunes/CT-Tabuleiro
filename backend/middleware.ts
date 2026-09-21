@@ -1,5 +1,3 @@
-import "dotenv/config";
-
 import { NextRequest, NextResponse } from "next/server";
 
 import { corsHeadersForOrigin } from "@/shared/cors/origin";
