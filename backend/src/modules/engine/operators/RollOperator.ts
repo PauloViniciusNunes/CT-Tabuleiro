@@ -21,6 +21,7 @@ export interface RollData extends OperationContext, InterceptableData {
     readonly result?: RollResult;
     readonly appliedRollBonusKeys?: readonly string[];
     readonly appliedRollPenaltyKeys?: readonly string[];
+    readonly appliedRollQuantityBonusKeys?: readonly string[];
 }
 
 export type RollInput = RollIntent & {

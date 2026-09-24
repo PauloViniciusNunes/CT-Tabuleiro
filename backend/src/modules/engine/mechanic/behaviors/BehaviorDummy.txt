@@ -1,0 +1,24 @@
+import { MechanicEventType } from "../MechanicEventType";
+import type { MechanicEvent } from "../events/MechanicEvent";
+import type { MechanicInstance } from "../mechanics/MechanicInstance";
+import type { EngineContext } from "../types/engineContext";
+import { Behavior } from "./Behavior";
+import { Debugger } from "../../utils/Debug";
+
+// Modelo para Behavior
+
+export class BehaviorDummy extends Behavior {
+    lister(): MechanicEventType[] {
+        return [MechanicEventType.SOME_EVENT];
+    }
+
+    async execute(
+        context: EngineContext,
+        mechanic: MechanicInstance,
+        _event: MechanicEvent,
+        data?: Record<string, unknown>,
+    ): Promise<void> {
+
+
+    }
+}

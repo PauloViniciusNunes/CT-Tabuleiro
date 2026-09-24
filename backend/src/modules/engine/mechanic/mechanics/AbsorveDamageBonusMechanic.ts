@@ -3,11 +3,8 @@ import { Behavior } from "../behaviors/Behavior";
 import { MechanicEventType } from "../MechanicEventType";
 import { Interceptor } from "../interceptors/Interceptor";
 import { InterceptableData } from "../interceptors/Interceptor";
-import { AccumulateDamageAsRollBonusBehavior } from "../behaviors/AccumulateDamageAsRollBonusBehavior";
-import { AccumulatedRollBonusInterceptor } from "../interceptors/AccumulatedRollBonusInterceptor";
 import { AccumulatedStrenghtRollBonusInterceptor } from "../interceptors/AccumulatedStrenghtRollBonusInterceptor";
 import { AbsorveDamageBonusBehavior } from "../behaviors/AbsorveDamageBonusBehavior";
-
 
 export class AbsorveDamageBonusMechanic extends MechanicDefinition {
     id: string = "21";
@@ -23,6 +20,4 @@ export class AbsorveDamageBonusMechanic extends MechanicDefinition {
     };
     
     override interceptors: readonly Interceptor<InterceptableData>[] = [new AccumulatedStrenghtRollBonusInterceptor()];
-
-
 }

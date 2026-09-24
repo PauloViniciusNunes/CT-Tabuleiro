@@ -34,6 +34,7 @@ import { DamageCancelMechanic } from "./mechanics/DamageCancelMechanic";
 import { PoisonChargeMechanic } from "./mechanics/PoisonChargeMechanic";
 import { PoisonMechanic } from "./mechanics/PoisonMechanic";
 import { ActionSurgeMechanic } from "./mechanics/ActionSurgeMechanic";
+import { TreeExtraAttacksMechanic } from "./mechanics/TreeExtraAttacksMechanic";
 
 export class MechanicRegistry {
 
@@ -76,6 +77,7 @@ export class MechanicRegistry {
             "veneno": new PoisonMechanic(),
             "surto-acao": new ActionSurgeMechanic(),
             "action-surge": new ActionSurgeMechanic(),
+            "tres-ataques-extra": new TreeExtraAttacksMechanic(),
         } 
 
         const definition = record[type]
@@ -125,6 +127,7 @@ export class MechanicRegistry {
             "32": new PoisonChargeMechanic(),
             "33": new PoisonMechanic(),
             "34": new ActionSurgeMechanic(),
+            "999": new TreeExtraAttacksMechanic(),
         }
 
         const definition = record[id]

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { Search } from "lucide-react";
 import type { Token } from "../../types/token";
 import type { Card } from "../../types/card";
 import type { Target } from "../../types/target";
@@ -30,6 +31,7 @@ const CardForm: React.FC<CardFormProps> = ({
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string>("");
   const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
+  const [cardSearch, setCardSearch] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionLockRef = useRef(false);
 
@@ -42,11 +44,21 @@ const CardForm: React.FC<CardFormProps> = ({
   });
 
   const proficiency = Math.ceil(((tokenTrigger.attributes.level - 10) / 4) + 4)
-  const filteredCards = tokenTrigger.cards.filter(card =>
+  const compatibleCards = tokenTrigger.cards.filter(card =>
     defensiveCards
       ? card.causalityType === "Defensive"
       : card.causalityType !== "Defensive"
-  );  
+  );
+  const normalizedCardSearch = cardSearch.trim().toLocaleLowerCase();
+  const filteredCards = compatibleCards.filter((card) => {
+    if (!normalizedCardSearch) return true;
+
+    return [card.name, card.causality, card.desc, card.causalityType]
+      .filter((value): value is string => typeof value === "string")
+      .join(" ")
+      .toLocaleLowerCase()
+      .includes(normalizedCardSearch);
+  });
   const canUseCard =
     selectedCard &&
     (selectedCard.actionsRequired ?? 0) <= availableActions &&
@@ -114,17 +126,18 @@ useEffect(() => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-      <div className="w-full max-w-5xl bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4">
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900 p-5 shadow-2xl">
         <h2 className="text-xl font-bold text-orange-400 mb-4 text-center">
           Seleção de Card
         </h2>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto lg:grid-cols-2 lg:overflow-hidden">
           {/* ========================= */}
           {/* PREVIEW DO CARD SELECIONADO */}
           {/* ========================= */}
-          <div className="bg-gray-800 rounded-lg p-4 flex flex-col gap-3">
+          <div className="min-h-0 overflow-y-auto rounded-lg bg-gray-800 p-4">
+            <div className="flex flex-col gap-3">
             {!selectedCard ? (
               <p className="text-gray-400 text-sm text-center">
                 Selecione um card para visualizar os detalhes.
@@ -258,6 +271,7 @@ useEffect(() => {
                 )}
               </>
             )}
+            </div>
           </div>
 
           {/* =========================  */}
@@ -265,13 +279,32 @@ useEffect(() => {
           {/* =========================  */}
 
 
-          <div className="bg-gray-800 rounded-lg p-4 flex flex-col gap-3 overflow-y-auto max-h-[420px]">
-            {filteredCards.length === 0 ? (
-              <p className="text-red-400 text-sm text-center">
-                Este personagem não possui cards compatíveis.
-              </p>
-            ) : (
-              filteredCards.map((card) => {
+          <div className="flex min-h-0 flex-col gap-3 rounded-lg bg-gray-800 p-4">
+            <label className="relative block shrink-0">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                type="search"
+                value={cardSearch}
+                onChange={(event) => setCardSearch(event.target.value)}
+                placeholder="Pesquisar cards..."
+                aria-label="Pesquisar cards disponíveis"
+                disabled={isSubmitting}
+                className="w-full rounded-lg border border-gray-600 bg-gray-900 py-2 pl-9 pr-3 text-sm text-white outline-none transition placeholder:text-gray-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 disabled:cursor-wait disabled:opacity-60"
+              />
+            </label>
+
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+              {filteredCards.length === 0 ? (
+                <p className="px-2 py-4 text-center text-sm text-red-400">
+                  {compatibleCards.length === 0
+                    ? "Este personagem não possui cards compatíveis."
+                    : "Nenhum card corresponde à pesquisa."}
+                </p>
+              ) : (
+                filteredCards.map((card) => {
 
                 let cardNotRecharge = false;
 
@@ -279,22 +312,19 @@ useEffect(() => {
                 {
                   cardNotRecharge = false;
                 }
-                else if (availableCardsIds.includes(card.id))
-                {
+                else if (availableCardsIds.includes(card.id)) {
                   cardNotRecharge = true;
-                  console.error(
-                    "Personagem possui tokens indisponíveis..."
-                  );
                 }
 
                 const disabled =
                   (card.actionsRequired ?? 0) > availableActions ||
-                  (card.manaRequired ?? 0) > availableMana ||
+                  ((card.manaRequired ?? 0) * proficiency) > availableMana ||
                   cardNotRecharge;
 
                 return (
                   <button
                     key={card.id}
+                    type="button"
                     onClick={() => setSelectedCard(card)}
                     disabled={disabled || isSubmitting}
                     className={`flex items-center gap-3 p-2 rounded border transition-colors text-left
@@ -333,7 +363,7 @@ useEffect(() => {
                         </p>
                       )}
 
-                      {(card.manaRequired ?? 0) > availableMana && (
+                      {((card.manaRequired ?? 0) * proficiency) > availableMana && (
                         <p className="text-sm font-semibold text-red-400 opacity-100">
                           {`Mana total insuficiente para o uso desse card. DISPONÍVEL: ${availableMana} | NECESSÁRIO: ${card.manaRequired}`}
                         </p>                        
@@ -341,8 +371,9 @@ useEffect(() => {
                     </div>
                   </button>
                 );
-              })
-            )}
+                })
+              )}
+            </div>
           </div>
         </div>
 
@@ -351,6 +382,7 @@ useEffect(() => {
         {/* ========================= */}
         <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-gray-700">
           <button
+            type="button"
             onClick={onClose}
             className="px-5 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white text-sm font-semibold"
           >
@@ -358,6 +390,7 @@ useEffect(() => {
           </button>
 
           <button
+            type="button"
             onClick={handleConfirm}
             disabled={!selectedCard || !canUseCard || isSubmitting}
             className="px-6 py-2 bg-orange-600 hover:bg-orange-500 rounded text-white text-sm font-bold disabled:opacity-40 cursor-pointer"

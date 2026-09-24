@@ -1,0 +1,25 @@
+import { MechanicEventType } from "../MechanicEventType";
+import { MechanicDefinition } from "./MechanicDefinition";
+import { VisualOverlay } from "../types/visualOverlays";
+
+export class MechanicDummy extends MechanicDefinition {
+    id = "999";
+    name = "dummy";
+    behavior = [];
+    abstractlistensTo = [];
+    defaultIntensity = 1;
+    defaultDuration = undefined;
+    config?: Record<string, unknown>;
+    override readonly interceptors = [];    
+
+    // Opcional
+    override getVisualOverlay(): VisualOverlay | null {
+        return {
+            id: crypto.randomUUID(),
+            type: "dummy-mechanic",
+            size: 1,
+            offset: 0,
+            gifPath: "link.com",
+        }
+    }
+}

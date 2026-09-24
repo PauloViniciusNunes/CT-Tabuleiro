@@ -100,6 +100,7 @@ import type {
   PendingSpecialResponse,
   SpecialResponseValues,
 } from "../types/specialResponse";
+import { useFormSessionKey } from "../hooks/useFormSessionKey";
 
 
 const getColumnName = (num: number): string => {
@@ -179,6 +180,30 @@ const BoardPage: React.FC = () => {
   const [mechanicsTooltipPosition, setMechanicsTooltipPosition] = useState({ x: 0, y: 0 });
   const [pendingLevelUpTokens, setPendingLevelUpTokens] = useState<Token[]>([]);
   const [currentLevelUpToken, setCurrentLevelUpToken] = useState<Token | null>(null);
+
+  /**
+   * Mechanic overlays belong to a battle runtime. Token updates arrive through
+   * the socket independently from the battle-state update, so clear the local
+   * copies too when that runtime is no longer active.
+   */
+  const clearMechanicOverlays = useCallback(() => {
+    setBoardTokens((currentTokens) => {
+      let hasOverlay = false;
+
+      const tokensWithoutOverlays = currentTokens.map((token) => {
+        if (!token.visualOverlays?.length) {
+          return token;
+        }
+
+        hasOverlay = true;
+        return { ...token, visualOverlays: [] };
+      });
+
+      return hasOverlay ? tokensWithoutOverlays : currentTokens;
+    });
+
+    setHoveredTokenMechanics(null);
+  }, []);
 
   function handleCloseSkillPanel() {
     setCurrentLevelUpToken(null);
@@ -1009,6 +1034,12 @@ const BoardPage: React.FC = () => {
     })
   }, [battle])
 
+  useEffect(() => {
+    if (battleState.status !== "In Battle") {
+      clearMechanicOverlays();
+    }
+  }, [battleState.status, clearMechanicOverlays]);
+
   function searchAccumulatedActions(tokenId: string): number {
     return battleState.accumulatedActions[tokenId];
   }
@@ -1341,6 +1372,12 @@ const BoardPage: React.FC = () => {
   const [offensivePendingCard, setOffensivePendingCard] = useState<Card>();
   const [offensiveCardAttackerId, setOffensiveCardAttackerId] = useState<string | null>(null);
   const [armedCard, setArmedCard] = useState<Card>()
+
+  const freeResponseFormKey = useFormSessionKey("free-response", pendingFreeResponse);
+  const reactionFormKey = useFormSessionKey("reaction", pendingAttack);
+  const defenseFormKey = useFormSessionKey("defense", pendingEsquivaRoll);
+  const cardFormKey = useFormSessionKey("card", pendingCardResolution);
+  const offensiveCardFormKey = useFormSessionKey("offensive-card", offensivePendingCard);
 
   useEffect(() => {
     setArmedCard(offensivePendingCard)
@@ -1812,13 +1849,21 @@ const BoardPage: React.FC = () => {
 
   const handleNextTurn = () => BattleEngineAPI.next(battleState.id)
 
-  const handleEndBattle = () => {
-
-    const obj = {
-      battleId: battleState.id
+  const handleEndBattle = async () => {
+    if (!battleState.id) {
+      return;
     }
 
-    BattleEngineAPI.end(obj)
+    try {
+      await BattleEngineAPI.end({ battleId: battleState.id });
+
+      // The socket update is the source of truth for every connected client.
+      // Clearing here also keeps the user who ended the battle visually in sync
+      // if its socket event arrives a moment later.
+      clearMechanicOverlays();
+    } catch (error) {
+      console.error("Não foi possível encerrar a batalha:", error);
+    }
   }
 
   const handleExecuteAction = (choice: ExecuteChoice) => {
@@ -2019,6 +2064,7 @@ const BoardPage: React.FC = () => {
             <SettingsDropdown
               rows={rows}
               cols={cols}
+              backgroundImage={backgroundImage}
               onChangeRows={(v) => setRows(Number(v))}
               onChangeCols={(v) => setCols(Number(v))}
               onChangeBackgroundImage={setBackgroundImage}
@@ -2144,11 +2190,13 @@ const BoardPage: React.FC = () => {
                         (m) => m.position.col === colIndex && m.position.row === row + 1
                       )
 
-                      const cardInstances = battleState.mechanicEntitiesInstances.find(
+                      const inB = battleState.status === "In Battle";
+
+                      const cardInstances = inB ? battleState.mechanicEntitiesInstances.find(
                         (c) =>
                           c.position.col === colIndex &&
                           c.position.row === row + 1
-                      );
+                      ) : undefined;
 
                       const effectClasses = tok
                         ? getTokenVisualEffects(tok).classes
@@ -2158,7 +2206,6 @@ const BoardPage: React.FC = () => {
                         ? getTokenVisualEffects(tok).overlays
                         : [];
 
-                      const inB = battleState.status === "In Battle";
                       const isCurr = tok?.id === currentId;
                       const isTokSel = tok?.id === selectedTokenId;
 
@@ -2261,7 +2308,7 @@ const BoardPage: React.FC = () => {
                                   />
                                 )}
 
-                              {tok.visualOverlays?.map((o) => (
+                              {inB && tok.visualOverlays?.map((o) => (
                                 <div
                                   key={o.id}
                                   className={o.type}
@@ -2471,6 +2518,7 @@ const BoardPage: React.FC = () => {
 
       {pendingSpecialResponse && canAnswerSpecialResponse && (
         <SpecialResponseForm
+          key={`special-response:${pendingSpecialResponse.requestId}`}
           pending={pendingSpecialResponse}
           onSubmit={handleSubmitSpecialResponse}
           onCancel={handleCancelSpecialResponse}
@@ -2492,6 +2540,7 @@ const BoardPage: React.FC = () => {
             <div className="absolute inset-0" />
             <div className="relative z-10 w-full max-w-md">
               <ActionForm
+                key={freeResponseFormKey}
                 token={responder}
                 findedTarget={selectedTarget}
                 availableActions={battleState.accumulatedActions[responder.id] ?? 1}
@@ -2614,6 +2663,7 @@ const BoardPage: React.FC = () => {
       {!pendingSpecialResponse && isPlayerTurn && currentToken && !pendingAttack && !pendingFreeResponse && !inCardSelection && battleState.tokensInOffensiveCard.length <= 0 && !isAmbientPivotSelection && BattleViewRules.showForm(campaign, battleState, userId) && (
         <div className="fixed bottom-4 left-4 z-30">
           <ActionForm
+            key={`turn-action:${battleState.id}:${currentId}:${battleState.turnVersion}:${battleState.phase}:${battleState.accumulatedActions[currentId] ?? 0}`}
             token={currentToken}
             findedTarget={selectedTarget}
             availableActions={battleState.accumulatedActions[currentId] ?? 0}
@@ -2633,6 +2683,7 @@ const BoardPage: React.FC = () => {
         pendingAttack.pendingReactions.length > 0 &&
         !pendingEsquivaRoll && BattleViewRules.showForm(campaign, battleState, userId) && (
           <ReactionPrompt
+            key={reactionFormKey}
             actor={{
               ...(boardTokens.find((t) => t.id === pendingAttack.targetId) as Token),
               reactionType: pendingAttack.pendingReactions[0].type as "consistencia" | "destreza",
@@ -2670,6 +2721,7 @@ const BoardPage: React.FC = () => {
         BattleViewRules.showForm(campaign, battleState, userId) && (
           <div className="fixed bottom-4 left-4 z-40">
             <DefenseResolutionForm
+              key={defenseFormKey}
               attacker={boardTokens.find((t) => t.id === pendingAttack?.attackerId)!}
               defenderName={
                 boardTokens.find((t) => t.id === pendingAttack?.targetId)?.name ||
@@ -2692,6 +2744,7 @@ const BoardPage: React.FC = () => {
         BattleViewRules.showForm(campaign, battleState, userId) && (
         <>
           <CardForm
+            key={cardFormKey}
             tokenTrigger={pendingCardResolution as Token}
             target={boardTokens.filter(t => t.id !== (pendingCardResolution as Token).id)}
             defensiveCards={false}
@@ -2716,7 +2769,7 @@ const BoardPage: React.FC = () => {
 
           return (
             <OffensiveCardResolution
-              key={defenderToken.id}
+              key={`${offensiveCardFormKey}:${defenderToken.id}:${offensiveCardScore}:${offensiveCardTestScore}`}
               availableActions={battleState.accumulatedActions[defenderToken.id] ?? 1}
               availableMana={defenderToken.currentMana ?? 0}
               availableCertainyDie={defenderToken.certaintyDiceRemaining ?? 0}

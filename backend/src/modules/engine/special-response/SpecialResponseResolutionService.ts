@@ -14,6 +14,7 @@ import {
 import type { SpecialResponseResolution } from "./types";
 import { ensureProficiencyRollReductionHandlerRegistered } from "./handlers/ProficiencyRollReductionHandler";
 import { ensureCancelDamageFormularyHandlerRegistered } from "../mechanic/interceptors/CancelDamageFormularyInteceptor";
+import { ensureExtraAttackConfirmationHandlerRegistered } from "./handlers/ExtraAttackConfirmationHandler";
 
 export class SpecialResponseResolutionService {
     private static readonly processingRequests = new Set<string>();
@@ -32,6 +33,7 @@ export class SpecialResponseResolutionService {
         // survive a server restart.
         ensureProficiencyRollReductionHandlerRegistered();
         ensureCancelDamageFormularyHandlerRegistered();
+        ensureExtraAttackConfirmationHandlerRegistered();
         const command = specialResponseCommandSchema.parse(data);
         const [battle, pendingQueue] = await Promise.all([
             this.battleRepository.findById(command.battleId),

@@ -4,6 +4,7 @@ import { Settings } from "lucide-react";
 interface SettingsDropdownProps {
   rows: number;
   cols: number;
+  backgroundImage: string | null;
   onChangeRows: (rows: number) => void;
   onChangeCols: (cols: number) => void;
   onChangeBackgroundImage: (imageUrl: string | null) => void;
@@ -14,6 +15,7 @@ interface SettingsDropdownProps {
 export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   rows,
   cols,
+  backgroundImage,
   onChangeRows,
   onChangeCols,
   onChangeBackgroundImage,
@@ -21,7 +23,12 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   onMapSelect
 }) => {
   const [open, setOpen] = useState(false);
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState(backgroundImage ?? "");
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setBackgroundImageUrl(backgroundImage ?? "");
+  }, [backgroundImage]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -42,17 +49,8 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
     };
   }, [open]);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) {
-      onChangeBackgroundImage(null);
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      onChangeBackgroundImage(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+  const commitBackgroundImageUrl = () => {
+    onChangeBackgroundImage(backgroundImageUrl.trim() || null);
   };
 
   return (
@@ -112,21 +110,31 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold mb-1" htmlFor="bg-image-input">
-                Selecionar Imagem
+            <div className="mb-4">
+              <label className="mb-1 block text-sm font-semibold" htmlFor="bg-image-url">
+                Link da imagem do mapa
               </label>
               <input
-                id="bg-image-input"
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                className="w-full text-sm text-white bg-gray-800 rounded border border-gray-700 py-1 px-2 cursor-pointer"
+                id="bg-image-url"
+                type="url"
+                value={backgroundImageUrl}
+                onChange={(event) => setBackgroundImageUrl(event.target.value)}
+                onBlur={commitBackgroundImageUrl}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.currentTarget.blur();
+                  }
+                }}
+                placeholder="https://exemplo.com/mapa.png"
+                className="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white placeholder:text-gray-500"
               />
+              <p className="mt-1 text-xs text-gray-400">
+                A URL é aplicada ao sair do campo.
+              </p>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-1" htmlFor="bg-image-input">
+              <label className="block text-sm font-semibold mb-1">
                 Selecionar Mapa
               </label>
                 <button
@@ -138,7 +146,7 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-1" htmlFor="bg-image-input">
+              <label className="block text-sm font-semibold mb-1">
                 Gerar Labirinto
               </label>
                 <button

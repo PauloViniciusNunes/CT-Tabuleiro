@@ -172,7 +172,7 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
   const submissionLockRef = useRef(false);
   const isBusy = isLoading || isSubmitting;
 
-  const actionOptions = [
+  const actionOptions = useMemo(() => [
     {
       value: "destreza",
       label: "Destreza",
@@ -205,7 +205,7 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
       icon: <GiCardRandom className="inline-block text-xl" />,
       color: "text-orange-400",
     },
-  ];  
+  ], []);
 
 
   useEffect(() =>
@@ -265,25 +265,28 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
     usedActions >= 1 && usedActions <= Math.max(1, maxAvailableActions);
   const canUseCertaintyDie = resolvedCertainty > 0;
 
-  const allowedOptions = reactionOptionsByActionType[diretionalActionType ?? ""] ?? [];
-
-  const filteredOptions = actionOptions.filter((option) =>
-    allowedOptions.includes(option.value as ReactionAttr) &&
-    (option.value !== "card" || haveDefenseCards),
-  )
-  const currentIndex =
-    Math.max(
-      0,
-      filteredOptions.findIndex(
-        a => a.value === selectedAttribute
-      )
-    );  
+  const allowedOptions = useMemo(
+    () => reactionOptionsByActionType[diretionalActionType ?? ""] ?? [],
+    [diretionalActionType],
+  );
+  const filteredOptions = useMemo(
+    () => actionOptions.filter((option) =>
+      allowedOptions.includes(option.value as ReactionAttr)
+      && (option.value !== "card" || haveDefenseCards),
+    ),
+    [actionOptions, allowedOptions, haveDefenseCards],
+  );
+  const currentIndex = Math.max(
+    0,
+    filteredOptions.findIndex((option) => option.value === selectedAttribute),
+  );
+  const currentOption = filteredOptions[currentIndex] ?? null;
 
   function nextAction()
   {
-    const next =
-      (currentIndex + 1) %
-      filteredOptions.length;
+    if (!currentOption || filteredOptions.length < 2) return;
+
+    const next = (currentIndex + 1) % filteredOptions.length;
 
     setSelectedAttribute(
       filteredOptions[next].value as ReactionAttr
@@ -292,9 +295,9 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
 
   function prevAction()
   {
-    const prev =
-      (currentIndex - 1 + filteredOptions.length) %
-      filteredOptions.length;
+    if (!currentOption || filteredOptions.length < 2) return;
+
+    const prev = (currentIndex - 1 + filteredOptions.length) % filteredOptions.length;
 
     setSelectedAttribute(
       filteredOptions[prev].value as ReactionAttr
@@ -302,24 +305,14 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
   }  
 
   useEffect(() => {
-    // Se não há nenhuma opção válida → limpa
-    if (allowedOptions.length === 0) {
-      setSelectedAttribute(null);
-      return;
-    }
+    const selectedIsAvailable = selectedAttribute
+      && filteredOptions.some((option) => option.value === selectedAttribute);
+    const fallback = filteredOptions[0]?.value as ReactionAttr | undefined;
 
-    // Se o selecionado atual é inválido → limpa
-    if (selectedAttribute && !allowedOptions.includes(selectedAttribute)) {
-      setSelectedAttribute(null);
-      return;
+    if (!selectedIsAvailable && selectedAttribute !== (fallback ?? null)) {
+      setSelectedAttribute(fallback ?? null);
     }
-
-    // Se só existe uma opção → seleciona automaticamente
-    if (!selectedAttribute && allowedOptions.length === 1) {
-      setSelectedAttribute(allowedOptions[0]);
-      return;
-    }
-  }, [allowedOptions]);
+  }, [filteredOptions, selectedAttribute]);
 
 
   if (!isReactionAllowed) {
@@ -444,56 +437,44 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
           <div className="mb-4">
             <span className="text-xm font-semibold text-blue-500 ">Atributo de reação</span>
             <div className="flex items-center justify-between bg-black/50 border border-cyan-600 rounded-lg px-4 py-3 z-1 mb-4">
+              {currentOption ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={prevAction}
+                    disabled={filteredOptions.length < 2}
+                    className="relative h-[20px] w-[20px] text-xl text-gray-400 hover:text-white disabled:cursor-default disabled:opacity-40"
+                  >
+                    <img
+                      src={LEFTARROW}
+                      alt=""
+                      className="pointer-events-none absolute inset-0 z-5 h-full w-full scale-180 object-fill"
+                    />
+                  </button>
 
-              <button
-                type="button"
-                onClick={prevAction}
-                className="relative w-[20px] h-[20px] text-gray-400 hover:text-white text-xl"
-              >
-                <img
-                    src={LEFTARROW}
-                    alt=""
-                    className="
-                      absolute
-                      inset-0
-                      w-full
-                      scale-180
-                      object-fill
-                      pointer-events-none
-                      z-5
-                    "
-                  />   
-                                    
-              </button>
+                  <div className={`flex items-center gap-2 font-semibold ${currentOption.color}`}>
+                    {currentOption.icon}
+                    {currentOption.label}
+                  </div>
 
-              <div
-                className={`font-semibold flex items-center gap-2
-                  ${filteredOptions[currentIndex].color}
-                `}
-              >
-                {filteredOptions[currentIndex].icon}
-                {filteredOptions[currentIndex].label}
-              </div>
-
-              <button
-                type="button"
-                onClick={nextAction}
-                className="relative w-[20px] h-[20px] text-gray-400 hover:text-white text-xl"
-              >
-                <img
-                    src={RIGHTARROW}
-                    alt=""
-                    className="
-                      absolute
-                      inset-0
-                      w-full
-                      scale-180
-                      object-fill
-                      pointer-events-none
-                      z-5
-                    "
-                  />                        
-              </button>
+                  <button
+                    type="button"
+                    onClick={nextAction}
+                    disabled={filteredOptions.length < 2}
+                    className="relative h-[20px] w-[20px] text-xl text-gray-400 hover:text-white disabled:cursor-default disabled:opacity-40"
+                  >
+                    <img
+                      src={RIGHTARROW}
+                      alt=""
+                      className="pointer-events-none absolute inset-0 z-5 h-full w-full scale-180 object-fill"
+                    />
+                  </button>
+                </>
+              ) : (
+                <p className="text-sm text-amber-300">
+                  Nenhuma reação disponível para este ataque.
+                </p>
+              )}
 
             </div>            
           </div>
