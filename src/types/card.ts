@@ -46,6 +46,9 @@ export type Card =
     causalityType: CardCausality, //enum
     defenseReplicate: NonDefensiveCardCausality,
     partialOffensive: boolean | undefined,
+    effectsAffectCaster: boolean,
+    casterEffectsToApply: EffectType[],
+    triggerEffectsToApply: EffectType[],
     entityQuantity: number,
     effectToApply: EffectType[],
     target: Target,
@@ -67,6 +70,6 @@ export type OffensiveCardResponse = {
     attribute: OffensiveCardAttribute;
     usedMana: number;
     usedActions: number;
-    usedCertainDie: boolean;
+    usedCertaintyDie: boolean;
     previewAction: boolean;
 };

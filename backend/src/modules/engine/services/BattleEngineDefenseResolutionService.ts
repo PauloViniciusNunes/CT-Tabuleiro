@@ -196,7 +196,9 @@ export class BattleEngineDefenseResolutionService extends BattleEngineService {
             tokenId: attackerId,
             choice: choice,
             wasCertainty: false,
-            displayRoll: definicaoRoll
+            displayRoll: definicaoRoll,
+            historyKind: "action",
+            targetTokenId: defenderId,
         })
 
         const updatedBattleState = await this.battleStateRepository.findById(battleId)

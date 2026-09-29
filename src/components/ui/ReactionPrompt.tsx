@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Shield, Zap, XCircle, Brain, Book } from "lucide-react";
 import { GiCardRandom } from "react-icons/gi";
-import { ChevronUp, ChevronDown } from "lucide-react";
+import { BattleFormToggle } from "./BattleFormToggle";
 import type { Token } from "../../types/token";
 import { calculateMedianRoll } from "../../utils/battleCalculations";
 
@@ -649,29 +649,11 @@ const ReactionPrompt: React.FC<ReactionPromptProps> = (props) => {
         </div>
       </div>)}
 
-      <button
-        onClick={() => setDisplayForm(!displayForm)}
-        className={`
-          fixed bottom-4 left-4 z-90
-          p-4 rounded-full
-          bg-gray-900 hover:bg-gray-800 text-white
-          shadow-lg border border-gray-700
-          focus:ring-2 focus:ring-gray-800
-          transition-[right,background-color,transform] duration-200
-          active:scale-95
-        `}
-      >
-        {displayForm ? (
-          <>
-            <ChevronUp className="w-5 h-5" />
-          </>
-        ) : (
-          <>
-            <ChevronDown className="w-5 h-5" />
-
-          </>
-        )}
-      </button>
+      <BattleFormToggle
+        visible={displayForm}
+        onToggle={() => setDisplayForm((visible) => !visible)}
+        label="formulário de reação"
+      />
     </div>
   );
 };

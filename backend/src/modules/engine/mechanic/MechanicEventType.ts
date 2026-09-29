@@ -12,6 +12,7 @@ export enum MechanicEventType {
     ENVIRONMENT_CHANGE_DENIED = "board.environment.change-denied",
     MECHANIC_APPLIED = "mechanic.applied",
     MECHANIC_PRE_REMOVED = "mechanic.pre-removed",
+    MECHANIC_RESOURCE_DEPLETED = "mechanic.resource-depleted",
     TOKEN_RESOURCES_SET = "token.resources.set",
     ATTRIBUTE_TEST_RESOLVED = "combat.attribute-test.resolved",
     ACTION_DISPATCH_REQUESTED = "action.dispatch.requested",

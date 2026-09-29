@@ -13,6 +13,7 @@ import { emitPendingSpecialResponse } from "../special-response/emitSpecialRespo
 import type { MechanicInstance } from "../mechanic/mechanics/MechanicInstance";
 import type { VisualOverlay } from "../mechanic/types/visualOverlays";
 import { reconcileMechanicVisualOverlays } from "../mechanic/utils/reconcileMechanicVisualOverlays";
+import { getBattleFormState } from "./getBattleFormState";
 
 export async function syncBattleState(battleId: string) {
 
@@ -67,6 +68,11 @@ export async function syncBattleState(battleId: string) {
     
     runtime.emit(SocketEvent.BATTLE_UPDATED, battleState)
 
+    runtime.emit(
+        SocketEvent.BATTLE_FORM_STATE,
+        await getBattleFormState(battleId),
+    )
+
     const pendingQueue = await pendingQueueRepository.findByBattleStateId(battleId)
     if (!pendingQueue) return
 
@@ -75,18 +81,17 @@ export async function syncBattleState(battleId: string) {
         const card = await cardRepository.findCardById(pendingOffensiveCard.cardId)
         if (card) {
             runtime.emit(SocketEvent.PENDING_OFFENSIVE_CARD, {
-                card,
-                attackerId: pendingOffensiveCard.attackerId,
+                mapId: battleState.mapId,
             })
             runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_SCORE, pendingOffensiveCard.rawCardResult)
             runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_TEST_SCORE, pendingOffensiveCard.rawTestResult)
         } else {
-            runtime.emit(SocketEvent.PENDING_OFFENSIVE_CARD, null)
+            runtime.emit(SocketEvent.PENDING_OFFENSIVE_CARD, { mapId: battleState.mapId })
             runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_SCORE, null)
             runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_TEST_SCORE, null)
         }
     } else {
-        runtime.emit(SocketEvent.PENDING_OFFENSIVE_CARD, null)
+        runtime.emit(SocketEvent.PENDING_OFFENSIVE_CARD, { mapId: battleState.mapId })
         runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_SCORE, null)
         runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_TEST_SCORE, null)
     }

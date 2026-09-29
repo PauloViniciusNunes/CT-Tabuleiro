@@ -1,9 +1,11 @@
 /* ========= CLASSES DE MECÂNICAS ========= */
 import { MechanicEvent } from "./events/MechanicEvent";
-import { MechanicPreRemovedEvent } from "./events/MechanicPreRemovedEvent";
 import { MechanicRegistry } from "./MechanicRegistry";
 import { MechanicDefinition } from "./mechanics/MechanicDefinition";
-import { MechanicInstance } from "./mechanics/MechanicInstance";
+import {
+    deduplicateMechanicInstances,
+    type MechanicInstance,
+} from "./mechanics/MechanicInstance";
 
 /* ========= HELPERS DE BATALHA ========= */
 import { BattleSetter } from "../context/BattleSetter";
@@ -77,13 +79,23 @@ export class MechanicEngine {
         }
 
         // DEPOIS DA PARTE VISUAL, PROCESSAR AS MECÂNICAS, CASO HAJAM
-        if (rawMechanics.length === 0) {
+        const uniqueMechanics = deduplicateMechanicInstances(rawMechanics);
 
+        if (uniqueMechanics.length !== rawMechanics.length) {
+            await battleSetter.updateActiveMechanics(
+                battleId,
+                (activeMechanics) => deduplicateMechanicInstances(activeMechanics),
+            );
+        }
+
+        if (uniqueMechanics.length === 0) {
             return;
         }
 
-        // 🟢 2. Cria um SNAPSHOT completamente isolado da memória do banco de dados
-        const activeMechanicsSnapshot: MechanicInstance[] = structuredClone(rawMechanics);
+        // Cria um snapshot isolado e já normalizado para que cada mecânica
+        // processe o evento no máximo uma vez.
+        const activeMechanicsSnapshot: MechanicInstance[] =
+            structuredClone(uniqueMechanics);
 
 
         const baseEngineContext = await battleGetter.getEngineContext(battleId)
@@ -152,10 +164,13 @@ export class MechanicEngine {
                     },
                 ),
                 removeMechanic: (mechanicId, reason) =>
-                    MechanicEngine.removeMechanicInstance(
-                        battleId,
-                        mechanicId,
-                        reason,
+                    MechanicEngine.operators.execute(
+                        OperatorType.MECHANIC_REMOVAL,
+                        {
+                            battleId,
+                            mechanicId,
+                            reason,
+                        },
                     ),
             },
             specialResponses: {
@@ -237,7 +252,9 @@ export class MechanicEngine {
 
         const rawMechanics = Array.isArray(battleState.activeMechanics) ? (battleState.activeMechanics as unknown as MechanicInstance[]) : [];
     
-        const mechanicsSnapshot = structuredClone(rawMechanics)
+        const mechanicsSnapshot = structuredClone(
+            deduplicateMechanicInstances(rawMechanics),
+        )
 
         const activeInterceptors: ActiveInterceptor<T>[] = []
 
@@ -278,62 +295,21 @@ export class MechanicEngine {
         return application.instance;
     }
 
-    /**
-     * The sole engine-level removal boundary. It preserves the instance long
-     * enough for listeners to react before it leaves `activeMechanics`.
-     */
+    /** Compatibility boundary for existing callers; removal lives in an operator. */
     static async removeMechanicInstance(
         battleId: string,
         mechanicId: string,
         reason = "explicit-removal",
     ): Promise<boolean> {
-        if (!battleId || !mechanicId) {
-            throw new Error("A remoção de mecânica exige batalha e instância.");
-        }
-
-        const battleStateRepository = new BattleStateRepository();
-        const battleState = await battleStateRepository.findById(battleId);
-        if (!battleState) {
-            throw new Error("A batalha da mecânica a remover não foi encontrada.");
-        }
-
-        const activeMechanics = Array.isArray(battleState.activeMechanics)
-            ? battleState.activeMechanics as unknown as MechanicInstance[]
-            : [];
-        const mechanic = activeMechanics.find((candidate) => candidate.id === mechanicId);
-        if (!mechanic) {
-            return false;
-        }
-
-        const mechanicSnapshot = structuredClone(mechanic);
-        await MechanicEngine.process(
-            battleId,
-            new MechanicPreRemovedEvent(mechanicSnapshot, reason),
+        const removal = await MechanicEngine.operators.execute(
+            OperatorType.MECHANIC_REMOVAL,
             {
-                mechanic: mechanicSnapshot,
+                battleId,
                 mechanicId,
                 reason,
             },
         );
 
-        // A pre-removal behavior may itself have consumed the instance.
-        const liveBattleState = await battleStateRepository.findById(battleId);
-        const stillActive = Array.isArray(liveBattleState?.activeMechanics) &&
-            liveBattleState.activeMechanics.some(
-                (candidate) =>
-                    typeof candidate === "object" &&
-                    candidate !== null &&
-                    (candidate as { id?: unknown }).id === mechanicId,
-            );
-        if (!stillActive) {
-            return false;
-        }
-
-        await new BattleSetter().removeMechanicInstance(battleId, mechanicId);
-
-        // The instance is gone now, so the normal overlay reconciler removes
-        // only this mechanic's visual instead of clearing the whole token.
-        await routeSpecialFields(battleId, mechanicSnapshot);
-        return true;
+        return removal.removed;
     }
 }

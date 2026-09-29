@@ -1,0 +1,5 @@
+ALTER TABLE "Token"
+ADD COLUMN "passiveMechanics" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+
+ALTER TABLE "TokenInstance"
+ADD COLUMN "passiveMechanics" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

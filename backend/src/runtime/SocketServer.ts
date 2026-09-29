@@ -4,12 +4,13 @@ import { Server } from "socket.io";
 import { Rooms } from "./Rooms";
 import { SocketEvent } from "./Events";
 import { BattleStateRepository } from "@/modules/battles/repositories/BattleStateRepository";
-import { syncBattleState } from "@/modules/engine/utils/syncBattleState";
+import { getBattleFormState } from "@/modules/engine/utils/getBattleFormState";
 import { JWTService } from "@/modules/auth/services/JWTService";
 import { CampaignRepository } from "@/modules/campaigns/repositories/CampaignRepository";
 import { MapRepository } from "@/modules/maps/repositories/MapRepository";
 import { CampaignMemberRepository } from "@/modules/asset-library/members/repositories/CampaignMembersServices";
 import { UserRepository } from "@/modules/auth/repositories/UserRepository";
+import { CardRepository } from "@/modules/cards/repositories/CardRepository";
 import { PendingQueueRepository } from "@/modules/battles/repositories/PendingQueueRepository";
 import { PendingGetter } from "@/modules/engine/context/PendingGetter";
 import { toPublicPendingSpecialResponse } from "@/modules/engine/special-response/types";
@@ -48,6 +49,7 @@ export class SocketServer {
     private readonly mapRepository = new MapRepository();
     private readonly campaignMemberRepository = new CampaignMemberRepository();
     private readonly userRepository = new UserRepository();
+    private readonly cardRepository = new CardRepository();
 
     /** Campaign -> user -> all tabs/connections currently present. */
     private readonly campaignPresence = new Map<string, Map<string, CampaignPresenceEntry>>();
@@ -55,6 +57,8 @@ export class SocketServer {
     private readonly campaignsBySocket = new Map<string, Map<string, string>>();
     /** Prevents a delayed authenticated join from resurrecting a presence after leave. */
     private readonly requestedCampaignsBySocket = new Map<string, Set<string>>();
+    /** Latest requested authoritative form snapshot per map. */
+    private readonly formSyncVersions = new Map<string, number>();
 
     private constructor() {
 
@@ -100,6 +104,11 @@ export class SocketServer {
                     return;
                 }
 
+                for (const room of socket.rooms) {
+                    if (room.startsWith("map:") && room !== Rooms.map(mapId)) {
+                        socket.leave(room);
+                    }
+                }
                 socket.join(Rooms.map(mapId));
 
                 console.log(`${socket.id} entrou na sala ${Rooms.map(mapId)}`);
@@ -109,12 +118,20 @@ export class SocketServer {
 
                     if (battle) {
                         socket.emit(SocketEvent.BATTLE_UPDATED, battle);
-                        await syncBattleState(battle.id);
+                        socket.emit(
+                            SocketEvent.BATTLE_FORM_STATE,
+                            await getBattleFormState(battle.id),
+                        );
                     }
                 } catch (error) {
                     console.error("Não foi possível sincronizar a batalha da room:", error);
                 }
 
+            });
+
+            socket.on("leave-map", (mapId: unknown) => {
+                if (typeof mapId !== "string" || !mapId) return;
+                socket.leave(Rooms.map(mapId));
             });
 
             socket.on("join-campaign", async (data: unknown) => {
@@ -266,6 +283,40 @@ export class SocketServer {
 
             });
 
+            socket.on(SocketEvent.BATTLE_ENDED, (combat) => {
+                if (!combat || typeof combat.mapId !== "string") return;
+                this.formSyncVersions.set(
+                    combat.mapId,
+                    (this.formSyncVersions.get(combat.mapId) ?? 0) + 1,
+                );
+
+                this.io
+                    .to(Rooms.map(combat.mapId))
+                    .emit(SocketEvent.BATTLE_ENDED, combat);
+            });
+
+
+            socket.on(SocketEvent.BATTLE_FORM_STATE, async (payload: unknown) => {
+                if (!payload || typeof payload !== "object") return;
+                const mapId = (payload as { mapId?: unknown }).mapId;
+                if (typeof mapId !== "string" || !mapId) return;
+
+                const syncVersion = (this.formSyncVersions.get(mapId) ?? 0) + 1;
+                this.formSyncVersions.set(mapId, syncVersion);
+
+                try {
+                    const battle = await this.battleStateRepository.findByMapId(mapId);
+                    if (!battle || this.formSyncVersions.get(mapId) !== syncVersion) return;
+                    const snapshot = await getBattleFormState(battle.id);
+                    if (this.formSyncVersions.get(mapId) !== syncVersion) return;
+
+                    this.io
+                        .to(Rooms.map(mapId))
+                        .emit(SocketEvent.BATTLE_FORM_STATE, snapshot);
+                } catch (error) {
+                    console.error("Não foi possível sincronizar os formulários da batalha:", error);
+                }
+            });
 
             socket.on(SocketEvent.PENDING_ATTACK, (attack) => { //prototipo
 
@@ -321,6 +372,35 @@ export class SocketServer {
                 this.io.emit(SocketEvent.PENDING_CARD_RESOLUTION, token)
             })
 
+            socket.on(SocketEvent.PENDING_OFFENSIVE_CARD, async (payload: unknown) => {
+                if (!payload || typeof payload !== "object") return;
+                const mapId = (payload as { mapId?: unknown }).mapId;
+                if (typeof mapId !== "string" || !mapId) return;
+
+                try {
+                    const battle = await this.battleStateRepository.findByMapId(mapId);
+                    const pendingQueue = battle
+                        ? await this.pendingQueueRepository.findByBattleStateId(battle.id)
+                        : null;
+                    const pending = pendingQueue
+                        ? await this.pendingGetter.getPendingOffensiveCard(pendingQueue.id)
+                        : null;
+                    const card = pending
+                        ? await this.cardRepository.findCardById(pending.cardId)
+                        : null;
+
+                    this.io
+                        .to(Rooms.map(mapId))
+                        .emit(SocketEvent.PENDING_OFFENSIVE_CARD, {
+                            mapId,
+                            card,
+                            attackerId: card && pending ? pending.attackerId : null,
+                        });
+                } catch (error) {
+                    console.error("Não foi possível sincronizar o card ofensivo:", error);
+                }
+            });
+
             socket.on(SocketEvent.FRONTEND_CARD_SELECTION, (value) => { //prototipo
 
                 this.io
@@ -335,18 +415,18 @@ export class SocketServer {
 
             });
 
-            socket.on(SocketEvent.FRONTEND_ADD_PREVIEW_CELLS, (value) => { //prototipo
-
+            socket.on(SocketEvent.FRONTEND_ADD_PREVIEW_CELLS, (payload) => {
+                if (!payload || typeof payload.mapId !== "string") return;
                 this.io
-                    .emit(SocketEvent.FRONTEND_ADD_PREVIEW_CELLS, value);
-
+                    .to(Rooms.map(payload.mapId))
+                    .emit(SocketEvent.FRONTEND_ADD_PREVIEW_CELLS, payload);
             });
 
-            socket.on(SocketEvent.FRONTEND_SET_PREVIEW_CELLS, (value) => { //prototipo
-
+            socket.on(SocketEvent.FRONTEND_SET_PREVIEW_CELLS, (payload) => {
+                if (!payload || typeof payload.mapId !== "string") return;
                 this.io
-                    .emit(SocketEvent.FRONTEND_SET_PREVIEW_CELLS, value);
-
+                    .to(Rooms.map(payload.mapId))
+                    .emit(SocketEvent.FRONTEND_SET_PREVIEW_CELLS, payload);
             });
 
             socket.on(SocketEvent.FRONTEND_SELECTED_TARGET, (value) => { //prototipo

@@ -5,6 +5,7 @@ export type PendingReaction = {
 
 export type PendingAttack =
     {
+        requestId: string;
         attackerId: string;
         targetId: string;
         rawDamage: number;

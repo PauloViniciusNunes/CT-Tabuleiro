@@ -2,6 +2,29 @@ import { OperatorType } from "../operators/OperatorType";
 import { MoveTokenValidator } from "../validators/MoveTokenValidator";
 import { BattleEngineService } from "./BattleEngineService";
 
+function hasPendingPayload(value: unknown): boolean {
+    if (!value || typeof value !== "object") return false;
+    return Array.isArray(value)
+        ? value.length > 0
+        : Object.keys(value).length > 0;
+}
+
+function hasPendingMovementBlockingResolution(pendingQueue: {
+    readonly pendingAttack: unknown;
+    readonly pendingOffensiveCard: unknown;
+    readonly pendingSpecialResponse: unknown;
+    readonly pendingFreeResponse: unknown;
+    readonly pendingEsquivaRoll: unknown;
+}): boolean {
+    return [
+        pendingQueue.pendingAttack,
+        pendingQueue.pendingOffensiveCard,
+        pendingQueue.pendingSpecialResponse,
+        pendingQueue.pendingFreeResponse,
+        pendingQueue.pendingEsquivaRoll,
+    ].some(hasPendingPayload);
+}
+
 /**
  * Authoritative movement entry point for the board while a battle is active.
  *
@@ -25,7 +48,43 @@ export class BattleEngineMoveTokenService extends BattleEngineService {
             throw new Error("O token informado não pertence ao mapa da batalha.");
         }
 
-        await this.assertCanManageToken(userId, token.userId, token.mapId);
+        const isGameMaster = await this.assertCanManageToken(
+            userId,
+            token.userId,
+            token.mapId,
+        );
+
+        if (token.type !== "player" || battle.currentActorId !== token.id) {
+            throw new Error("Apenas o token jogador do turno atual pode se mover.");
+        }
+
+        if (!isGameMaster && battle.currentActorUserId !== userId) {
+            throw new Error("O movimento só é permitido durante a escolha de ação do token.");
+        }
+
+        const pendingQueue = await this.pendingQueueRepository.findById(
+            battle.pendingQueueId,
+        );
+        if (!pendingQueue) {
+            throw new Error("A fila de pendências da batalha não foi encontrada.");
+        }
+
+        const hasOffensiveCardResponders =
+            Array.isArray(battle.tokensInOffensiveCard) &&
+            battle.tokensInOffensiveCard.length > 0;
+        const isSelectingAmbientPivot =
+            typeof battle.tokenInAmbientPivotSelection === "string" &&
+            battle.tokenInAmbientPivotSelection.length > 0;
+
+        if (
+            hasPendingMovementBlockingResolution(pendingQueue) ||
+            hasOffensiveCardResponders ||
+            isSelectingAmbientPivot
+        ) {
+            throw new Error(
+                "O token não pode se mover enquanto uma ação ou reação está sendo resolvida.",
+            );
+        }
 
         return this.operators.execute(OperatorType.MOVEMENT, {
             battleId: battle.id,
@@ -56,5 +115,7 @@ export class BattleEngineMoveTokenService extends BattleEngineService {
         if (userId !== tokenOwnerId && userId !== campaign.ownerId) {
             throw new Error("Usuário não pode mover este token.");
         }
+
+        return userId === campaign.ownerId;
     }
 }

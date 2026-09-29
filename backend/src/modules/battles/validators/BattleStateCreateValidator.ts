@@ -27,6 +27,19 @@ export const ActionChoiceSchema = z.object({
   targetId: z.string().optional(),
   round: z.number().optional(),
   rollResult: RollResultSchema.optional(),
+  historyId: z.string().optional(),
+  historyKind: z.enum(["action", "reaction", "card"]).optional(),
+  card: z.object({
+    id: z.string(),
+    name: z.string(),
+    img: z.string(),
+    desc: z.string(),
+    causality: z.string(),
+    baseDice: z.object({
+      quantity: z.number(),
+      type: z.string(),
+    }).nullable().optional(),
+  }).optional(),
 });
 
 export const TurnEffectSchema = z.object({
@@ -65,6 +78,7 @@ export const BattleStateValidator = z.object({
   actionHistory: z.array(ActionChoiceSchema),
   tokensBattlePosition: recordOrEmptyObject(z.number()).optional(),
   didActThisTurn: recordOrEmptyObject(z.boolean()).optional(),
+  transformationStates: recordOrEmptyObject(z.any()).optional(),
 
   // Chave do Relacionamento 1-para-1 com PendingQueue
   pendingQueueId: z.string(),

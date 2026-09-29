@@ -44,7 +44,7 @@ export class BattleEnginePivotSelection extends BattleEngineService {
                     const range = armedCard!.target.pivotSettings!.range;
                     const cells = getCellsInRadius(pivot, range, gridCells);
 
-                    runtime.emit(SocketEvent.FRONTEND_ADD_PREVIEW_CELLS, cells);
+                    runtime.emit(SocketEvent.FRONTEND_ADD_PREVIEW_CELLS, { mapId: battleState.mapId, value: cells });
                     await this.battleSetter.addSelectedPivot(battleId, { type: "cell", position: pivot });
                 }
             } else if (pivotType === "Token-Fix") {
@@ -54,8 +54,8 @@ export class BattleEnginePivotSelection extends BattleEngineService {
                     const range = armedCard!.target.pivotSettings!.range;
                     const cells = getCellsInRadius(token.position, range, gridCells);
 
-                    runtime.emit(SocketEvent.FRONTEND_ADD_PREVIEW_CELLS, cells);
-                    runtime.emit(SocketEvent.FRONTEND_SELECTED_CELL, null);
+                    runtime.emit(SocketEvent.FRONTEND_ADD_PREVIEW_CELLS, { mapId: battleState.mapId, value: cells });
+                    runtime.emit(SocketEvent.FRONTEND_SELECTED_CELL, { mapId: battleState.mapId, value: null });
 
                     await this.battleSetter.addSelectedPivot(battleId, { type: "token", tokenId: token.id });
                 }

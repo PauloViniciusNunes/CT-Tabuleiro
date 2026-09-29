@@ -1,13 +1,18 @@
-import { calculateCardRoll } from "../../utils/calculations";
-import { sum } from "../../utils/calculations";
-import { ActionRollParams } from "../../utils/calculations";
+import {
+    calculateCardRoll,
+    sum,
+    type ActionRollParams,
+    type RollResult,
+} from "../../utils/calculations";
 
 import { runtime } from "@/runtime";
 import { SocketEvent } from "@/runtime/Events";
 import { MechanicEngine } from "../../mechanic/MechanicEngine";
+import { cardDurationOverride } from "../../mechanic/utils/cardDurationOverride";
 import { syncBattleState } from "../../utils/syncBattleState";
 import { OperatorType } from "../../operators/OperatorType";
 import { BattleEngineService } from "../BattleEngineService";
+import { normalizeElement } from "../../utils/elementalAffinity";
 
 export class BattleEngineTreatTargetService extends BattleEngineService {
 
@@ -16,7 +21,7 @@ export class BattleEngineTreatTargetService extends BattleEngineService {
         triggerTokenId: string,
         target: any,
         card: any,
-        options: { consumeCardCosts?: boolean } = {},
+        options: { consumeCardCosts?: boolean; cardRoll?: RollResult } = {},
     ) {
 
         if (!battleId) throw new Error("Não foi passada uma string válida para battleId")
@@ -59,7 +64,7 @@ export class BattleEngineTreatTargetService extends BattleEngineService {
             target.numbersTarget ?? 1
         );
 
-        const roll = calculateCardRoll(1, triggerToken, card);
+        const roll = options.cardRoll ?? calculateCardRoll(1, triggerToken, card);
         const rollScore = (sum(roll.rawRolls) + roll.total) * roll.CRI;
 
         const classAtributeConjure: Record<string, string> =
@@ -166,15 +171,14 @@ export class BattleEngineTreatTargetService extends BattleEngineService {
                     },
                 );
 
-                runtime.emit(SocketEvent.PENDING_OFFENSIVE_CARD, {
-                    card,
-                    attackerId: triggerTokenId,
-                })
-
                 for (const target of affectedTargets) {
                     await this.battleSetter.setTokenInOffensiveCard(battleId, target.id)
                     runtime.emit(SocketEvent.TOKEN_IN_OFFENSIVE_CARD, target)
                 }
+
+                runtime.emit(SocketEvent.PENDING_OFFENSIVE_CARD, {
+                    mapId: battleState.mapId,
+                })
                 runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_SCORE, rollScore)
                 runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_TEST_SCORE, testCardScore)
                 break
@@ -191,7 +195,8 @@ export class BattleEngineTreatTargetService extends BattleEngineService {
                                 battleId,
                                 effect,
                                 {
-                                    "targetId": token.id
+                                    "targetId": token.id,
+                                    ...cardDurationOverride(card.duration),
                                 }
                             )
                         }
@@ -203,15 +208,23 @@ export class BattleEngineTreatTargetService extends BattleEngineService {
                     const canDamaged = affectedTargets.some((t: any) => t.id === token.id)
 
                     if (canDamaged) {
+                        const damageElements = Array.isArray(card.effectToApply)
+                            ? card.effectToApply.filter((effect: unknown): effect is string => typeof effect === "string")
+                            : [];
+                        const carriesFire = damageElements.some(
+                            (effect: string) => normalizeElement(effect) === "fogo",
+                        );
                         await this.operators.execute(OperatorType.DAMAGE, {
                             battleId,
                             sourceTokenId: triggerTokenId,
                             targetTokenId: token.id,
                             amount: rollScore,
                             cause: "SPELL_DAMAGE",
+                            element: carriesFire ? "fogo" : undefined,
                             metadata: {
                                 cardId: card.id,
                                 attackType: "magico",
+                                damageElements,
                             },
                         })
                     }
@@ -232,7 +245,8 @@ export class BattleEngineTreatTargetService extends BattleEngineService {
                                 battleId,
                                 effect,
                                 {
-                                    "targetId": token.id
+                                    "targetId": token.id,
+                                    ...cardDurationOverride(card.duration),
                                 }
                             )
                         }

@@ -31,6 +31,7 @@ import type {
     ActionIncrementData,
     ActionIncrementInput,
 } from "../../operators/ActionIncrementOperator";
+import type { MechanicRemovalData } from "../../operators/MechanicRemovalOperator";
 
 export interface EngineContext {
     mapId: string,
@@ -75,7 +76,7 @@ export interface EngineContext {
         removeMechanic: (
             mechanicId: string,
             reason?: string,
-        ) => Promise<boolean>,
+        ) => Promise<MechanicRemovalData>,
     },
     specialResponses: {
         request: (

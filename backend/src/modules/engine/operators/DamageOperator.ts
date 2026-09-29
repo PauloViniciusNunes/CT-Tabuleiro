@@ -9,6 +9,7 @@ import {
     createTokenElementProfile,
     type TokenElementProfile,
 } from "../utils/elementalAffinity";
+import { MechanicResourceDepletedEvent } from "../mechanic/events/MechanicResourceDepletedEvent";
 
 export interface DamageIntent extends OperationIntent {
     readonly sourceTokenId?: string;
@@ -26,6 +27,10 @@ export interface DamageData extends DamageIntent, OperationContext, Interceptabl
     readonly ignoredImmunityElements?: readonly string[];
     /** Prevents the same reusable modifier from stacking accidentally. */
     readonly appliedDamageModifierKeys?: readonly string[];
+    /** Damage absorbed by mechanic-owned virtual resources in this operation. */
+    readonly absorbedDamageByMechanic?: Readonly<Record<string, number>>;
+    /** Mechanics whose virtual resource reached zero in this operation. */
+    readonly depletedMechanicIds?: readonly string[];
 }
 
 export type DamageInput = DamageIntent & {
@@ -62,7 +67,7 @@ export class DamageOperator extends Operator<DamageInput, DamageData> {
         }
         
         // intercept = MechanicEngine.process
-        const damage = await this.runtime.intercept(InterceptorType.DAMAGE, {
+        const damage = await this.runtime.intercept<DamageData>(InterceptorType.DAMAGE, {
             ...input,
             operationId: input.operationId ?? crypto.randomUUID(),
             baseAmount: Math.floor(input.amount),
@@ -74,9 +79,22 @@ export class DamageOperator extends Operator<DamageInput, DamageData> {
             cancelled: false,
         }, input.battleId);
 
-        if (damage.cancelled || damage.amount === 0) {
+        if (damage.cancelled) {
             return damage;
         }
+
+        if ((damage.depletedMechanicIds?.length ?? 0) > 0) {
+            await this.runtime.dispatchEvent(
+                damage.battleId,
+                new MechanicResourceDepletedEvent(damage.depletedMechanicIds ?? []),
+                {
+                    operation: damage,
+                    mechanicIds: damage.depletedMechanicIds ?? [],
+                },
+            );
+        }
+
+        if (damage.amount === 0) return damage;
 
         const updatedTarget = await this.battleSetter.tokenDamage(
             damage.targetTokenId,

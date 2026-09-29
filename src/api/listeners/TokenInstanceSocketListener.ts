@@ -15,7 +15,6 @@ export class TokenInstanceSocketListener {
     private readonly socket: Socket;
     private readonly boardTokensRef: React.RefObject<Token[]>;
     private readonly setBoardTokens: Dispatch<SetStateAction<Token[]>>;
-    private readonly setTokenInAmbientPivotSelection: Dispatch<SetStateAction<string>>
     private readonly cardsRef: React.RefObject<Card[]>;
     private readonly itemsRef: React.RefObject<Item[]>;
 
@@ -23,7 +22,6 @@ export class TokenInstanceSocketListener {
         socket: Socket,
         boardTokensRef: React.RefObject<Token[]>,
         setBoardTokens: Dispatch<SetStateAction<Token[]>>,
-        setTokenInAmbientPivotSelection: Dispatch<SetStateAction<string>>,
         cardsRef: React.RefObject<Card[]>,
         itemsRef: React.RefObject<Item[]>,
     ) {
@@ -31,7 +29,6 @@ export class TokenInstanceSocketListener {
         this.socket = socket
         this.boardTokensRef = boardTokensRef
         this.setBoardTokens = setBoardTokens
-        this.setTokenInAmbientPivotSelection = setTokenInAmbientPivotSelection
         this.cardsRef = cardsRef
         this.itemsRef = itemsRef
 
@@ -44,7 +41,6 @@ export class TokenInstanceSocketListener {
         this.socket.on(SocketEvent.TOKEN_UPDATED, this.onTokenUpdated)
         this.socket.on(SocketEvent.TOKEN_CREATED, this.onTokenCreated)
         this.socket.on(SocketEvent.TOKEN_DELETED, this.onTokenDeleted)
-        this.socket.on(SocketEvent.TOKEN_IN_AMBIENT_PIVOT_SELECTION, this.onTokenInAmbientPivotSelection)
     }
 
     unregister() {
@@ -54,7 +50,6 @@ export class TokenInstanceSocketListener {
         this.socket.off(SocketEvent.TOKEN_UPDATED, this.onTokenUpdated)
         this.socket.off(SocketEvent.TOKEN_CREATED, this.onTokenCreated)
         this.socket.off(SocketEvent.TOKEN_DELETED, this.onTokenDeleted)
-        this.socket.off(SocketEvent.TOKEN_IN_AMBIENT_PIVOT_SELECTION, this.onTokenInAmbientPivotSelection)
 
     }
 
@@ -118,11 +113,6 @@ export class TokenInstanceSocketListener {
             this.itemsRef.current ?? [],
         )
         this.setBoardTokens((prev) => prev.filter((t) => t.id !== token.id))
-    }
-
-    private onTokenInAmbientPivotSelection = (ambientToken: any) => {
-        const id = ambientToken as string
-        this.setTokenInAmbientPivotSelection(id)
     }
 
 }

@@ -6,7 +6,7 @@ const ROOT = new URL("../", import.meta.url);
 const IS_WINDOWS = process.platform === "win32";
 const NPM = IS_WINDOWS ? "npm.cmd" : "npm";
 const CLOUDFLARED = IS_WINDOWS ? "cloudflared.exe" : "cloudflared";
-const LOCAL_URL = "http://ct-tabuleiro.local:5173";
+const LOCAL_URL = "http://localhost:5173";
 const INTERNAL_FRONTEND_URL = "http://127.0.0.1:5173";
 const INTERNAL_BACKEND_URL = "http://127.0.0.1:3000";
 const INTERNAL_SOCKET_URL = "http://127.0.0.1:3001";

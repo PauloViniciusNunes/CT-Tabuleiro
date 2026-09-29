@@ -49,6 +49,7 @@ export function TokenMapper(json: any, cards: Card[], items: Item[]): Token {
     paralysisState: json.paralysisState ?? undefined,
     tokenPrimaryElement: normalizePrimaryMechanics(json.tokenPrimaryElement),
     tokenPrimaryDisvantege: normalizeMechanicDisadvantages(json.tokenPrimaryDisvantage),
+    passiveMechanics: Array.isArray(json.passiveMechanics) ? json.passiveMechanics : [],
     bossSettings: json.bossSettings ?? undefined,
 
     position: {
@@ -174,6 +175,7 @@ export function JsonTokenMapper(token: Token): any {
     paralysisState: token.paralysisState ?? null,
     tokenPrimaryElement: token.tokenPrimaryElement ?? [],
     tokenPrimaryDisvantage: token.tokenPrimaryDisvantege ?? [],
+    passiveMechanics: token.passiveMechanics ?? [],
     bossSettings: token.bossSettings ?? null,
 
     // ===== JSON Fields & Arrays =====

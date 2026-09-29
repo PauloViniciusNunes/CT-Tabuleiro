@@ -23,6 +23,8 @@ export class CreateCardService {
             baseDice: input.baseDice as Prisma.InputJsonValue | undefined,
             target: input.target as Prisma.InputJsonValue,
             effectToApply: input.effectToApply as Prisma.InputJsonValue | undefined,
+            casterEffectsToApply: input.casterEffectsToApply as Prisma.InputJsonValue | undefined,
+            triggerEffectsToApply: input.triggerEffectsToApply as Prisma.InputJsonValue | undefined,
 
             user: {
                 connect: {

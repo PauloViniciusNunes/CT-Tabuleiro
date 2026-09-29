@@ -156,6 +156,8 @@ export class BattleEngineReactionService extends BattleEngineService {
                 choice: choice,
                 wasCertainty: true,
                 displayRoll: displayRoll,
+                historyKind: "reaction",
+                targetTokenId: attackerId,
             })
 
             await this.handleEndReaction(pendingQueue.id)
@@ -203,6 +205,8 @@ export class BattleEngineReactionService extends BattleEngineService {
                 choice: choice,
                 wasCertainty: false,
                 displayRoll: roll,
+                historyKind: "reaction",
+                targetTokenId: attackerId,
             })
 
             await this.handleEndReaction(pendingQueue.id)
@@ -277,6 +281,8 @@ export class BattleEngineReactionService extends BattleEngineService {
                 choice: choice,
                 wasCertainty: false,
                 displayRoll: roll,
+                historyKind: "reaction",
+                targetTokenId: attackerId,
             })
 
             await this.handleEndReaction(pendingQueue.id)
@@ -322,6 +328,8 @@ export class BattleEngineReactionService extends BattleEngineService {
                 choice: choice,
                 wasCertainty: false,
                 displayRoll: roll,
+                historyKind: "reaction",
+                targetTokenId: attackerId,
             })
 
             await this.handleEndReaction(pendingQueue.id)
@@ -346,6 +354,8 @@ export class BattleEngineReactionService extends BattleEngineService {
                 choice: choice,
                 wasCertainty: false,
                 displayRoll: roll,
+                historyKind: "reaction",
+                targetTokenId: attackerId,
             })
 
             // Ativa UI de resolução (definição do atacante)
@@ -392,6 +402,8 @@ export class BattleEngineReactionService extends BattleEngineService {
                 choice: choice,
                 wasCertainty: false,
                 displayRoll: roll,
+                historyKind: "reaction",
+                targetTokenId: attackerId,
             })
 
             // Aplica dano restante no defensor

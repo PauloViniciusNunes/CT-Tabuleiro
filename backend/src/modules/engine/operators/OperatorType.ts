@@ -9,6 +9,7 @@ export enum OperatorType {
     MOVEMENT = "movement",
     ENVIRONMENT = "environment",
     MECHANIC_APPLICATION = "mechanic.application",
+    MECHANIC_REMOVAL = "mechanic.removal",
     RESOURCE_SET = "resource.set",
     ACTION_DISPATCH = "action.dispatch"
 }

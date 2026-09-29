@@ -3,7 +3,11 @@ import { BattleStateRepository } from "@/modules/battles/repositories/BattleStat
 import { BattleSetter } from "../context/BattleSetter";
 import { MechanicAppliedEvent } from "../mechanic/events/MechanicAppliedEvent";
 import { MechanicFactory } from "../mechanic/MechanicFactory";
-import type { MechanicInstance } from "../mechanic/mechanics/MechanicInstance";
+import {
+    deduplicateMechanicInstances,
+    mechanicUniquenessKey,
+    type MechanicInstance,
+} from "../mechanic/mechanics/MechanicInstance";
 import type { InterceptableData } from "../mechanic/interceptors/Interceptor";
 import { InterceptorType } from "../mechanic/interceptors/InterceptorType";
 import {
@@ -91,21 +95,43 @@ export class MechanicApplicationOperator extends Operator<
             return application;
         }
 
-        const instance = MechanicFactory.create(
+        const candidate = MechanicFactory.create(
             application.sourceTokenId,
             application.tag,
             { ...application.mechanicMetadata },
         );
+        const candidateIdentity = mechanicUniquenessKey(candidate);
+        let persistedInstance = candidate;
+        let wasCreated = false;
 
         await this.battleSetter.updateActiveMechanics(
             application.battleId,
-            (activeMechanics) => [...activeMechanics, instance],
+            (activeMechanics) => {
+                wasCreated = false;
+                const uniqueMechanics = deduplicateMechanicInstances(activeMechanics);
+                const existing = uniqueMechanics.find(
+                    (mechanic) => mechanicUniquenessKey(mechanic) === candidateIdentity,
+                );
+
+                if (existing) {
+                    persistedInstance = existing;
+                    return uniqueMechanics;
+                }
+
+                wasCreated = true;
+                persistedInstance = candidate;
+                return [...uniqueMechanics, candidate];
+            },
         );
 
         const resolved: MechanicApplicationData = {
             ...application,
-            instance,
+            instance: persistedInstance,
         };
+
+        if (!wasCreated) {
+            return resolved;
+        }
 
         await this.runtime.dispatchEvent(
             resolved.battleId,

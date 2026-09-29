@@ -143,7 +143,20 @@ export const TokenPrimaryElement = [
   "arma-magica",
   "asas-dragao",
   "cancelar-dano",
-  "surto-acao"
+  "surto-acao",
+  "prisao",
+  "desvantagem-destreza",
+  "desvantagem-cosistencia",
+  "turno-cancelado",
+  "beneficio-cromatico", // Obsoleto
+  "vida-virtual",
+  "vantagem-forca",
+  "vantagem-consistencia",
+  "amplificador-fogo",
+  "alternancia-dano-fogo",
+  "basica-regeneracao",
+  "cancelar-acao-aplicar-fogo",
+  "dano-fogo-por-afinidade"
 ] as const;
 
 export type PrimaryMechanic = typeof TokenPrimaryElement[number]

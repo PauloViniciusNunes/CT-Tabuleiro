@@ -3,9 +3,35 @@ import { SocketEvent } from "@/runtime/Events";
 import { syncBattleState } from "../utils/syncBattleState";
 import { BattleEngineService } from "./BattleEngineService";
 import { emitPendingSpecialResponse } from "../special-response/emitSpecialResponse";
+import { BattleEngineTransformService } from "./BattleEngineTransformService";
+
+export function emitBattleRuntimeCleanup(battle: { id: string; mapId: string }): void {
+    const { mapId } = battle;
+
+    runtime.emit(SocketEvent.PENDING_ATTACK, null);
+    runtime.emit(SocketEvent.PENDING_ESQUIVA_ROLL, null);
+    runtime.emit(SocketEvent.FRONTEND_CARD_SELECTION, false);
+    runtime.emit(SocketEvent.PENDING_CARD_RESOLUTION, null);
+    runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_SCORE, null);
+    runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_TEST_SCORE, null);
+    runtime.emit(SocketEvent.PENDING_OFFENSIVE_CARD, { mapId });
+    runtime.emit(SocketEvent.PENDING_FREE_RESPONSE, null);
+    runtime.emit(SocketEvent.FRONTEND_ARMED_CARD, undefined);
+    runtime.emit(SocketEvent.FRONTEND_AMBIENT_PIVOT_SELECTION, false);
+    runtime.emit(SocketEvent.FRONTEND_SELECTED_PIVOTS, []);
+    runtime.emit(SocketEvent.FRONTEND_SET_PREVIEW_CELLS, { mapId, value: [] });
+    runtime.emit(SocketEvent.FRONTEND_IN_DEFENSE_RESOLUTION, false);
+    runtime.emit(SocketEvent.FRONTEND_IN_TARGET_SELECTION, false);
+    runtime.emit(SocketEvent.FRONTEND_SELECTED_TARGET, null);
+    runtime.emit(SocketEvent.TOKEN_IN_AMBIENT_PIVOT_SELECTION, "");
+    emitPendingSpecialResponse(mapId, null);
+    runtime.emit(SocketEvent.BATTLE_ENDED, battle);
+}
+
 
 
 export class BattleEngineEndBattleService extends BattleEngineService {
+    private readonly transformService = new BattleEngineTransformService();
     async execute(battleId: string) {
 
         if (!battleId) {
@@ -18,6 +44,7 @@ export class BattleEngineEndBattleService extends BattleEngineService {
             throw new Error("O Estado de batalha não foi encontrado para ser encerrado.")
         }
 
+        await this.transformService.restoreAllBeforeBattleEnd(battleId)
         const boardTokens = await this.tokenInstanceRepository.listByMapId(battleState.mapId)
 
         const mapId = battleState.mapId;
@@ -36,23 +63,8 @@ export class BattleEngineEndBattleService extends BattleEngineService {
         // 2. SEGUNDO: Deleta o estado da batalha e sua fila na mesma transação.
         await this.battleStateRepository.delete(battleId)
 
-        // 3. TERCEIRO: Limpa todos os estados auxiliares do frontend via socket
-        runtime.emit(SocketEvent.PENDING_ATTACK, null)
-        runtime.emit(SocketEvent.FRONTEND_CARD_SELECTION, false)
-        runtime.emit(SocketEvent.PENDING_CARD_RESOLUTION, null)
-        runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_SCORE, null)
-        runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_TEST_SCORE, null)
-        runtime.emit(SocketEvent.PENDING_OFFENSIVE_CARD, undefined)
-        runtime.emit(SocketEvent.PENDING_FREE_RESPONSE, null)
-        runtime.emit(SocketEvent.FRONTEND_ARMED_CARD, undefined)
-        runtime.emit(SocketEvent.FRONTEND_AMBIENT_PIVOT_SELECTION, false)
-        runtime.emit(SocketEvent.FRONTEND_SELECTED_PIVOTS, [])
-        runtime.emit(SocketEvent.FRONTEND_SET_PREVIEW_CELLS, new Set())
-        runtime.emit(SocketEvent.FRONTEND_IN_DEFENSE_RESOLUTION, false)
-        runtime.emit(SocketEvent.FRONTEND_IN_TARGET_SELECTION, false)
-        runtime.emit(SocketEvent.FRONTEND_SELECTED_TARGET, null)
-        runtime.emit(SocketEvent.TOKEN_IN_AMBIENT_PIVOT_SELECTION, "")
-        emitPendingSpecialResponse(mapId, null)
+        // 3. Limpa todos os estados auxiliares do frontend via socket.
+        emitBattleRuntimeCleanup({ id: battleState.id, mapId });
 
         // 4. QUARTO: Emite o encerramento limpo para o frontend (com status adequado ou null)
         const closedBattleState = {

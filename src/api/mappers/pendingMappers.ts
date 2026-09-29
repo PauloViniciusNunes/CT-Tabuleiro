@@ -7,6 +7,7 @@ export function PendingAttackMapper(json: any): PendingAttack | null {
     if(!json) return null
 
     return {
+        requestId: json.requestId,
         attackerId: json.attackerId,
         targetId: json.targetId,
         rawDamage: json.rawDamage,
@@ -27,6 +28,7 @@ export function PendingFreeResponseMapper(json: any) : FreeResponse | null {
     if(!json) return null
 
     return {
+        requestId: json.requestId,
         responderId: json.responderId,
         paralyzedId: json.paralyzedId
     }

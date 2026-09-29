@@ -13,6 +13,7 @@ import { BattleEngineDefenseResolutionService } from "../services/BattleEngineDe
 import { BattleEnginePrevAction } from "../services/BattleEnginePrevAction";
 import { BattleEngineCardResolution } from "../services/BattleEngineCardResolution";
 import { BattleEngineCancelReaction } from "../services/BattleEngineCancelReaction";
+import { BattleEngineCancelCardSelectionService } from "../services/BattleEngineCancelCardSelectionService";
 import { BattleEnginePivotSelection } from "../services/micro-services/BattleEnginePivotSelection";
 import { BattleEngineConfirmPivot } from "../services/micro-services/BattleEngineConfirmPivot";
 import { BattleEngineSwapItem } from "../services/micro-services/BattleEngineSwapItem";
@@ -21,6 +22,7 @@ import { CORS_HEADERS } from "@/shared/cors/headers";
 import { SpecialResponseResolutionService } from "../special-response/SpecialResponseResolutionService";
 import { BattleEngineUseArtificeService } from "../services/BattleEngineUseArtificeService";
 import { BattleEngineMoveTokenService } from "../services/BattleEngineMoveTokenService";
+import { BattleEngineTransformService } from "../services/BattleEngineTransformService";
 
 export class BattleEngineController {
 
@@ -35,6 +37,7 @@ export class BattleEngineController {
 
     private readonly battleEngineCardResolution = new BattleEngineCardResolution()
     private readonly battleEngineCancelReaction = new BattleEngineCancelReaction()
+    private readonly battleEngineCancelCardSelectionService = new BattleEngineCancelCardSelectionService()
     private readonly battleEnginePivotSelection = new BattleEnginePivotSelection()
 
     private readonly battleEngineConfirmPivot = new BattleEngineConfirmPivot()
@@ -43,6 +46,29 @@ export class BattleEngineController {
     private readonly specialResponseResolutionService = new SpecialResponseResolutionService()
     private readonly battleEngineUseArtificeService = new BattleEngineUseArtificeService()
     private readonly battleEngineMoveTokenService = new BattleEngineMoveTokenService()
+    private readonly battleEngineTransformService = new BattleEngineTransformService()
+
+    async transform(request: NextRequest) {
+        try {
+            const user = await getUser(request);
+            const body = await request.json();
+            await this.battleEngineTransformService.execute(user.id, body);
+            return NextResponse.json(
+                { message: "Transformação resolvida com sucesso." },
+                { status: 200, headers: CORS_HEADERS },
+            );
+        } catch (error) {
+            console.error(error);
+            return NextResponse.json(
+                {
+                    message: error instanceof Error
+                        ? error.message
+                        : "Não foi possível resolver a transformação.",
+                },
+                { status: 400, headers: CORS_HEADERS },
+            );
+        }
+    }
 
     async start(mapId: string, request: NextRequest) {
         try {
@@ -78,9 +104,9 @@ export class BattleEngineController {
             const user = await getUser(request)
             const body = await request.json()
             const choiced = ChoiceValidator.parse(body)
-            await this.battleEngineExecuteActionService.execute((choiced["battleId"] as string), choiced)
+            const accepted = await this.battleEngineExecuteActionService.execute((choiced["battleId"] as string), choiced)
             return NextResponse.json(
-                { message: "Ação executada com sucesso!" },
+                { message: "Ação executada com sucesso!", accepted },
                 {
                     status: 201,
                     headers: CORS_HEADERS,
@@ -297,6 +323,29 @@ export class BattleEngineController {
             )
             
         }          
+    }
+
+    async cancelCardSelection(request: NextRequest) {
+        try {
+            const user = await getUser(request);
+            const body = await request.json();
+            await this.battleEngineCancelCardSelectionService.execute(user.id, body.battleId);
+
+            return NextResponse.json(
+                { message: "Seleção de card cancelada." },
+                { status: 200, headers: CORS_HEADERS },
+            );
+        } catch (error) {
+            console.error(error);
+            return NextResponse.json(
+                {
+                    message: error instanceof Error
+                        ? error.message
+                        : "Não foi possível cancelar a seleção de card.",
+                },
+                { status: 400, headers: CORS_HEADERS },
+            );
+        }
     }
 
     async pivot(request: NextRequest) {

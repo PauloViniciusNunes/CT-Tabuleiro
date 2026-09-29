@@ -2,10 +2,9 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import type { Token } from "../../types/token";
 import type { ActionChoice } from "../../types/battle";
 import { isInAttackRange, calculateActionRoll } from "../../utils/battleCalculations";
-import { Sword, Brain, Book, Zap, Sparkles} from "lucide-react";
-import { GiCardRandom} from "react-icons/gi";
+import { Sword, Brain, Book, Zap, Sparkles, Dices, UsersRound, type LucideIcon } from "lucide-react";
 import { type Item } from "../../types/item";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { BattleFormToggle } from "./BattleFormToggle";
 import type { PrimaryMechanic } from "../../types/effects";
 import { getTokenMechanicForAction } from "../../utils/tokenMechanics";
 
@@ -18,7 +17,25 @@ import RIGHTARROW from "../../assets/buttons/RIGHTARROW.svg"
 import MINIPANNEL1 from "../../assets/hud/MINIPANNEL1.svg"
 
 
-type AttackAttr = "ataque_fisico" | "surpreender" | "desnortear" | "previnir" | "mana_recover" | "card_selection";
+type AttackAttr = "ataque_fisico" | "surpreender" | "desnortear" | "previnir" | "mana_recover" | "card_selection" | "transformar";
+
+type ActionOption = {
+  value: AttackAttr;
+  label: string;
+  icon: LucideIcon;
+  color: string;
+  restricted?: boolean;
+};
+
+const ACTION_OPTIONS: ActionOption[] = [
+  { value: "ataque_fisico", label: "Ataque Físico", icon: Sword, color: "text-red-400" },
+  { value: "surpreender", label: "Surpreender", icon: Zap, color: "text-yellow-400", restricted: true },
+  { value: "desnortear", label: "Desnortear", icon: Book, color: "text-purple-400", restricted: true },
+  { value: "previnir", label: "Previnir", icon: Brain, color: "text-pink-400", restricted: true },
+  { value: "mana_recover", label: "Recarregar", icon: Sparkles, color: "text-blue-400", restricted: true },
+  { value: "card_selection", label: "Cards", icon: Dices, color: "text-orange-400", restricted: true },
+  { value: "transformar", label: "Transformar", icon: UsersRound, color: "text-green-400", restricted: true },
+];
 
 interface ActionFormProps {
   token: Token;
@@ -34,7 +51,7 @@ interface ActionFormProps {
       item: Item | null;
       selectedMechanic: PrimaryMechanic;
     }
-  ) => void | Promise<void>;
+  ) => void | Promise<void | { accepted?: boolean }>;
 
   onPass: () => void | Promise<void>;
   onSelectionTarget: (b: boolean) => void;
@@ -87,57 +104,27 @@ const ActionForm: React.FC<ActionFormProps> = ({
 
   const availableItems: Item[] = [...equippedItems];
 
-  //Seleção de Ação
-  const actionOptions = [
-    {
-      value: "ataque_fisico",
-      label: "Ataque Físico",
-      icon: <Sword className="inline-block" />,
-      color: "text-red-400",
-    },
-
-    ...(!restrictedMode ? [{
-      value: "surpreender",
-      label: "Surpreender",
-      icon: <Zap className="inline-block" />,
-      color: "text-yellow-400",
-    }] : []),
-
-    ...(!restrictedMode ? [{
-      value: "desnortear",
-      label: "Desnortear",
-      icon: <Book className="inline-block" />,
-      color: "text-purple-400",
-    }] : []),
-
-    ...(!restrictedMode ? [{
-      value: "previnir",
-      label: "Previnir",
-      icon: <Brain className="inline-block" />,
-      color: "text-pink-400",
-    }] : []),
-
-    ...(!restrictedMode ? [{
-      value: "mana_recover",
-      label: "Recarregar",
-      icon: <Sparkles className="inline-block" />,
-      color: "text-blue-400",
-    }] : []),
-
-    ...(!restrictedMode ? [{
-      value: "card_selection",
-      label: "Cards",
-      icon: <GiCardRandom className="inline-block text-xl" />,
-      color: "text-orange-400",
-    }] : []),
-  ];  
+  // Seleção de ação
+  const actionOptions = useMemo(
+    () => ACTION_OPTIONS.filter((option) => !restrictedMode || !option.restricted),
+    [restrictedMode],
+  );
   const currentIndex =
     Math.max(
       0,
       actionOptions.findIndex(
         a => a.value === selectedAction
       )
-    );  
+    );
+  const currentAction = actionOptions[currentIndex] ?? actionOptions[0];
+
+  useEffect(() => {
+    if (selectedAction && !actionOptions.some((option) => option.value === selectedAction)) {
+      setSelectedAction(actionOptions[0]?.value ?? null);
+    }
+  }, [actionOptions, selectedAction]);
+  const CurrentActionIcon = currentAction.icon;
+
   function nextAction()
   {
     const next =
@@ -178,15 +165,20 @@ const ActionForm: React.FC<ActionFormProps> = ({
   const canAttack = !targetToken || (isPhysicalAttack && isInAttackRange(token, targetToken, "fisico")) || (isMagicalAttack && isInAttackRange(token, targetToken, "magico"));
   const hasEnoughActions = usedActions >= 1 && usedActions <= Math.max(1, availableActions);
   const hasEnoughMana = usedMana >= 0 && usedMana <= (token.currentMana ?? 0);
-  const isFormValid = !!selectedAction && !!selectedTarget && hasEnoughActions && hasEnoughMana && !!canAttack || selectedAction === "mana_recover" || selectedAction === "card_selection";
+  const isUtilityAction = selectedAction === "mana_recover" ||
+    selectedAction === "card_selection" || selectedAction === "transformar";
+  const isFormValid = isUtilityAction || (
+    !!selectedAction && !!selectedTarget && hasEnoughActions &&
+    hasEnoughMana && !!canAttack
+  );
 
   useEffect(() => {
-    if (selectedAction === "mana_recover" || selectedAction === "card_selection") {
+    if (isUtilityAction) {
       setUsedCertaintyDie(false);
       setUsedMana(0);
       setSelectedTarget(null); // desmarca quando fica oculto
     }
-  }, [selectedAction]);
+  }, [selectedAction, isUtilityAction]);
 
   useEffect(() => {
 
@@ -221,7 +213,7 @@ const ActionForm: React.FC<ActionFormProps> = ({
   const handleExecute = async () => {
       if (!isFormValid || submissionLockRef.current) return;
       
-      const allowedCertaintyDie = (selectedAction !== "mana_recover" && selectedAction !== "card_selection")
+      const allowedCertaintyDie = !isUtilityAction
       const needsMechanicChoice = usedMana > 0 && availableMechanics.length > 1;
       const hasSecondPageOptions = allowedCertaintyDie &&
         (certaintyLeft > 0 || needsMechanicChoice);
@@ -248,12 +240,18 @@ const ActionForm: React.FC<ActionFormProps> = ({
       };
       const rollResult = calculateActionRoll(params);
 
-      const actionType = selectedAction === "ataque_fisico" ? "Ataque Físico": (selectedAction === "desnortear" ? "Desnortear": (selectedAction === "previnir" ? "Previnir" : (selectedAction === "surpreender" ? "Surpreender" : (selectedAction === "mana_recover" ? "Recarga de Mana" : "Seleção de Card"))));
+      const actionType = selectedAction === "ataque_fisico" ? "Ataque Físico"
+        : selectedAction === "desnortear" ? "Desnortear"
+        : selectedAction === "previnir" ? "Previnir"
+        : selectedAction === "surpreender" ? "Surpreender"
+        : selectedAction === "mana_recover" ? "Recarga de Mana"
+        : selectedAction === "transformar" ? "Transformar"
+        : "Seleção de Card";
 
       submissionLockRef.current = true;
       setIsSubmitting(true);
       try {
-        await onExecute({
+        const execution = await onExecute({
           attribute: respectiveAtribute!,
           type: actionType,
           targetId: selectedTarget!,
@@ -270,6 +268,11 @@ const ActionForm: React.FC<ActionFormProps> = ({
             usedMana,
           ),
         });
+        if (execution?.accepted === false) {
+          submissionLockRef.current = false;
+          setIsSubmitting(false);
+          return;
+        }
 
         setUsedCertaintyDie(false);
         setUsedMana(0);
@@ -357,13 +360,14 @@ const ActionForm: React.FC<ActionFormProps> = ({
                                           
                     </button>
 
-                    <div
-                      className={`font-semibold flex items-center gap-2
-                        ${actionOptions[currentIndex].color}
-                      `}
-                    >
-                      {actionOptions[currentIndex].icon}
-                      {actionOptions[currentIndex].label}
+                    <div className="min-w-0 flex-1 text-center" translate="no">
+                      <span
+                        key={currentAction.value}
+                        className={"notranslate inline-flex items-center gap-2 font-semibold " + currentAction.color}
+                      >
+                        <CurrentActionIcon className="h-5 w-5 shrink-0" aria-hidden="true" />
+                        <span>{currentAction.label}</span>
+                      </span>
                     </div>
 
                     <button
@@ -433,7 +437,7 @@ const ActionForm: React.FC<ActionFormProps> = ({
                     {/* Seleção de Alvo + Indicador de Distância */}
                     {/* */}
                     {/* Seleção de alvos atualizada */}
-                    {selectedAction !== "mana_recover" && selectedAction !== "card_selection" && (
+                    {!isUtilityAction && (
                       <div className="flex flex-col gap-1">
                         <label className="block text-xs text-gray-400">Alvo</label>
                           <button
@@ -452,7 +456,7 @@ const ActionForm: React.FC<ActionFormProps> = ({
                     )}
 
                     {/* Mana Usada */}
-                    {selectedAction !== "mana_recover" && selectedAction !== "card_selection" &&  (
+                    {!isUtilityAction &&  (
                     <div>
                       <label className="block text-xs text-gray-400 mb-1">
                         Mana Usada (Disponível: {token.currentMana ?? 0})
@@ -562,7 +566,7 @@ const ActionForm: React.FC<ActionFormProps> = ({
                   )}
 
                   {/* Dado Certo */}
-                  {selectedAction !== "mana_recover" && selectedAction !== "card_selection" && certaintyLeft > 0 && (
+                  {!isUtilityAction && certaintyLeft > 0 && (
                     <div className="flex items-center justify-between bg-gray-800/60 rounded p-2">
                       <label htmlFor="use-certainty" className="text-sm text-gray-200 flex items-center gap-2">
                         <input
@@ -668,29 +672,11 @@ const ActionForm: React.FC<ActionFormProps> = ({
           </div>
           </div>
         )}
-        <button
-          onClick={() => setDisplayForm(!displayForm)}
-          className={`
-            fixed bottom-4 left-4 z-50
-            p-4 rounded-full
-            bg-gray-900 hover:bg-gray-800 text-white
-            shadow-lg border border-gray-700
-            focus:ring-2 focus:ring-gray-800
-            transition-[right,background-color,transform] duration-200
-            active:scale-95
-          `}
-        >
-          {displayForm ? (
-            <>
-              <ChevronUp className="w-5 h-5" />
-            </>
-          ) : (
-            <>
-              <ChevronDown className="w-5 h-5" />
-              
-            </>
-          )}
-        </button>
+        <BattleFormToggle
+          visible={displayForm}
+          onToggle={() => setDisplayForm((visible) => !visible)}
+          label="formulário de ação"
+        />
     </div>
     
   );

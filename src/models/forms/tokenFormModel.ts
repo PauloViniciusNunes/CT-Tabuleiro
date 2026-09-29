@@ -12,6 +12,7 @@ import type {
   TokenType,
 } from "../../types/token";
 import type { PrimaryMechanic, TokenPrimaryDisvantage } from "../../types/effects";
+import type { PassiveMechanic } from "../../types/item";
 import { generateUUID } from "../../utils/generateUUID";
 
 export interface TokenFormModel {
@@ -31,6 +32,7 @@ export interface TokenFormModel {
   magicalRange: number;
   primaryElements: PrimaryMechanic[];
   primaryDisadvantages: TokenPrimaryDisvantage[];
+  passiveMechanics: PassiveMechanic[];
   bossSettings?: BossInterfaceColors;
   ownerId: string;
   campaignId: string;
@@ -76,6 +78,12 @@ export function tokenFromForm(model: TokenFormModel): Token {
   const inventory = transformation && baseToken
     ? baseToken.inventory
     : model.inventory;
+  const passiveMechanics = transformation
+    ? [...new Set([
+        ...(baseToken?.passiveMechanics ?? []),
+        ...transformation.additionalPassiveMechanics,
+      ])]
+    : model.passiveMechanics;
 
   return {
     ...existing,
@@ -115,6 +123,7 @@ export function tokenFromForm(model: TokenFormModel): Token {
     tokenEffects: existing?.tokenEffects ?? [],
     tokenPrimaryElement: [...mechanics],
     tokenPrimaryDisvantege: [...disadvantages],
+    passiveMechanics: [...passiveMechanics],
     visualOverlays: existing?.visualOverlays ?? [],
     bossSettings: model.type === "boss" ? model.bossSettings : undefined,
     ownerId: model.ownerId,

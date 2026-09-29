@@ -8,7 +8,7 @@ import { runtime } from "@/runtime";
 import { SocketEvent } from "@/runtime/Events";
 import { MechanicEntityInstance } from "../../mechanic/types/mechanicEntity";
 import { MechanicEngine } from "../../mechanic/MechanicEngine";
-import { mountMechanicEntity } from "../../mechanic/utils/functions";
+import { cardDurationOverride } from "../../mechanic/utils/cardDurationOverride";
 import { PivotCandidate } from "../dao/pendingDaos";
 import { PendingGetter } from "../PendingGetter";
 import { PendingQueueRepository } from "@/modules/battles/repositories/PendingQueueRepository";
@@ -135,7 +135,8 @@ export async function applyMechanicToToken(
   tokensInstanceRepository: TokenTemplateRepository,
   battleId: string,
   cardEntity: MechanicEntityInstance,
-  targetToken: any
+  targetToken: any,
+  effectsOverride?: string[]
 ) {
 
   console.log("[TARGET TOKEN TEAM]: ", targetToken.team)
@@ -158,16 +159,24 @@ export async function applyMechanicToToken(
   if (!triggerToken)
     throw new Error("Nenhum token é o triggerToken?")
 
-  const effects = Array.isArray(cardEntity.effectToApply) ? cardEntity.effectToApply : [];
+  const targetEffects = targetToken.id === cardEntity.triggerId
+    ? (cardEntity.effectsAffectCaster
+      ? (Array.isArray(cardEntity.casterEffectsToApply)
+        ? cardEntity.casterEffectsToApply
+        : (Array.isArray(cardEntity.effectToApply) ? cardEntity.effectToApply : []))
+      : [])
+    : (Array.isArray(cardEntity.effectToApply) ? cardEntity.effectToApply : []);
 
-  for (const effect of effects) {
+  const effects = effectsOverride ?? targetEffects;
+
+  for (const effect of new Set(effects)) {
     await MechanicEngine.createMechanic(
       cardEntity.triggerId,
       battleId,
       effect,
       {
         "targetId": targetToken.id,
-        "duration": cardEntity.duration
+        ...cardDurationOverride(cardEntity.duration)
       }
     );
   }
@@ -178,8 +187,18 @@ export function getTokensInCardEntityRadius(
   tokens: any,
   position: Position,
   range: number,
-  triggerId: string
+  triggerId: string,
+  effectsAffectCaster = false,
 ): any[] {
+  if (effectsAffectCaster) {
+    return tokens.filter((t: any) => {
+      const dx = Math.abs(t.col - position.col);
+      const dy = Math.abs(t.row - position.row);
+
+      return dx <= range && dy <= range;
+    });
+  }
+
   return tokens.filter((t: any) => {
     const dx = Math.abs(
       t.col - position.col
@@ -224,7 +243,8 @@ export async function resolveTriggerFixPivot(
 
   if (!armedCard || !triggerToken) return;
 
-  const instance = mountMechanicEntity(
+  const instance = await battleSetter.addMechanicEntity(
+    battleId,
     triggerToken.id,
     armedCard.effectToApply,
     armedCard.target.pivotSettings.areaImgUrl,
@@ -232,15 +252,23 @@ export async function resolveTriggerFixPivot(
     armedCard.target.pivotSettings.range,
     armedCard.duration ?? Infinity,
     triggerToken.col,
-    triggerToken.row
-  )
+    triggerToken.row,
+    armedCard.effectsAffectCaster,
+    armedCard.casterEffectsToApply,
+    armedCard.triggerEffectsToApply,
+  );
+
+  if (instance.effectsApplied === true) {
+    return;
+  }
 
   const affectedTokens =
     getTokensInCardEntityRadius(
       boardTokens,
       instance.position,
       instance.pivotSettings.range,
-      instance.triggerId
+      instance.triggerId,
+      instance.effectsAffectCaster,
     );
 
   for(const token of affectedTokens) {
@@ -253,17 +281,26 @@ export async function resolveTriggerFixPivot(
     )
   }
 
-  await battleSetter.addMechanicEntity(
+  const triggerOnlyEffects = Array.isArray(instance.triggerEffectsToApply)
+    ? instance.triggerEffectsToApply
+    : [];
+
+  if (triggerOnlyEffects.length > 0) {
+    await applyMechanicToToken(
+      battleRepository,
+      tokenInstaceRepository,
+      battleId,
+      instance,
+      triggerToken,
+      triggerOnlyEffects,
+    );
+  }
+
+  await battleSetter.updateMechanicEntity(
     battleId,
-    triggerToken.id,
-    armedCard.effectToApply,
-    armedCard.target.pivotSettings.areaImgUrl,
-    armedCard.target.pivotSettings.pivotType,
-    armedCard.target.pivotSettings.range,
-    armedCard.target.duration ?? Infinity,
-    triggerToken.col,
-    triggerToken.row
-  )  
+    instance.id,
+    { effectsApplied: true },
+  );
 }
 
 export async function resolvePivotPosition(

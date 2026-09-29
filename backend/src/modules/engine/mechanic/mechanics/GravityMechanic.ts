@@ -12,7 +12,7 @@ export class GravityMechanic extends MechanicDefinition {
         new PullToCasterBehavior()
     ];
     abstractlistensTo = [MechanicEventType.TURN_INIT];
-    defaultIntensity = 1;
+    defaultIntensity = 2;
     defaultDuration = 4;
     config?: Record<string, unknown>;
 

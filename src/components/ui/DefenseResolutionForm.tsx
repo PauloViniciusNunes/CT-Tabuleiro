@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import type { Token } from "../../types/token";
 import { Zap } from "lucide-react";
+import { BattleFormToggle } from "./BattleFormToggle";
 
 interface DefenseResolutionFormProps {
   attacker: Token;
@@ -22,6 +23,7 @@ const DefenseResolutionForm: React.FC<DefenseResolutionFormProps> = ({
   const [usedMana, setUsedMana] = useState(0);
   const [usedActions, setUsedActions] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [displayForm, setDisplayForm] = useState(true);
   const submissionLockRef = useRef(false);
 
   const availableMana = attacker.currentMana ?? 0;
@@ -60,7 +62,9 @@ const DefenseResolutionForm: React.FC<DefenseResolutionFormProps> = ({
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4 w-96 border-2 border-cyan-600 shadow-lg">
+    <>
+      {displayForm && (
+        <div className="bg-gray-800 rounded-lg p-4 w-96 border-2 border-cyan-600 shadow-lg">
       <Zap className="inline-block h-5 w-5 text-cyan-300 mr-1" />
       <h3 className="inline-block text-cyan-300 font-bold mb-2">
       Definição de Velocidade
@@ -150,7 +154,14 @@ const DefenseResolutionForm: React.FC<DefenseResolutionFormProps> = ({
           Cancelar
         </button>
       </div>
-    </div>
+        </div>
+      )}
+      <BattleFormToggle
+        visible={displayForm}
+        onToggle={() => setDisplayForm((visible) => !visible)}
+        label="formulário de definição"
+      />
+    </>
   );
 };
 

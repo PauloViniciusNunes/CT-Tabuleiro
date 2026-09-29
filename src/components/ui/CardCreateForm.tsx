@@ -74,6 +74,15 @@ export const CardModelForm: React.FC<CardModelFormProps> = ({
   const [effectApplication, setEffectApplication] = useState<EffectType[]>(
     initialCard?.effectToApply ?? [],
   );
+  const [effectsAffectCaster, setEffectsAffectCaster] = useState(
+    initialCard?.effectsAffectCaster ?? false,
+  );
+  const [casterEffectsToApply, setCasterEffectsToApply] = useState<EffectType[]>(
+    initialCard?.casterEffectsToApply ?? [],
+  );
+  const [triggerEffectsToApply, setTriggerEffectsToApply] = useState<EffectType[]>(
+    initialCard?.triggerEffectsToApply ?? [],
+  );
 
   const [haveDuration, setHaveDuration] = useState((initialCard?.duration ?? 0) > 0);
   const [cardRecharge, setCardRecharge] = useState(Number(initialCard?.recharge ?? 4));
@@ -111,6 +120,8 @@ export const CardModelForm: React.FC<CardModelFormProps> = ({
     if(!haveEffectApplication)
     {
       setEffectApplication([]);
+      setEffectsAffectCaster(false);
+      setCasterEffectsToApply([]);
     }
   }, [haveEffectApplication])
 
@@ -200,14 +211,16 @@ export const CardModelForm: React.FC<CardModelFormProps> = ({
   }, [pivotType]);
 
   useEffect(() => {
-    if(effectApplication.length> 0)
-    {
-      effectApplication.forEach((e) =>
-      {
-        console. info(e);
-      })
+    setCasterEffectsToApply((current) =>
+      current.filter((effect) => effectApplication.includes(effect)),
+    );
+  }, [effectApplication]);
+
+  useEffect(() => {
+    if (!effectsAffectCaster) {
+      setCasterEffectsToApply([]);
     }
-  },[effectApplication]);
+  }, [effectsAffectCaster]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -231,6 +244,9 @@ export const CardModelForm: React.FC<CardModelFormProps> = ({
       spellCircle,
       spellType,
       entityQuantity: numbersEntity,
+      effectsAffectCaster,
+      casterEffectsToApply,
+      triggerEffectsToApply,
       partialOffensive: isPartilOffensive,
       actionsRequired,
       targetType: typeTarget,
@@ -556,6 +572,94 @@ export const CardModelForm: React.FC<CardModelFormProps> = ({
                     </span>
                   ))}
                 </div>
+
+                {typeTarget === "Ambient" && effectApplication.length > 0 && (
+                  <div className="mt-3 rounded bg-gray-700/60 p-2 text-sm">
+                    <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={effectsAffectCaster}
+                      onChange={(e) => setEffectsAffectCaster(e.target.checked)}
+                      className="accent-purple-400"
+                    />
+                    <span>Os efeitos listados também podem afetar quem lançou o card.</span>
+                    </label>
+
+                  {effectsAffectCaster && (
+                    <div className="mt-2 rounded bg-gray-900/40 p-3 text-sm">
+                      <span className="mb-2 block font-semibold">
+                        Selecione quais efeitos afetam quem lançou:
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {effectApplication.map((effect) => (
+                          <label key={effect} className="flex items-center gap-1 rounded bg-gray-700 px-2 py-1">
+                            <input
+                              type="checkbox"
+                              checked={casterEffectsToApply.includes(effect)}
+                              onChange={(e) =>
+                                setCasterEffectsToApply((current) =>
+                                  e.target.checked
+                                    ? [...current, effect]
+                                    : current.filter((item) => item !== effect),
+                                )
+                              }
+                              className="accent-purple-400"
+                            />
+                            {effect}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  </div>
+                )}
+
+                {typeTarget === "Ambient" && (
+                  <div className="mt-3 rounded bg-gray-700/60 p-3 text-sm">
+                    <span className="mb-2 block font-semibold">
+                      Efeitos exclusivos do token que lançou o card
+                    </span>
+                    <p className="mb-2 text-xs text-gray-300">
+                      Estes efeitos são aplicados somente ao trigger, uma vez ao lançar o card.
+                    </p>
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {triggerEffectsToApply.map((effect) => (
+                        <span key={effect} className="flex items-center gap-1 rounded bg-blue-700 px-2 py-1 text-xs">
+                          {effect}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTriggerEffectsToApply((current) =>
+                                current.filter((item) => item !== effect),
+                              )
+                            }
+                            className="text-red-200 hover:text-red-400"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        const effect = e.target.value as EffectType;
+                        if (effect) {
+                          setTriggerEffectsToApply((current) =>
+                            current.includes(effect) ? current : [...current, effect],
+                          );
+                        }
+                        e.target.value = "";
+                      }}
+                      className="w-full rounded border border-gray-600 bg-gray-700 p-2 text-sm"
+                    >
+                      <option value="" disabled>Adicionar efeito exclusivo...</option>
+                      {TokenPrimaryElement.map((effect) => (
+                        <option key={effect} value={effect}>{effect}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
               {haveEffectApplication && (
                 <select

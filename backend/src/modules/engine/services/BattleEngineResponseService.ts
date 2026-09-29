@@ -312,6 +312,12 @@ export class BattleEngineResponseService extends BattleEngineService {
                 await this.pendingSetter.cleanPendingFreeResponse(pendingQueue.id)
 
                 if(remainingActions <= 0) await this.battleEngineNextTurnService.execute(battleId)
+            } else {
+                await this.pendingSetter.setPendingFreeResponse(
+                    pendingQueue.id,
+                    attackerId,
+                    forcedTargetId,
+                )
             }
 
 

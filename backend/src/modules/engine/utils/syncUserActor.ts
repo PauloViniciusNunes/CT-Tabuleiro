@@ -38,6 +38,7 @@ export async function syncUserActorId(battleId: string) {
     const pendingEsquivaRoll = await pendingGetter.getPendingEsquivaRoll(pendingQueueId)
     const pendingFreeResponse = await pendingGetter.getPendingFreeResponse(pendingQueueId)
     const pendingCardResolution = await pendingGetter.getPendingCardResolution(pendingQueueId)
+    const pendingOffensiveCard = await pendingGetter.getPendingOffensiveCard(pendingQueueId)
 
     let actorTokenId: string | null = null
 
@@ -58,14 +59,14 @@ export async function syncUserActorId(battleId: string) {
     else if (pendingAttack) {
         actorTokenId = pendingAttack.targetId
     }
+    // Respostas ofensivas são tratadas uma por vez, na ordem persistida.
+    else if (pendingOffensiveCard && Array.isArray(battleState.tokensInOffensiveCard) && battleState.tokensInOffensiveCard.length > 0) {
+        const currentDefender = battleState.tokensInOffensiveCard[0] as { id?: string } | undefined
+        actorTokenId = currentDefender?.id ?? null
+    }
     // A seleção de carta pertence ao token que abriu o formulário.
     else if (pendingCardResolution?.id) {
         actorTokenId = pendingCardResolution.id
-    }
-    // Respostas ofensivas são tratadas uma por vez, na ordem persistida.
-    else if (Array.isArray(battleState.tokensInOffensiveCard) && battleState.tokensInOffensiveCard.length > 0) {
-        const currentDefender = battleState.tokensInOffensiveCard[0] as { id?: string } | undefined
-        actorTokenId = currentDefender?.id ?? null
     }
     // Sem pendências, o ator é o token do turno corrente.
     else {
@@ -91,12 +92,11 @@ export async function syncUserActorId(battleId: string) {
             : ""
 
     
-    let userResponder: any;
-    let userPendingFreeResponderId: string;
+    let userResponder: Awaited<ReturnType<UserRepository["findById"]>> = null;
 
     if(pendingFreeResponse?.responderId) {
-        userPendingFreeResponderId = await discoverCurrentUserId(pendingFreeResponse?.responderId, battleState.mapId)
-        userResponder = await userRepository.findById(userPendingFreeResponderId)
+        const responderUserId = await discoverCurrentUserId(pendingFreeResponse.responderId, battleState.mapId)
+        userResponder = await userRepository.findById(responderUserId)
     }
 
     if(userResponder) {

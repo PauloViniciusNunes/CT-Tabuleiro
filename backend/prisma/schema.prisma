@@ -179,13 +179,17 @@ model Token {
 
   // ===== Transformation =====
 
-  isTransformation        Boolean  @default(false)
-  baseTokenId             String?
-  inheritBaseCards        Boolean  @default(true)
-  attributeMultipliers    Json     @default("{\"forca\":1,\"destreza\":1,\"consistencia\":1,\"inteligencia\":1,\"sabedoria\":1,\"carisma\":1}")
-  additionalCards         Json     @default("[]")
-  additionalMechanics     String[] @default([])
-  additionalDisadvantages String[] @default([])
+  isTransformation             Boolean  @default(false)
+  baseTokenId                  String?
+  inheritBaseCards             Boolean  @default(true)
+  attributeMultipliers         Json     @default("{\"forca\":1,\"destreza\":1,\"consistencia\":1,\"inteligencia\":1,\"sabedoria\":1,\"carisma\":1}")
+  additionalCards              Json     @default("[]")
+  additionalMechanics          String[] @default([])
+  additionalDisadvantages      String[] @default([])
+  additionalPassiveMechanics   String[] @default([])
+  transformationDurationMode   String   @default("persistent")
+  transformationDurationRounds Int?
+  transformationRecharge       Int      @default(0)
 
   baseToken       Token?  @relation("TokenTransformations", fields: [baseTokenId], references: [id], onDelete: Restrict)
   transformations Token[] @relation("TokenTransformations")
@@ -281,6 +285,8 @@ model Token {
 
   tokenPrimaryDisvantage String[] @default([])
 
+  passiveMechanics String[] @default([])
+
   tokenCards Json @default("[]")
   cards      Json @default("[]")
 
@@ -308,14 +314,18 @@ model TokenInstance {
 
   // Snapshot of the template transformation configuration. The effective
   // attributes/cards are copied from the resolved template on instantiation.
-  templateTokenId         String?
-  isTransformation        Boolean  @default(false)
-  baseTokenId             String?
-  inheritBaseCards        Boolean  @default(true)
-  attributeMultipliers    Json     @default("{\"forca\":1,\"destreza\":1,\"consistencia\":1,\"inteligencia\":1,\"sabedoria\":1,\"carisma\":1}")
-  additionalCards         Json     @default("[]")
-  additionalMechanics     String[] @default([])
-  additionalDisadvantages String[] @default([])
+  templateTokenId              String?
+  isTransformation             Boolean  @default(false)
+  baseTokenId                  String?
+  inheritBaseCards             Boolean  @default(true)
+  attributeMultipliers         Json     @default("{\"forca\":1,\"destreza\":1,\"consistencia\":1,\"inteligencia\":1,\"sabedoria\":1,\"carisma\":1}")
+  additionalCards              Json     @default("[]")
+  additionalMechanics          String[] @default([])
+  additionalDisadvantages      String[] @default([])
+  additionalPassiveMechanics   String[] @default([])
+  transformationDurationMode   String   @default("persistent")
+  transformationDurationRounds Int?
+  transformationRecharge       Int      @default(0)
 
   lastDamagerId String?
 
@@ -409,6 +419,8 @@ model TokenInstance {
 
   tokenPrimaryDisvantage String[] @default([])
 
+  passiveMechanics String[] @default([])
+
   tokenCards Json                @default("[]")
   cards      Json                @default("[]")
   inventory  InstanceTokenItem[]
@@ -453,11 +465,14 @@ model Card {
   remainingDuration Int     @default(0)
   itsLoaded         Boolean @default(true)
 
-  causality        String
-  causalityType    String
-  defenseReplicate String?
-  partialOffensive Boolean?
-  entityQuantity   Int      @default(0)
+  causality             String
+  causalityType         String
+  defenseReplicate      String?
+  partialOffensive      Boolean?
+  effectsAffectCaster   Boolean  @default(false)
+  casterEffectsToApply  Json     @default("[]")
+  triggerEffectsToApply Json     @default("[]")
+  entityQuantity        Int      @default(0)
 
   effectToApply Json @default("[]")
   target        Json
@@ -558,13 +573,14 @@ model PendingQueue {
   id String @id @default(uuid())
 
   // Alterado para JSON. Conversão correta através de auxílio de Mappers
-  pendingAttack          Json?
-  pendingReaction        Json?
-  pendingCardResolution  Json?
-  pendingOffensiveCard   Json?
-  pendingSpecialResponse Json?
-  pendingFreeResponse    Json?
-  pendingEsquivaRoll     Json?
+  pendingAttack                   Json?
+  pendingReaction                 Json?
+  pendingCardResolution           Json?
+  pendingOffensiveCard            Json?
+  pendingSpecialResponse          Json?
+  pendingFreeResponse             Json?
+  pendingEsquivaRoll              Json?
+  pendingTransformationResolution Json?
 
   // Lado "passivo" da relação 1-para-1 com o BattleState
   battleState BattleState?
@@ -601,9 +617,10 @@ model BattleState {
 
   tokenParalysis Json @default("{}")
 
-  cardsNotRechargeds Json @default("{}")
-  timeToRechargeCard Json @default("{}")
-  armedCard          Json @default("{}")
+  cardsNotRechargeds   Json @default("{}")
+  timeToRechargeCard   Json @default("{}")
+  transformationStates Json @default("{}")
+  armedCard            Json @default("{}")
 
   selectedPivots Json @default("[]")
 

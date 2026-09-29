@@ -4,7 +4,11 @@ import { TokenTemplateRepository } from "@/modules/asset-library/tokens/reposito
 import { ItemRepository } from "@/modules/items/repositories/ItemRepository";
 import { CardRepository } from "@/modules/cards/repositories/CardRepository";
 
-import { ActionChoiceDTO, AddActionHistoryDTO } from "./dto/battleDtos";
+import {
+    AddActionHistoryDTO,
+    AddCardHistoryDTO,
+    type BattleHistoryKind,
+} from "./dto/battleDtos";
 import { VisualOverlay } from "../mechanic/types/visualOverlays";
 import { MechanicEntityInstance } from "../mechanic/types/mechanicEntity";
 import { mountMechanicEntity } from "../mechanic/utils/functions";
@@ -22,6 +26,43 @@ import {
 } from "../utils/inventoryCards";
 import { reconcileEquippedItemPassives } from "../utils/itemPassiveMechanics";
 import { reconcileMechanicVisualOverlays } from "../mechanic/utils/reconcileMechanicVisualOverlays";
+import { initializeBattleStats } from "../utils/calculations";
+
+function normalizedMechanicEffects(effects: readonly string[]): string[] {
+    return [...new Set(effects)].sort();
+}
+
+function mechanicEntitiesAreEquivalent(
+    left: Readonly<MechanicEntityInstance>,
+    right: Readonly<MechanicEntityInstance>,
+): boolean {
+    return left.triggerId === right.triggerId &&
+        left.position.col === right.position.col &&
+        left.position.row === right.position.row &&
+        left.pivotSettings.pivotType === right.pivotSettings.pivotType &&
+        left.pivotSettings.range === right.pivotSettings.range &&
+        left.pivotSettings.areaImgUrl === right.pivotSettings.areaImgUrl &&
+        JSON.stringify(normalizedMechanicEffects(left.effectToApply ?? [])) ===
+            JSON.stringify(normalizedMechanicEffects(right.effectToApply ?? [])) &&
+        JSON.stringify(normalizedMechanicEffects(left.casterEffectsToApply ?? [])) ===
+            JSON.stringify(normalizedMechanicEffects(right.casterEffectsToApply ?? [])) &&
+        JSON.stringify(normalizedMechanicEffects(left.triggerEffectsToApply ?? [])) ===
+            JSON.stringify(normalizedMechanicEffects(right.triggerEffectsToApply ?? []));
+}
+
+function deduplicateMechanicEntities(
+    entities: readonly MechanicEntityInstance[],
+): MechanicEntityInstance[] {
+    const unique: MechanicEntityInstance[] = [];
+
+    for (const entity of entities) {
+        if (!unique.some((candidate) => mechanicEntitiesAreEquivalent(candidate, entity))) {
+            unique.push(entity);
+        }
+    }
+
+    return unique;
+}
 
 export class BattleSetter {
     constructor(
@@ -32,38 +73,75 @@ export class BattleSetter {
         private readonly cardRepository = new CardRepository(),
     ) { }
 
+    private async appendBattleHistory(
+        battleStateId: string,
+        entry: Record<string, unknown>,
+    ) {
+        const battleState = await this.battleStateRepository.findById(battleStateId);
+        if (!battleState) {
+            throw new Error(`Batalha com ID ${battleStateId} não foi encontrada.`);
+        }
+
+        const currentHistory = Array.isArray(battleState.actionHistory)
+            ? battleState.actionHistory as unknown[]
+            : [];
+
+        const historyEntry = {
+            historyId: crypto.randomUUID(),
+            round: battleState.round,
+            ...entry,
+        };
+
+        return this.battleStateRepository.update(battleStateId, {
+            actionHistory: [...currentHistory, historyEntry] as Prisma.InputJsonValue,
+        });
+    }
+
     async addActionHistory({
         battleStateId,
         tokenId,
         choice,
         wasCertainty,
         displayRoll,
+        historyKind,
+        targetTokenId,
     }: AddActionHistoryDTO) {
-        const battleState = await this.battleStateRepository.findById(battleStateId);
+        const normalizedType = choice.type
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLocaleLowerCase();
+        const inferredKind: Exclude<BattleHistoryKind, "card"> =
+            normalizedType === "destreza" ||
+            normalizedType === "consistencia" ||
+            normalizedType === "offensive-card-defense" ||
+            normalizedType.includes("reacao")
+                ? "reaction"
+                : "action";
 
-        if (!battleState) {
-            throw new Error(`Batalha com ID ${battleStateId} não foi encontrada.`);
-        }
+        const resolvedTargetId = targetTokenId ?? choice.targetId;
 
-        // Garante que o actionHistory seja tratado como Array
-        const currentHistory = Array.isArray(battleState.actionHistory)
-            ? (battleState.actionHistory as any[])
-            : [];
-
-        const newAction = {
-            attribute: choice.attribute,
+        return this.appendBattleHistory(battleStateId, {
+            historyKind: historyKind ?? inferredKind,
             type: wasCertainty ? `${choice.type} | DADO CERTO` : choice.type,
             rollResult: displayRoll,
             attackerId: tokenId,
-            targetId: choice.targetId,
-            round: battleState.round,
-        };
+            ...(choice.attribute ? { attribute: choice.attribute } : {}),
+            ...(resolvedTargetId ? { targetId: resolvedTargetId } : {}),
+        });
+    }
 
-        const updatedActionHistory = [...currentHistory, newAction];
-
-        // Atualiza o banco de dados com a nova lista de histórico de ações
-        return await this.battleStateRepository.update(battleStateId, {
-            actionHistory: updatedActionHistory,
+    async addCardHistory({
+        battleStateId,
+        tokenId,
+        card,
+        displayRoll,
+    }: AddCardHistoryDTO) {
+        return this.appendBattleHistory(battleStateId, {
+            historyKind: "card",
+            type: "card",
+            attackerId: tokenId,
+            card,
+            ...(displayRoll ? { rollResult: displayRoll } : {}),
         });
     }
 
@@ -74,31 +152,16 @@ export class BattleSetter {
         rollResult: any,
         dispacherId: string,
         targetId: string,
-        round: number
+        round: number,
     ) {
-        const battleState = await this.battleStateRepository.findById(battleId);
-
-        if (!battleState) {
-            throw new Error(`Batalha com ID ${battleId} não foi encontrada.`);
-        }
-
-        // Garante que o actionHistory seja tratado como Array
-        const currentHistory = Array.isArray(battleState.actionHistory) ? (battleState.actionHistory as any[]) : [];
-
-        const newAction = {
-            attribute: attribute,
-            type: type,
-            rollResult: rollResult,
+        return this.appendBattleHistory(battleId, {
+            historyKind: "action",
+            attribute,
+            type,
+            rollResult,
             attackerId: dispacherId,
-            targetId: targetId,
-            round: round,
-        };
-
-        const updatedActionHistory = [...currentHistory, newAction];
-
-        // Atualiza o banco de dados com a nova lista de histórico de ações
-        return await this.battleStateRepository.update(battleId, {
-            actionHistory: updatedActionHistory,
+            targetId,
+            round,
         });
     }
 
@@ -816,12 +879,16 @@ export class BattleSetter {
 
         // Atualiza todos os tokens em paralelo no repositório
         return await Promise.all(
-            boardTokens.map((token) =>
-                this.tokenInstanceRepository.update(token.id, {
-                    currentLife: 1,
-                    maxLife: 1,
-                    currentMana: 1,
-                    maxMana: 1,
+            boardTokens.map((token) => {
+                const initialized = initializeBattleStats({
+                    ...token,
+                    bonusSabedoria: 0,
+                });
+                return this.tokenInstanceRepository.update(token.id, {
+                    currentLife: initialized.maxLife,
+                    maxLife: initialized.maxLife,
+                    currentMana: initialized.maxMana,
+                    maxMana: initialized.maxMana,
                     certaintyDiceRemaining: 0,
                     bonusForca: 0,
                     bonusDestreza: 0,
@@ -830,8 +897,8 @@ export class BattleSetter {
                     bonusSabedoria: 0,
                     bonusCarisma: 0,
                     tokenEffects: []
-                })
-            )
+                });
+            })
         );
     }
 
@@ -843,7 +910,8 @@ export class BattleSetter {
         battleId: string,
         currentIdx: number,
         nextIdx: number,
-        nextTokenId?: string | null
+        nextTokenId?: string | null,
+        options: { incrementRound?: boolean } = {},
     ) {
         const battleState = await this.battleStateRepository.findById(battleId);
 
@@ -857,7 +925,7 @@ export class BattleSetter {
             return battleState;
         }
 
-        const shouldIncrementRound = nextIdx === 0;
+        const shouldIncrementRound = options.incrementRound ?? nextIdx === 0;
         const newRound = shouldIncrementRound ? battleState.round + 1 : battleState.round;
         const newTurnVersion = battleState.turnVersion + 1;
 
@@ -1461,7 +1529,10 @@ export class BattleSetter {
         range: number,
         duration: number,
         col: number,
-        row: number
+        row: number,
+        effectsAffectCaster = false,
+        casterEffectsToApply: string[] = [],
+        triggerEffectsToApply: string[] = [],
     ): Promise<MechanicEntityInstance> {
         if (!battleId) {
             throw new Error("Não foi passado um battleId válido para addMechanicEntity.")
@@ -1488,10 +1559,27 @@ export class BattleSetter {
             range,
             duration,
             col,
-            row
+            row,
+            effectsAffectCaster,
+            casterEffectsToApply,
+            triggerEffectsToApply,
         )
 
-        const updatedEntities = [...currentEntities, newEntity]
+        const uniqueEntities = deduplicateMechanicEntities(currentEntities);
+        const existingEntity = uniqueEntities.find((entity) =>
+            mechanicEntitiesAreEquivalent(entity, newEntity),
+        );
+
+        if (existingEntity) {
+            if (uniqueEntities.length !== currentEntities.length) {
+                await this.battleStateRepository.update(battleId, {
+                    mechanicEntitiesInstances: uniqueEntities as any,
+                });
+            }
+            return existingEntity;
+        }
+
+        const updatedEntities = [...uniqueEntities, newEntity]
 
         // 🟢 3. Atualiza no repositório com asserção 'as any' para o campo JSON
         await this.battleStateRepository.update(battleId, {
@@ -1645,7 +1733,7 @@ export class BattleSetter {
 
         if (!battleState) {
             throw new Error("O battleState não foi encontrado.")
-        }        
+        }
 
         return await this.battleStateRepository.update(battleId, {
             tokenInAmbientPivotSelection: tokenId
@@ -1886,6 +1974,81 @@ export class BattleSetter {
 
             return updatedMechanics;
         });
+    }
+
+    /**
+     * Atomically consumes a numeric resource stored in mechanic metadata.
+     * The generic result lets resource interceptors decide how to route any
+     * amount that was not absorbed.
+     */
+    async consumeMechanicMetadataResource(
+        battleId: string,
+        mechanicId: string,
+        metadataKey: string,
+        requestedAmount: number,
+    ) {
+        if (!metadataKey || !Number.isFinite(requestedAmount) || requestedAmount < 0) {
+            throw new Error("O consumo de recurso da mecânica recebeu valores inválidos.");
+        }
+
+        let result = {
+            mechanicFound: false,
+            resourceFound: false,
+            consumed: 0,
+            remaining: 0,
+        };
+
+        await this.updateActiveMechanics(battleId, (activeMechanics) => {
+            const mechanicIndex = activeMechanics.findIndex(
+                (mechanic) => mechanic.id === mechanicId,
+            );
+
+            if (mechanicIndex === -1) {
+                result = {
+                    mechanicFound: false,
+                    resourceFound: false,
+                    consumed: 0,
+                    remaining: 0,
+                };
+                return activeMechanics;
+            }
+
+            const mechanic = activeMechanics[mechanicIndex];
+            const storedAmount = mechanic.metadata[metadataKey];
+            if (typeof storedAmount !== "number" || !Number.isFinite(storedAmount)) {
+                result = {
+                    mechanicFound: true,
+                    resourceFound: false,
+                    consumed: 0,
+                    remaining: 0,
+                };
+                return activeMechanics;
+            }
+
+            const available = Math.max(0, storedAmount);
+            const consumed = Math.min(available, requestedAmount);
+            const remaining = available - consumed;
+            result = {
+                mechanicFound: true,
+                resourceFound: true,
+                consumed,
+                remaining,
+            };
+
+            if (storedAmount === remaining) return activeMechanics;
+
+            const updatedMechanics = [...activeMechanics];
+            updatedMechanics[mechanicIndex] = {
+                ...mechanic,
+                metadata: {
+                    ...mechanic.metadata,
+                    [metadataKey]: remaining,
+                },
+            };
+            return updatedMechanics;
+        });
+
+        return result;
     }
 
     async removeMechanicInstances(

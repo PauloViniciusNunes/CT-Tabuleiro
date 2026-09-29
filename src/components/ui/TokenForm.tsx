@@ -4,7 +4,7 @@ import {
   TokenPrimaryElement,
   type TokenPrimaryDisvantage,
   type PrimaryMechanic,
-} from "../../types/effects.ts"
+} from "../../types/effects.ts";
 import {
   type Token,
   type TokenAttributes,
@@ -16,10 +16,15 @@ import {
   type TokenType,
   type TokenAttributeMultipliers,
   type TokenMultipliableAttribute,
+  type TokenTransformationDurationMode,
 } from "../../types/token";
 import type { Card } from "../../types/card";
-import type { Item } from "../../types/item";
-import { type ItemSlot } from "../../types/item";
+import {
+  PASSIVE_MECHANIC_OPTIONS,
+  type Item,
+  type ItemSlot,
+  type PassiveMechanic,
+} from "../../types/item";
 import { type BossInterfaceColors } from "../../types/token";
 import type { Campaign, User } from "../../types/campaign.ts";
 import { tokenFromForm } from "../../models/forms/tokenFormModel";
@@ -42,10 +47,15 @@ export interface TokenModelFormProps {
 
 const teams: TokenTeam[] = ["Red", "Blue", "Green", "Yellow"];
 const statuses: TokenStatus[] = ["Vivo", "Morto"];
-const classes: TokenClass[] = ["Guerreiro", "Mago", "Bárbaro", "Ladino", "Feitiçeiro"];
+const classes: TokenClass[] = [
+  "Guerreiro",
+  "Mago",
+  "Bárbaro",
+  "Ladino",
+  "Feitiçeiro",
+];
 const elements: PrimaryMechanic[] = [...TokenPrimaryElement];
 const disvantages: TokenPrimaryDisvantage[] = [...TokenPrimaryElement, "none"];
-
 
 const initialAttributes: TokenAttributes = {
   forca: 20,
@@ -91,14 +101,18 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
 }) => {
   const [name, setName] = useState(initialToken?.name ?? "");
   const [type, setType] = useState<TokenType>(initialToken?.type ?? "player");
-  const [bossSettings, setBossSettings] = useState<BossInterfaceColors>(initialToken?.bossSettings ?? {
-    fill: "#000000",
-    stroke: "#971e91",
-    shadow_init: "#5e3f7c",
-    shadow_mid: "#d645e4",
-    shadow_end: "#db36c5"
-  });
-  const [imagePreview, setImagePreview] = useState<string | null>(initialToken?.imageUrl ?? null);
+  const [bossSettings, setBossSettings] = useState<BossInterfaceColors>(
+    initialToken?.bossSettings ?? {
+      fill: "#000000",
+      stroke: "#971e91",
+      shadow_init: "#5e3f7c",
+      shadow_mid: "#d645e4",
+      shadow_end: "#db36c5",
+    },
+  );
+  const [imagePreview, setImagePreview] = useState<string | null>(
+    initialToken?.imageUrl ?? null,
+  );
   const [attributes, setAttributes] = useState<TokenAttributes>(
     initialToken?.attributes ?? initialAttributes,
   );
@@ -111,11 +125,20 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
   const [inheritBaseCards, setInheritBaseCards] = useState(
     initialToken?.transformation?.inheritBaseCards ?? true,
   );
-  const [attributeMultipliers, setAttributeMultipliers] = useState<TokenAttributeMultipliers>(
-    initialToken?.transformation?.attributeMultipliers ?? {
-      ...DEFAULT_TOKEN_ATTRIBUTE_MULTIPLIERS,
-    },
-  );
+  const [transformationDurationMode, setTransformationDurationMode] =
+    useState<TokenTransformationDurationMode>(
+      initialToken?.transformation?.durationMode ?? "persistent",
+    );
+  const [transformationDurationRounds, setTransformationDurationRounds] =
+    useState(initialToken?.transformation?.durationRounds ?? 1);
+  const [transformationRechargeRounds, setTransformationRechargeRounds] =
+    useState(initialToken?.transformation?.rechargeRounds ?? 1);
+  const [attributeMultipliers, setAttributeMultipliers] =
+    useState<TokenAttributeMultipliers>(
+      initialToken?.transformation?.attributeMultipliers ?? {
+        ...DEFAULT_TOKEN_ATTRIBUTE_MULTIPLIERS,
+      },
+    );
   const [proficiencies, setProficiencies] = useState<TokenProficiencies>(
     initialToken?.proficiencies ?? initialProficiencies,
   );
@@ -123,45 +146,67 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
     initialToken?.inventory ?? initialInventory,
   );
 
-  const slotToTokenInventory: Record<ItemSlot, keyof TokenInventory> =
-  {
+  const slotToTokenInventory: Record<ItemSlot, keyof TokenInventory> = {
     "primary-hand": "primaryHand",
     "off-hand": "offHand",
     neck: "neck",
     ring: "ring",
     armor: "armor",
     "inventory-only": "commonSlot",
-  }
+  };
 
   function addItemInCommonSlot(item: Item) {
-    setInventory(prev => ({ ...prev, commonSlot: [...(prev.commonSlot ?? []), item] }));
+    setInventory((prev) => ({
+      ...prev,
+      commonSlot: [...(prev.commonSlot ?? []), item],
+    }));
   }
 
   function removeItemInSlot(id: string) {
-    setInventory(prev => ({ ...prev, commonSlot: prev.commonSlot?.filter(x => x.id !== id) }))
+    setInventory((prev) => ({
+      ...prev,
+      commonSlot: prev.commonSlot?.filter((x) => x.id !== id),
+    }));
   }
 
   const [itemChooseOpen, setItemChooseOpen] = useState<boolean>(false);
 
-  const [status, setStatus] = useState<TokenStatus>(initialToken?.status ?? "Vivo");
+  const [status, setStatus] = useState<TokenStatus>(
+    initialToken?.status ?? "Vivo",
+  );
   const [team, setTeam] = useState<TokenTeam>(initialToken?.team ?? "Red");
-  const [bodytobodyRange, setBodytobodyRange] = useState(initialToken?.bodytobodyRange ?? 1);
-  const [magicalRange, setMagicalRange] = useState(initialToken?.magicalRange ?? 6);
-  const [naturalMovement, setNaturalMovement] = useState(initialToken?.naturalMovement ?? 6);
-  const [tokenClass, setTokenClass] = useState<TokenClass>(initialToken?.class ?? "Guerreiro");
+  const [bodytobodyRange, setBodytobodyRange] = useState(
+    initialToken?.bodytobodyRange ?? 1,
+  );
+  const [magicalRange, setMagicalRange] = useState(
+    initialToken?.magicalRange ?? 6,
+  );
+  const [naturalMovement, setNaturalMovement] = useState(
+    initialToken?.naturalMovement ?? 6,
+  );
+  const [tokenClass, setTokenClass] = useState<TokenClass>(
+    initialToken?.class ?? "Guerreiro",
+  );
   const [primaryElements, setPrimaryElements] = useState<PrimaryMechanic[]>(
     initialToken?.transformation
       ? initialToken.transformation.additionalMechanics
       : initialToken?.tokenPrimaryElement?.length
-      ? initialToken.tokenPrimaryElement
-      : ["neutro"],
+        ? initialToken.tokenPrimaryElement
+        : ["neutro"],
   );
-  const [primaryDisvantages, setPrimaryDisvantages] = useState<TokenPrimaryDisvantage[]>(
+  const [primaryDisvantages, setPrimaryDisvantages] = useState<
+    TokenPrimaryDisvantage[]
+  >(
     initialToken?.transformation
       ? initialToken.transformation.additionalDisadvantages
       : initialToken?.tokenPrimaryDisvantege?.length
-      ? initialToken.tokenPrimaryDisvantege
-      : ["none"],
+        ? initialToken.tokenPrimaryDisvantege
+        : ["none"],
+  );
+  const [passiveMechanics, setPassiveMechanics] = useState<PassiveMechanic[]>(
+    initialToken?.transformation
+      ? initialToken.transformation.additionalPassiveMechanics
+      : (initialToken?.passiveMechanics ?? []),
   );
   const [selectedUser, setSelectedUser] = useState<User | null>(
     users.find((user) => user.id === initialToken?.ownerId) ?? null,
@@ -192,9 +237,17 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
     });
   };
 
+  const togglePassiveMechanic = (mechanic: PassiveMechanic) => {
+    setPassiveMechanics((current) =>
+      current.includes(mechanic)
+        ? current.filter((value) => value !== mechanic)
+        : [...current, mechanic],
+    );
+  };
+
   useEffect(() => {
-    console.log("[USER]: ", selectedUser?.name)
-  }, [selectedUser])
+    console.log("[USER]: ", selectedUser?.name);
+  }, [selectedUser]);
 
   const [selfCards, setSelfCards] = useState<Card[]>(
     initialToken?.transformation?.additionalCards ?? initialToken?.cards ?? [],
@@ -209,7 +262,9 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
     "armor",
   ] as const;
 
-  const [slotTarget, setSlotTarget] = useState<keyof TokenInventory | null>(null);
+  const [slotTarget, setSlotTarget] = useState<keyof TokenInventory | null>(
+    null,
+  );
 
   const openItemSelector = (slot: keyof TokenInventory) => {
     setSlotTarget(slot);
@@ -222,26 +277,37 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
 
   const selectedBaseToken = tokens.find((token) => token.id === baseTokenId);
   const transformationCandidates = tokens.filter(
-    (token) => token.id !== initialToken?.id && token.campaignId === (campaign?.id ?? initialToken?.campaignId),
+    (token) =>
+      token.id !== initialToken?.id &&
+      token.campaignId === (campaign?.id ?? initialToken?.campaignId),
   );
   const effectiveAttributes: TokenAttributes = selectedBaseToken
-    ? {
+    ? ({
         ...selectedBaseToken.attributes,
         ...Object.fromEntries(
           MULTIPLIABLE_TOKEN_ATTRIBUTES.map((attribute) => [
             attribute,
-            Math.round(selectedBaseToken.attributes[attribute] * attributeMultipliers[attribute]),
+            Math.round(
+              selectedBaseToken.attributes[attribute] *
+                attributeMultipliers[attribute],
+            ),
           ]),
         ),
-      } as TokenAttributes
+      } as TokenAttributes)
     : attributes;
 
-  const handleMultiplierChange = (attribute: TokenMultipliableAttribute, value: number) => {
+  const handleMultiplierChange = (
+    attribute: TokenMultipliableAttribute,
+    value: number,
+  ) => {
     if (!Number.isFinite(value) || value < 0) return;
     setAttributeMultipliers((current) => ({ ...current, [attribute]: value }));
   };
 
-  const handleProfChange = (key: keyof TokenProficiencies, checked: boolean) => {
+  const handleProfChange = (
+    key: keyof TokenProficiencies,
+    checked: boolean,
+  ) => {
     setProficiencies((p) => ({ ...p, [key]: checked }));
   };
 
@@ -250,8 +316,11 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
   };
 
   const handleEconomyChange = (val: number) => {
-    setInventory((inv) => ({ ...inv, ["economy" as keyof TokenInventory]: val }));
-  }
+    setInventory((inv) => ({
+      ...inv,
+      ["economy" as keyof TokenInventory]: val,
+    }));
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -272,16 +341,31 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
       return;
     }
 
-    const transformation = isTransformation && selectedBaseToken
-      ? {
-          baseTokenId: selectedBaseToken.id,
-          inheritBaseCards,
-          attributeMultipliers,
-          additionalCards: selfCards,
-          additionalMechanics: primaryElements.filter((mechanic) => mechanic !== "neutro"),
-          additionalDisadvantages: primaryDisvantages.filter((disadvantage) => disadvantage !== "none"),
-        }
-      : undefined;
+    const transformation =
+      isTransformation && selectedBaseToken
+        ? {
+            baseTokenId: selectedBaseToken.id,
+            inheritBaseCards,
+            durationMode: transformationDurationMode,
+            durationRounds:
+              transformationDurationMode === "rounds"
+                ? Math.max(1, Math.floor(transformationDurationRounds))
+                : undefined,
+            rechargeRounds:
+              transformationDurationMode === "rounds"
+                ? Math.max(1, Math.floor(transformationRechargeRounds))
+                : 0,
+            attributeMultipliers,
+            additionalCards: selfCards,
+            additionalMechanics: primaryElements.filter(
+              (mechanic) => mechanic !== "neutro",
+            ),
+            additionalDisadvantages: primaryDisvantages.filter(
+              (disadvantage) => disadvantage !== "none",
+            ),
+            additionalPassiveMechanics: passiveMechanics,
+          }
+        : undefined;
 
     const token = tokenFromForm({
       existing: initialToken,
@@ -300,6 +384,7 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
       naturalMovement,
       primaryElements,
       primaryDisadvantages: primaryDisvantages,
+      passiveMechanics,
       bossSettings: type === "boss" ? bossSettings : undefined,
       ownerId: selectedUser?.id ?? initialToken?.ownerId ?? "",
       campaignId: campaign?.id ?? initialToken?.campaignId ?? "",
@@ -314,7 +399,9 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
       onClose();
     } catch (error) {
       console.error("Não foi possível salvar o token:", error);
-      alert("Não foi possível salvar o token. Verifique os dados e tente novamente.");
+      alert(
+        "Não foi possível salvar o token. Verifique os dados e tente novamente.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -365,7 +452,9 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
         </label>
 
         <fieldset className="border border-cyan-700 p-3 rounded bg-cyan-950/20">
-          <legend className="font-semibold text-cyan-300 px-2">Transformação</legend>
+          <legend className="font-semibold text-cyan-300 px-2">
+            Transformação
+          </legend>
           <label className="flex items-center gap-2 text-sm font-semibold">
             <input
               type="checkbox"
@@ -386,9 +475,13 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                   onChange={(event) => setBaseTokenId(event.target.value)}
                   className="p-2 rounded bg-gray-700 border border-gray-600 focus:border-cyan-400 focus:outline-none"
                 >
-                  <option value="" disabled>Selecione o token base...</option>
+                  <option value="" disabled>
+                    Selecione o token base...
+                  </option>
                   {transformationCandidates.map((token) => (
-                    <option key={token.id} value={token.id}>{token.name}</option>
+                    <option key={token.id} value={token.id}>
+                      {token.name}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -397,11 +490,88 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                 <input
                   type="checkbox"
                   checked={inheritBaseCards}
-                  onChange={(event) => setInheritBaseCards(event.target.checked)}
+                  onChange={(event) =>
+                    setInheritBaseCards(event.target.checked)
+                  }
                   className="h-4 w-4 accent-cyan-400"
                 />
                 Herdar cards do token base
               </label>
+
+              <div className="rounded border border-cyan-800/80 bg-cyan-950/30 p-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-sm font-semibold">
+                    Duração da transformação
+                  </span>
+                  <select
+                    value={transformationDurationMode}
+                    onChange={(event) =>
+                      setTransformationDurationMode(
+                        event.target.value === "rounds"
+                          ? "rounds"
+                          : "persistent",
+                      )
+                    }
+                    className="rounded border border-gray-600 bg-gray-700 p-2 focus:border-cyan-400 focus:outline-none"
+                  >
+                    <option value="persistent">
+                      Persistente — até o usuário encerrar
+                    </option>
+                    <option value="rounds">
+                      Temporária — quantidade de rounds
+                    </option>
+                  </select>
+                </label>
+
+                {transformationDurationMode === "rounds" && (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <label className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold">
+                      Quantidade de rounds
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      required
+                      value={transformationDurationRounds}
+                      onChange={(event) =>
+                        setTransformationDurationRounds(
+                          Math.max(
+                            1,
+                            Math.floor(Number(event.target.value) || 1),
+                          ),
+                        )
+                      }
+                      className="rounded border border-gray-600 bg-gray-700 p-2 focus:border-cyan-400 focus:outline-none"
+                    />
+                  </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-sm font-semibold">
+                        Recarga após terminar
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        required
+                        value={transformationRechargeRounds}
+                        onChange={(event) =>
+                          setTransformationRechargeRounds(
+                            Math.max(1, Math.floor(Number(event.target.value) || 1)),
+                          )
+                        }
+                        className="rounded border border-gray-600 bg-gray-700 p-2 focus:border-cyan-400 focus:outline-none"
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <p className="mt-2 text-xs text-cyan-100/75">
+                  Formas temporárias voltam automaticamente ao token base. A
+                  recarga começa somente depois que a transformação termina.
+                </p>
+              </div>
 
               <div>
                 <p className="mb-2 text-sm font-semibold text-cyan-200">
@@ -410,13 +580,20 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {MULTIPLIABLE_TOKEN_ATTRIBUTES.map((attribute) => (
                     <label key={attribute} className="flex items-center gap-2">
-                      <span className="w-24 text-xs capitalize">{attribute}</span>
+                      <span className="w-24 text-xs capitalize">
+                        {attribute}
+                      </span>
                       <input
                         type="number"
                         min={0}
                         step={0.05}
                         value={attributeMultipliers[attribute]}
-                        onChange={(event) => handleMultiplierChange(attribute, Number(event.target.value))}
+                        onChange={(event) =>
+                          handleMultiplierChange(
+                            attribute,
+                            Number(event.target.value),
+                          )
+                        }
                         className="min-w-0 flex-1 rounded border border-gray-500 bg-gray-700 p-1 text-center"
                       />
                       <span className="w-14 text-right text-xs text-gray-300">
@@ -428,7 +605,8 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
               </div>
 
               <p className="text-xs text-gray-300">
-                Itens são copiados do token base. Cards, mecânicas e desvantagens abaixo são adicionais.
+                Itens são copiados do token base. Cards, mecânicas e
+                desvantagens abaixo são adicionais.
               </p>
             </div>
           )}
@@ -436,7 +614,9 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
 
         {/* Atributos */}
         <fieldset className="border border-gray-600 p-3 rounded bg-gray-700 bg-opacity-50">
-          <legend className="font-semibold text-green-400 px-2">Atributos</legend>
+          <legend className="font-semibold text-green-400 px-2">
+            Atributos
+          </legend>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
             {(
               [
@@ -455,8 +635,14 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                   min={1}
                   disabled={isTransformation}
                   className="p-1 rounded bg-gray-600 border border-gray-500 focus:border-green-400 focus:outline-none text-center"
-                  value={isTransformation ? effectiveAttributes[key] : attributes[key]}
-                  onChange={(e) => handleAttrChange(key, Number(e.target.value))}
+                  value={
+                    isTransformation
+                      ? effectiveAttributes[key]
+                      : attributes[key]
+                  }
+                  onChange={(e) =>
+                    handleAttrChange(key, Number(e.target.value))
+                  }
                 />
               </label>
             ))}
@@ -487,8 +673,14 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                 min={1}
                 disabled={isTransformation}
                 className="p-1 rounded bg-gray-600 border border-gray-500 focus:border-green-400 focus:outline-none text-center"
-                value={isTransformation ? effectiveAttributes.level : attributes.level}
-                onChange={(e) => handleAttrChange("level", Number(e.target.value))}
+                value={
+                  isTransformation
+                    ? effectiveAttributes.level
+                    : attributes.level
+                }
+                onChange={(e) =>
+                  handleAttrChange("level", Number(e.target.value))
+                }
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -498,7 +690,9 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                 min={0}
                 disabled={isTransformation}
                 className="p-1 rounded bg-gray-600 border border-gray-500 focus:border-green-400 focus:outline-none text-center"
-                value={isTransformation ? effectiveAttributes.xp : attributes.xp}
+                value={
+                  isTransformation ? effectiveAttributes.xp : attributes.xp
+                }
                 onChange={(e) => handleAttrChange("xp", Number(e.target.value))}
               />
             </label>
@@ -510,9 +704,13 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
           <legend className="font-semibold text-green-400 px-2">
             Tipo de Token
           </legend>
-          <select name="" id="" className="p-2 rounded bg-gray-700 border border-gray-600 focus:border-green-400 focus:outline-none"
+          <select
+            name=""
+            id=""
+            className="p-2 rounded bg-gray-700 border border-gray-600 focus:border-green-400 focus:outline-none"
             value={type}
-            onChange={(e) => setType(e.target.value as TokenType)}>
+            onChange={(e) => setType(e.target.value as TokenType)}
+          >
             <option value="player">Player</option>
             <option value="ia">IA</option>
             <option value="boss">Boss</option>
@@ -527,7 +725,6 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
             </legend>
 
             <div className="grid grid-cols-2 gap-3">
-
               {/* Fill */}
               <div>
                 <label className="text-sm">Fill</label>
@@ -561,7 +758,10 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                   type="color"
                   value={bossSettings.shadow_init}
                   onChange={(e) =>
-                    setBossSettings({ ...bossSettings, shadow_init: e.target.value })
+                    setBossSettings({
+                      ...bossSettings,
+                      shadow_init: e.target.value,
+                    })
                   }
                   className="w-full h-10 cursor-pointer"
                 />
@@ -574,7 +774,10 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                   type="color"
                   value={bossSettings.shadow_mid}
                   onChange={(e) =>
-                    setBossSettings({ ...bossSettings, shadow_mid: e.target.value })
+                    setBossSettings({
+                      ...bossSettings,
+                      shadow_mid: e.target.value,
+                    })
                   }
                   className="w-full h-10 cursor-pointer"
                 />
@@ -587,12 +790,14 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                   type="color"
                   value={bossSettings.shadow_end}
                   onChange={(e) =>
-                    setBossSettings({ ...bossSettings, shadow_end: e.target.value })
+                    setBossSettings({
+                      ...bossSettings,
+                      shadow_end: e.target.value,
+                    })
                   }
                   className="w-full h-10 cursor-pointer"
                 />
               </div>
-
             </div>
           </fieldset>
         )}
@@ -622,7 +827,9 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
 
           <div className="mt-3 flex flex-col gap-1">
             <span className="font-semibold text-sm">
-              {isTransformation ? "Desvantagens adicionais" : "Desvantagens mecânicas"}
+              {isTransformation
+                ? "Desvantagens adicionais"
+                : "Desvantagens mecânicas"}
             </span>
             <div className="grid max-h-40 grid-cols-2 gap-1 overflow-y-auto rounded border border-gray-600 bg-gray-800 p-2 sm:grid-cols-3">
               {disvantages.map((disvantage) => (
@@ -636,6 +843,35 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                 </button>
               ))}
             </div>
+          </div>
+        </fieldset>
+
+        <fieldset className="border border-gray-600 p-3 rounded bg-gray-700 bg-opacity-50">
+          <legend className="font-semibold text-green-400 px-2">
+            {isTransformation
+              ? "Mecânicas passivas adicionais"
+              : "Mecânicas passivas"}
+          </legend>
+          <p className="mb-2 text-xs text-gray-300">
+            {isTransformation
+              ? "As passivas do token-base são herdadas automaticamente; selecione aqui apenas as adicionais."
+              : "Aplicadas ao iniciar a batalha e persistem enquanto o token permanecer nela."}
+          </p>
+          <div className="grid max-h-52 grid-cols-1 gap-2 overflow-y-auto rounded border border-gray-600 bg-gray-800 p-2 sm:grid-cols-2">
+            {PASSIVE_MECHANIC_OPTIONS.map((mechanic) => (
+              <label
+                key={mechanic.id}
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-gray-700"
+              >
+                <input
+                  type="checkbox"
+                  checked={passiveMechanics.includes(mechanic.id)}
+                  onChange={() => togglePassiveMechanic(mechanic.id)}
+                  className="h-4 w-4 accent-green-400"
+                />
+                <span className="text-sm">{mechanic.label}</span>
+              </label>
+            ))}
           </div>
         </fieldset>
 
@@ -715,148 +951,158 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
         {/* Inventário */}
         {isTransformation ? (
           <fieldset className="border border-cyan-800 p-3 rounded bg-gray-700 bg-opacity-50">
-            <legend className="font-semibold text-cyan-300 px-2">Inventário herdado</legend>
+            <legend className="font-semibold text-cyan-300 px-2">
+              Inventário herdado
+            </legend>
             {selectedBaseToken ? (
               <div className="flex flex-col gap-2 text-sm text-gray-200">
-                <p>Os itens serão copiados de <strong>{selectedBaseToken.name}</strong>.</p>
                 <p>
-                  {(selectedBaseToken.inventory.commonSlot?.length ?? 0)} item(ns) na mochila e{" "}
-                  {equipSlots.filter((slot) => Boolean(selectedBaseToken.inventory[slot])).length} equipado(s).
+                  Os itens serão copiados de{" "}
+                  <strong>{selectedBaseToken.name}</strong>.
+                </p>
+                <p>
+                  {selectedBaseToken.inventory.commonSlot?.length ?? 0} item(ns)
+                  na mochila e{" "}
+                  {
+                    equipSlots.filter((slot) =>
+                      Boolean(selectedBaseToken.inventory[slot]),
+                    ).length
+                  }{" "}
+                  equipado(s).
                 </p>
               </div>
             ) : (
-              <p className="text-sm text-gray-400">Selecione um token base para visualizar o inventário.</p>
+              <p className="text-sm text-gray-400">
+                Selecione um token base para visualizar o inventário.
+              </p>
             )}
           </fieldset>
         ) : (
-        <fieldset className="border border-gray-600 p-3 rounded bg-gray-700 bg-opacity-50">
-          <legend className="font-semibold text-green-400 px-2">Inventário</legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
-            {equipSlots.map((slot) => {
-              const item = inventory[slot];
+          <fieldset className="border border-gray-600 p-3 rounded bg-gray-700 bg-opacity-50">
+            <legend className="font-semibold text-green-400 px-2">
+              Inventário
+            </legend>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+              {equipSlots.map((slot) => {
+                const item = inventory[slot];
 
-              return (
-                <div key={slot} className="flex flex-col gap-1">
-                  <span className="text-xs font-semibold capitalize">
-                    {slot === "primaryHand"
-                      ? "Mão Primária"
-                      : slot === "offHand"
-                        ? "Mão Secundária"
-                        : slot}
-                  </span>
+                return (
+                  <div key={slot} className="flex flex-col gap-1">
+                    <span className="text-xs font-semibold capitalize">
+                      {slot === "primaryHand"
+                        ? "Mão Primária"
+                        : slot === "offHand"
+                          ? "Mão Secundária"
+                          : slot}
+                    </span>
 
-                  <button
-                    type="button"
-                    onClick={() => openItemSelector(slot)}
-                    className="flex items-center gap-2 p-2 rounded bg-gray-700 hover:bg-gray-600 border border-gray-600"
-                  >
-                    {item ? (
-                      <>
-                        <img
-                          src={item.imgUrl}
-                          className="w-8 h-8 rounded object-cover"
-                        />
-                        <span className="text-sm text-white truncate">
-                          {item.name}
+                    <button
+                      type="button"
+                      onClick={() => openItemSelector(slot)}
+                      className="flex items-center gap-2 p-2 rounded bg-gray-700 hover:bg-gray-600 border border-gray-600"
+                    >
+                      {item ? (
+                        <>
+                          <img
+                            src={item.imgUrl}
+                            className="w-8 h-8 rounded object-cover"
+                          />
+                          <span className="text-sm text-white truncate">
+                            {item.name}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-400">
+                          Slot vazio — clicar para equipar
                         </span>
-                      </>
-                    ) : (
-                      <span className="text-xs text-gray-400">
-                        Slot vazio — clicar para equipar
-                      </span>
-                    )}
-                  </button>
-                </div>
-              );
-            })}
-
-            {/* Economia permanece input */}
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-semibold">Economia</span>
-              <input
-                type="number"
-                min={0}
-                className="p-1 rounded bg-gray-600 border border-gray-500 text-center"
-                value={inventory.economy}
-                onChange={(e) =>
-                  handleEconomyChange(Number(e.target.value))
-                }
-              />
-            </label>
-          </div>
-
-          <fieldset className="border border-gray-600 rounded p-2">
-            <legend className="font-semibold text-green-400 px-2">Mochila</legend>
-            <button
-              type="button"
-              onClick={() => {
-                setSlotTarget(null);
-                setItemChooseOpen(true);
-              }}
-              className="w-full text-center bg-blue-600 hover:bg-blue-500 cursor-pointer px-6 py-2 rounded font-semibold transition-colors"
-            >
-              + Adicionar Item
-            </button>
-
-            <div className="pt-2">
-              {inventory.commonSlot?.length === 0 ? (
-                <p className="text-gray-400 text-sm text-center">Nenhum item na mochila.</p>
-              ) : (
-                inventory.commonSlot?.map((i) => (
-                  <div
-                    key={i.id}
-                    className="bg-gray-800 p-3 rounded flex flex-col gap-2 hover:bg-gray-750 transition-colors mb-1"
-
-                  >
-                    <div className="flex items-start gap-3">
-                      <img
-                        src={i.imgUrl}
-                        alt="Card"
-                        className="w-12 h-12 object-cover rounded border border-gray-600"
-                        draggable={false}
-                      />
-
-                      <div className="flex-1 overflow-hidden">
-                        <h2 className="text-sm font-bold text-white line-clamp-2">
-                          {i.name}
-                        </h2>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 text-xs text-gray-400">
-
-                        {i.rarity && (
-                          <span className="bg-gray-700 px-2 py-0.5 rounded">
-                            {i.rarity}
-                          </span>
-                        )}
-
-                        {i.value && (
-                          <span className="bg-blue-700/40 px-2 py-0.5 rounded text-blue-300">
-                            Valor: {i.value}
-                          </span>
-                        )}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          removeItemInSlot(i.id)
-                        }
-                        className="text-red-400 hover:text-red-300 text-sm"
-                        title="Remover card"
-                      >
-                        ✕
-                      </button>
-
-                    </div>
+                      )}
+                    </button>
                   </div>
-                ))
-              )
-              }
+                );
+              })}
+
+              {/* Economia permanece input */}
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-semibold">Economia</span>
+                <input
+                  type="number"
+                  min={0}
+                  className="p-1 rounded bg-gray-600 border border-gray-500 text-center"
+                  value={inventory.economy}
+                  onChange={(e) => handleEconomyChange(Number(e.target.value))}
+                />
+              </label>
             </div>
 
+            <fieldset className="border border-gray-600 rounded p-2">
+              <legend className="font-semibold text-green-400 px-2">
+                Mochila
+              </legend>
+              <button
+                type="button"
+                onClick={() => {
+                  setSlotTarget(null);
+                  setItemChooseOpen(true);
+                }}
+                className="w-full text-center bg-blue-600 hover:bg-blue-500 cursor-pointer px-6 py-2 rounded font-semibold transition-colors"
+              >
+                + Adicionar Item
+              </button>
+
+              <div className="pt-2">
+                {inventory.commonSlot?.length === 0 ? (
+                  <p className="text-gray-400 text-sm text-center">
+                    Nenhum item na mochila.
+                  </p>
+                ) : (
+                  inventory.commonSlot?.map((i) => (
+                    <div
+                      key={i.id}
+                      className="bg-gray-800 p-3 rounded flex flex-col gap-2 hover:bg-gray-750 transition-colors mb-1"
+                    >
+                      <div className="flex items-start gap-3">
+                        <img
+                          src={i.imgUrl}
+                          alt="Card"
+                          className="w-12 h-12 object-cover rounded border border-gray-600"
+                          draggable={false}
+                        />
+
+                        <div className="flex-1 overflow-hidden">
+                          <h2 className="text-sm font-bold text-white line-clamp-2">
+                            {i.name}
+                          </h2>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 text-xs text-gray-400">
+                          {i.rarity && (
+                            <span className="bg-gray-700 px-2 py-0.5 rounded">
+                              {i.rarity}
+                            </span>
+                          )}
+
+                          {i.value && (
+                            <span className="bg-blue-700/40 px-2 py-0.5 rounded text-blue-300">
+                              Valor: {i.value}
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => removeItemInSlot(i.id)}
+                          className="text-red-400 hover:text-red-300 text-sm"
+                          title="Remover card"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </fieldset>
           </fieldset>
-        </fieldset>
         )}
 
         {/* Cards */}
@@ -866,7 +1112,8 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
           </legend>
           {isTransformation && inheritBaseCards && selectedBaseToken && (
             <p className="mb-2 text-xs text-cyan-200">
-              {selectedBaseToken.cards.length} card(s) herdado(s) de {selectedBaseToken.name}.
+              {selectedBaseToken.cards.length} card(s) herdado(s) de{" "}
+              {selectedBaseToken.name}.
             </p>
           )}
           <button
@@ -879,13 +1126,14 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
 
           <div className="pt-2">
             {selfCards?.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center">Nenhum card adicionado.</p>
+              <p className="text-gray-400 text-sm text-center">
+                Nenhum card adicionado.
+              </p>
             ) : (
               selfCards?.map((c) => (
                 <div
                   key={c.id}
                   className="bg-gray-800 p-3 rounded flex flex-col gap-2 hover:bg-gray-750 transition-colors"
-
                 >
                   <div className="flex items-start gap-3">
                     <img
@@ -923,21 +1171,20 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                     <button
                       type="button"
                       onClick={() =>
-                        setSelfCards((prev) => prev.filter((x) => x.id !== c.id))
+                        setSelfCards((prev) =>
+                          prev.filter((x) => x.id !== c.id),
+                        )
                       }
                       className="text-red-400 hover:text-red-300 text-sm"
                       title="Remover card"
                     >
                       ✕
                     </button>
-
                   </div>
                 </div>
               ))
-            )
-            }
+            )}
           </div>
-
         </fieldset>
 
         {/* Status e Time */}
@@ -1021,7 +1268,9 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
           >
             {isSubmitting
               ? "Salvando..."
-              : mode === "edit" ? "Salvar Token" : "Criar Token"}
+              : mode === "edit"
+                ? "Salvar Token"
+                : "Criar Token"}
           </button>
         </div>
       </form>
@@ -1053,9 +1302,10 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                         setCardPickerOpen(false);
                       }}
                       className={`w-full flex items-center gap-3 p-2 rounded
-                        ${alreadyAdded
-                          ? "bg-gray-700 opacity-50 cursor-not-allowed"
-                          : "bg-gray-700 hover:bg-gray-600"
+                        ${
+                          alreadyAdded
+                            ? "bg-gray-700 opacity-50 cursor-not-allowed"
+                            : "bg-gray-700 hover:bg-gray-600"
                         }`}
                     >
                       <img
@@ -1102,7 +1352,9 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                 </p>
               ) : (
                 items.map((item) => {
-                  const alreadyAdded = inventory.commonSlot?.some((i) => i.id === item.id);
+                  const alreadyAdded = inventory.commonSlot?.some(
+                    (i) => i.id === item.id,
+                  );
 
                   return (
                     <button
@@ -1115,9 +1367,10 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                         setItemChooseOpen(false);
                       }}
                       className={`w-full flex items-center gap-3 p-2 rounded
-                        ${alreadyAdded
-                          ? "bg-gray-700 opacity-50 cursor-not-allowed"
-                          : "bg-gray-700 hover:bg-gray-600"
+                        ${
+                          alreadyAdded
+                            ? "bg-gray-700 opacity-50 cursor-not-allowed"
+                            : "bg-gray-700 hover:bg-gray-600"
                         }`}
                     >
                       <img
@@ -1129,7 +1382,6 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
                         <p className="text-sm font-semibold text-white">
                           {item.name}
                         </p>
-
                       </div>
                     </button>
                   );
@@ -1156,26 +1408,26 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
             </h3>
 
             <div className="max-h-[320px] overflow-y-auto space-y-2">
-              {items.filter((i) => slotTarget === slotToTokenInventory[i.slot]).map((item) => (
-                <button
-                  type="button"
-                  key={item.id}
-                  onClick={() => {
-                    handleInvChange(slotTarget, item);
-                    setItemChooseOpen(false);
-                    setSlotTarget(null);
-                  }}
-                  className="w-full flex items-center gap-3 p-2 rounded bg-gray-700 hover:bg-gray-600"
-                >
-                  <img
-                    src={item.imgUrl}
-                    className="w-10 h-10 rounded object-cover"
-                  />
-                  <span className="text-sm text-white">
-                    {item.name}
-                  </span>
-                </button>
-              ))}
+              {items
+                .filter((i) => slotTarget === slotToTokenInventory[i.slot])
+                .map((item) => (
+                  <button
+                    type="button"
+                    key={item.id}
+                    onClick={() => {
+                      handleInvChange(slotTarget, item);
+                      setItemChooseOpen(false);
+                      setSlotTarget(null);
+                    }}
+                    className="w-full flex items-center gap-3 p-2 rounded bg-gray-700 hover:bg-gray-600"
+                  >
+                    <img
+                      src={item.imgUrl}
+                      className="w-10 h-10 rounded object-cover"
+                    />
+                    <span className="text-sm text-white">{item.name}</span>
+                  </button>
+                ))}
             </div>
 
             <button
@@ -1191,14 +1443,12 @@ export const TokenModelForm: React.FC<TokenModelFormProps> = ({
           </div>
         </div>
       )}
-
     </div>
-
   );
 };
 
-const TokenForm: React.FC<Omit<TokenModelFormProps, "initialToken" | "mode">> = (props) => (
-  <TokenModelForm {...props} mode="create" />
-);
+const TokenForm: React.FC<
+  Omit<TokenModelFormProps, "initialToken" | "mode">
+> = (props) => <TokenModelForm {...props} mode="create" />;
 
 export default TokenForm;

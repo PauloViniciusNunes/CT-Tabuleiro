@@ -23,8 +23,9 @@ export class CreateTokenService {
 
         // 3. Chama a sua rota/DAO passando o dado perfeitamente formatado
         const createdToken = await this.repository.create(tokenData);
+        const resolvedToken = await this.transformationService.resolveOne(createdToken);
         const [hydratedToken] = await hydrateTokenInventoryItems(
-            [createdToken],
+            [resolvedToken],
             this.itemRepository,
         );
 

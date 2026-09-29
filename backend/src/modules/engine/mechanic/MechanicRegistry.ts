@@ -35,6 +35,16 @@ import { PoisonChargeMechanic } from "./mechanics/PoisonChargeMechanic";
 import { PoisonMechanic } from "./mechanics/PoisonMechanic";
 import { ActionSurgeMechanic } from "./mechanics/ActionSurgeMechanic";
 import { TreeExtraAttacksMechanic } from "./mechanics/TreeExtraAttacksMechanic";
+import { PrisonMechanic } from "./mechanics/PrisonMechanic";
+import { DisvantageConsistenceTestMechanic } from "./mechanics/DisvantageConsistenceTestMechanic";
+import { DisvantageDexterityTestMechanic } from "./mechanics/DisvantageDexterityTestMechanic";
+import { NextTurnCancelMechanic } from "./mechanics/NextTurnCancelMechanic";
+import { VantageStrenghtTestMechanic } from "./mechanics/VantageStrenghtTestMechanic";
+import { VantageConsistenceTestMechanic } from "./mechanics/VantageConsistenceTestMechanic";
+import { VirtualPlanarLifeMechanic } from "./mechanics/VirtualPlanarLifeMechanic";
+import { BasicRegenerationMechanic } from "./mechanics/BasicRegenerationMechanic";
+import { CancelTargetActionAndApplyFireMechanic } from "./mechanics/CancelTargetActionAndApplyFireMechanic";
+import { FireAmplifierMechanic } from "./mechanics/FireAmplifierMechanic";
 
 export class MechanicRegistry {
 
@@ -66,6 +76,7 @@ export class MechanicRegistry {
             "drenar-sangue": new BloodDrainMechanic(),
             "roubo-elementar": new ElementaryTheftMechanic(),
             "fogo-negro": new DarkFireMechanic(),
+            "darkfire": new DarkFireMechanic(),
             "eletrico": new EletricMechanic(),
             "escurecido": new DarkenedMechanic(),
             "arma-magica": new MagicWeaponMechanic(),
@@ -78,6 +89,18 @@ export class MechanicRegistry {
             "surto-acao": new ActionSurgeMechanic(),
             "action-surge": new ActionSurgeMechanic(),
             "tres-ataques-extra": new TreeExtraAttacksMechanic(),
+            "prisao": new PrisonMechanic(),
+            "prisão": new PrisonMechanic(),
+            "desvantagem-cosistencia": new DisvantageConsistenceTestMechanic(),
+            "desvantagem-destreza": new DisvantageDexterityTestMechanic(),
+            "turno-cancelado": new NextTurnCancelMechanic(),
+            "vantagem-forca": new VantageStrenghtTestMechanic(),
+            "vantagem-consistencia": new VantageConsistenceTestMechanic(),
+            "vida-virtual": new VirtualPlanarLifeMechanic(),
+            "basica-regeneracao": new BasicRegenerationMechanic(),
+            "cancelar-acao-aplicar-fogo": new CancelTargetActionAndApplyFireMechanic(),
+            "cancel-action-fire-apply": new CancelTargetActionAndApplyFireMechanic(),
+            "amplificador-fogo": new FireAmplifierMechanic(),
         } 
 
         const definition = record[type]
@@ -127,6 +150,16 @@ export class MechanicRegistry {
             "32": new PoisonChargeMechanic(),
             "33": new PoisonMechanic(),
             "34": new ActionSurgeMechanic(),
+            "35": new PrisonMechanic(),
+            "36": new DisvantageConsistenceTestMechanic(),
+            "37": new DisvantageDexterityTestMechanic(),
+            "38": new NextTurnCancelMechanic(),
+            "39": new VantageStrenghtTestMechanic(),
+            "40": new VantageConsistenceTestMechanic(),
+            "41": new VirtualPlanarLifeMechanic(),
+            "42": new BasicRegenerationMechanic(),
+            "43": new CancelTargetActionAndApplyFireMechanic(),
+            "44": new FireAmplifierMechanic(),
             "999": new TreeExtraAttacksMechanic(),
         }
 

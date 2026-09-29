@@ -43,18 +43,42 @@ export interface RollResult {
 }
 
 export interface FreeResponse {
+    requestId: string;
     responderId: string;
     paralyzedId: string;
+}
+
+export type BattleHistoryKind = "action" | "reaction" | "card";
+
+export interface BattleHistoryCard {
+  id: string;
+  name: string;
+  img: string;
+  desc: string;
+  causality: string;
+  baseDice?: { quantity: number; type: string } | null;
 }
 
 export interface ActionChoice {
   attribute: keyof Omit<TokenAttributes, "level" | "xp">;
   type: string;
-  attackerId?: string;  // ← Adicione
-  targetId?: string;    // ← Adicione
-  round?: number; // ← Adicione isto
+  attackerId?: string;
+  targetId?: string;
+  round?: number;
   rollResult?: RollResult;
   selectedMechanic?: PrimaryMechanic;
+}
+
+export interface BattleHistoryEntry {
+  attribute?: keyof Omit<TokenAttributes, "level" | "xp">;
+  type: string;
+  attackerId?: string;
+  targetId?: string;
+  round?: number;
+  rollResult?: RollResult;
+  historyId?: string;
+  historyKind?: BattleHistoryKind;
+  card?: BattleHistoryCard;
 }
 
 /**
@@ -96,6 +120,7 @@ export type PendingReaction = {
 
 export type PendingAttack =
   {
+    requestId: string;
     attackerId: string;
     targetId: string;
     rawDamage: number;
@@ -122,7 +147,7 @@ export interface BattleState {
   locks: BattleLocks;
   accumulatedActions: Record<string, number>;
   activeEffects: Record<string, TurnEffect[]>;
-  actionHistory: ActionChoice[];
+  actionHistory: BattleHistoryEntry[];
   isReallocatingTurns: boolean;
   turnVersion: number;
   movedThisTurn?: Record<string, boolean>;

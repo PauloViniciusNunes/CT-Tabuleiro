@@ -1,5 +1,3 @@
-import { CampaignRepository } from "@/modules/campaigns/repositories/CampaignRepository";
-import { MapRepository } from "@/modules/maps/repositories/MapRepository";
 import { BattleStateRepository } from "@/modules/battles/repositories/BattleStateRepository";
 import { PendingQueueRepository } from "@/modules/battles/repositories/PendingQueueRepository";
 import { PendingGetter } from "../context/PendingGetter";
@@ -14,6 +12,7 @@ import {
 import type { SpecialResponseResolution } from "./types";
 import { ensureProficiencyRollReductionHandlerRegistered } from "./handlers/ProficiencyRollReductionHandler";
 import { ensureCancelDamageFormularyHandlerRegistered } from "../mechanic/interceptors/CancelDamageFormularyInteceptor";
+import { ensureCancelActionFormularyHandlerRegistered } from "../mechanic/interceptors/CancelActionAndApplyMechanicInterceptor";
 import { ensureExtraAttackConfirmationHandlerRegistered } from "./handlers/ExtraAttackConfirmationHandler";
 
 export class SpecialResponseResolutionService {
@@ -22,8 +21,6 @@ export class SpecialResponseResolutionService {
     constructor(
         private readonly battleRepository = new BattleStateRepository(),
         private readonly pendingQueueRepository = new PendingQueueRepository(),
-        private readonly mapRepository = new MapRepository(),
-        private readonly campaignRepository = new CampaignRepository(),
         private readonly pendingGetter = new PendingGetter(pendingQueueRepository),
         private readonly pendingSetter = new PendingSetter(pendingQueueRepository),
     ) {}
@@ -33,6 +30,7 @@ export class SpecialResponseResolutionService {
         // survive a server restart.
         ensureProficiencyRollReductionHandlerRegistered();
         ensureCancelDamageFormularyHandlerRegistered();
+        ensureCancelActionFormularyHandlerRegistered();
         ensureExtraAttackConfirmationHandlerRegistered();
         const command = specialResponseCommandSchema.parse(data);
         const [battle, pendingQueue] = await Promise.all([
@@ -48,12 +46,7 @@ export class SpecialResponseResolutionService {
             throw new Error("A resposta especial expirou ou já foi resolvida.");
         }
 
-        const map = await this.mapRepository.findMapById(battle.mapId);
-        const campaign = map
-            ? await this.campaignRepository.findCampaignById(map.campaignId)
-            : null;
-        const authorized = userId === pending.responderUserId || userId === campaign?.ownerId;
-        if (!authorized) {
+        if (userId !== pending.responderUserId) {
             throw new Error("Este usuário não pode responder ao formulário especial.");
         }
 

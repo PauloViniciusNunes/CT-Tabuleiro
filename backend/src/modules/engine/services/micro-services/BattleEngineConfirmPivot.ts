@@ -4,7 +4,6 @@ import { SocketEvent } from "@/runtime/Events";
 import { applyMechanicToToken, getTokensInCardEntityRadius, resolvePivotPosition, resolveTriggerFixPivot } from "../../context/auxiliary/battleFunctions";
 import { syncBattleState } from "../../utils/syncBattleState";
 import { MechanicEntityInstance } from "../../mechanic/types/mechanicEntity";
-import { mountMechanicEntity } from "../../mechanic/utils/functions";
 import { BattleEngineService } from "../BattleEngineService";
 
 export class BattleEngineConfirmPivot extends BattleEngineService {
@@ -33,17 +32,6 @@ export class BattleEngineConfirmPivot extends BattleEngineService {
 
         const tokenInAmbientPivotSelection = await this.battleGetter.getTokenInAmbientPivotSelection(battleId)
 
-        const prevActions = await this.battleGetter.getTokenAction(battleId, tokenInAmbientPivotSelection)
-        const actionCost = Math.max(0, armedCard.actionsRequired ?? 0)
-
-        if (actionCost > 0) {
-            await this.battleSetter.tokenSetAction(
-                battleId,
-                tokenInAmbientPivotSelection,
-                Math.max(0, prevActions - actionCost),
-            )
-        }
-
         await this.battleSetter.setCardAreUsed(battleId, true)
 
         const triggerToken = boardTokens.find((t) => t.id === tokenInAmbientPivotSelection);
@@ -59,13 +47,19 @@ export class BattleEngineConfirmPivot extends BattleEngineService {
                 triggerToken
             )
 
+            runtime.emit(SocketEvent.FRONTEND_SET_PREVIEW_CELLS, { mapId: battleState.mapId, value: [] })
+            runtime.emit(SocketEvent.FRONTEND_AMBIENT_PIVOT_PHASE, "confirm")
+            runtime.emit(SocketEvent.FRONTEND_SELECTED_PIVOTS, [])
+            runtime.emit(SocketEvent.FRONTEND_AMBIENT_PIVOT_SELECTION, false)
+            await this.battleSetter.clearTokenInAmbientPivotSelection(battleId)
+            runtime.emit(SocketEvent.TOKEN_IN_AMBIENT_PIVOT_SELECTION, "")
             await syncBattleState(battleId)
             return
         }
 
         const selectedPivots = await this.battleGetter.getSelectedPivots(battleId);
 
-        let instances: MechanicEntityInstance[] = []
+        const instances: MechanicEntityInstance[] = []
 
         console.log("SELECTED PIVOT LENGHT: ", selectedPivots.length)
         for (const pivot of selectedPivots) {
@@ -79,7 +73,8 @@ export class BattleEngineConfirmPivot extends BattleEngineService {
                 pivot
             )
 
-            const mechanic = mountMechanicEntity(
+            const mechanic = await this.battleSetter.addMechanicEntity(
+                battleId,
                 tokenInAmbientPivotSelection,
                 armedCard.effectToApply,
                 armedCard.target.pivotSettings.areaImgUrl,
@@ -87,13 +82,35 @@ export class BattleEngineConfirmPivot extends BattleEngineService {
                 armedCard.target.pivotSettings.range,
                 armedCard.duration,
                 resolvedPosition.col,
-                resolvedPosition.row
+                resolvedPosition.row,
+                armedCard.effectsAffectCaster,
+                armedCard.casterEffectsToApply,
+                armedCard.triggerEffectsToApply,
             )
 
             instances.push(mechanic)
         }
 
-        for (const c of instances) {
+        const pendingInstances = instances.filter(
+            (instance) => instance.effectsApplied !== true,
+        );
+
+        if (pendingInstances.length > 0) {
+            const actionCost = Math.max(0, armedCard.actionsRequired ?? 0);
+            if (actionCost > 0) {
+                const previousActions = await this.battleGetter.getTokenAction(
+                    battleId,
+                    tokenInAmbientPivotSelection,
+                );
+                await this.battleSetter.tokenSetAction(
+                    battleId,
+                    tokenInAmbientPivotSelection,
+                    Math.max(0, previousActions - actionCost),
+                );
+            }
+        }
+
+        for (const c of pendingInstances) {
             console.log("[POSITION]: ", c.position)
             console.log("[PIVOT SETTINGS RANGE]: ", c.pivotSettings.range)
             console.log("[TRIGGER ID]: ", c.triggerId)
@@ -102,7 +119,8 @@ export class BattleEngineConfirmPivot extends BattleEngineService {
                 boardTokens,
                 c.position,
                 c.pivotSettings.range,
-                c.triggerId
+                c.triggerId,
+                c.effectsAffectCaster,
             );
 
             for (const t of affectedTokens) {
@@ -119,21 +137,30 @@ export class BattleEngineConfirmPivot extends BattleEngineService {
 
         }
 
-        for (const instance of instances) {
-            await this.battleSetter.addMechanicEntity(
+        const triggerOnlyEffects = Array.isArray(armedCard.triggerEffectsToApply)
+            ? armedCard.triggerEffectsToApply
+            : [];
+
+        if (triggerToken && pendingInstances.length > 0 && triggerOnlyEffects.length > 0) {
+            await applyMechanicToToken(
+                this.battleStateRepository,
+                this.tokenInstanceRepository,
                 battleId,
-                instance.triggerId,
-                instance.effectToApply,
-                instance.pivotSettings.areaImgUrl,
-                instance.pivotSettings.pivotType,
-                instance.pivotSettings.range,
-                instance.duration,
-                instance.position.col,
-                instance.position.row
-            )
+                pendingInstances[0],
+                triggerToken,
+                triggerOnlyEffects,
+            );
         }
 
-        runtime.emit(SocketEvent.FRONTEND_SET_PREVIEW_CELLS, new Set())
+        for (const instance of pendingInstances) {
+            await this.battleSetter.updateMechanicEntity(
+                battleId,
+                instance.id,
+                { effectsApplied: true },
+            );
+        }
+
+        runtime.emit(SocketEvent.FRONTEND_SET_PREVIEW_CELLS, { mapId: battleState.mapId, value: [] })
         runtime.emit(SocketEvent.FRONTEND_AMBIENT_PIVOT_PHASE, "confirm")
         runtime.emit(SocketEvent.FRONTEND_SELECTED_PIVOTS, [])
         runtime.emit(SocketEvent.FRONTEND_AMBIENT_PIVOT_SELECTION, false)

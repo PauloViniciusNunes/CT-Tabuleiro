@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Search } from "lucide-react";
+import { BattleFormToggle } from "./BattleFormToggle";
 import type { Token } from "../../types/token";
 import type { Card } from "../../types/card";
 import type { Target } from "../../types/target";
@@ -13,7 +14,7 @@ interface CardFormProps {
   cardTimeToRecharge:(card: Card) => number;
   target: Token[];
   availableCardsIds: string[];
-  onClose?: () => void;
+  onClose?: () => void | Promise<void>;
   onConfirm?: (card: Card, target: Target | null) => void | Promise<void>;
 }
 
@@ -33,6 +34,7 @@ const CardForm: React.FC<CardFormProps> = ({
   const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
   const [cardSearch, setCardSearch] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [displayForm, setDisplayForm] = useState(true);
   const submissionLockRef = useRef(false);
 
   const targets = useRef<Target | null>({
@@ -125,8 +127,24 @@ useEffect(() => {
     }
   };
 
+  const handleClose = async () => {
+    if (isSubmitting || submissionLockRef.current) return;
+
+    submissionLockRef.current = true;
+    setIsSubmitting(true);
+    try {
+      await onClose?.();
+    } catch (error) {
+      console.error("Não foi possível cancelar a seleção de card:", error);
+      submissionLockRef.current = false;
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4">
+    <>
+      {displayForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4">
       <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900 p-5 shadow-2xl">
         <h2 className="text-xl font-bold text-orange-400 mb-4 text-center">
           Seleção de Card
@@ -279,7 +297,7 @@ useEffect(() => {
           {/* =========================  */}
 
 
-          <div className="flex min-h-0 flex-col gap-3 rounded-lg bg-gray-800 p-4">
+          <div className="flex min-h-0 min-w-0 flex-col gap-3 overflow-x-hidden rounded-lg bg-gray-800 p-4">
             <label className="relative block shrink-0">
               <Search
                 aria-hidden="true"
@@ -296,7 +314,7 @@ useEffect(() => {
               />
             </label>
 
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+            <div className="min-h-0 min-w-0 flex-1 space-y-2 overflow-x-hidden overflow-y-auto pr-1">
               {filteredCards.length === 0 ? (
                 <p className="px-2 py-4 text-center text-sm text-red-400">
                   {compatibleCards.length === 0
@@ -327,7 +345,7 @@ useEffect(() => {
                     type="button"
                     onClick={() => setSelectedCard(card)}
                     disabled={disabled || isSubmitting}
-                    className={`flex items-center gap-3 p-2 rounded border transition-colors text-left
+                    className={`flex w-full min-w-0 max-w-full items-center gap-3 overflow-hidden rounded border p-2 text-left transition-colors
                       ${
                         selectedCard?.id === card.id
                           ? "border-orange-400 bg-gray-700"
@@ -339,15 +357,15 @@ useEffect(() => {
                     <img
                       src={card.img}
                       alt={card.name}
-                      className="w-10 h-10 rounded object-cover border border-gray-600"
+                      className="h-10 w-10 shrink-0 rounded border border-gray-600 object-cover"
                     />
 
-                    <div className="flex-1 overflow-hidden">
-                      <p className="text-sm font-semibold text-white truncate">
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                      <p className="truncate text-sm font-semibold text-white" title={card.name}>
                         {card.name}
                       </p>
 
-                      <p className="text-xs text-gray-400 truncate">
+                      <p className="truncate text-xs text-gray-400" title={card.causality}>
                         {card.causality}
                       </p>
 
@@ -383,10 +401,11 @@ useEffect(() => {
         <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-gray-700">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
+            disabled={isSubmitting}
             className="px-5 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white text-sm font-semibold"
           >
-            Cancelar
+            {isSubmitting ? "Cancelando..." : "Cancelar"}
           </button>
 
           <button
@@ -399,7 +418,14 @@ useEffect(() => {
           </button>
         </div>
       </div>
-    </div>
+        </div>
+      )}
+      <BattleFormToggle
+        visible={displayForm}
+        onToggle={() => setDisplayForm((visible) => !visible)}
+        label="formulário de card"
+      />
+    </>
   );
 };
 

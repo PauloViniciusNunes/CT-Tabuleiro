@@ -9,6 +9,7 @@ import { CardChoiceValidator } from "../validators/CardChoiceValidator";
 import { EngineCardValidator } from "../validators/EngineCardValidator";
 import { BattleEngineService } from "./BattleEngineService";
 import { OperatorType } from "../operators/OperatorType";
+import { calculateCardRoll, sum } from "../utils/calculations";
 
 export class BattleEngineCardResolution extends BattleEngineService {
     private readonly battleEngineNextTurnService = new BattleEngineNextTurnService();
@@ -87,6 +88,13 @@ export class BattleEngineCardResolution extends BattleEngineService {
         if (!token) 
             throw new Error("Não foi possível encontrar o token.");
 
+        const cardRoll = calculateCardRoll(1, token, card);
+        const cardRollTotal = (sum(cardRoll.rawRolls) + cardRoll.total) * cardRoll.CRI;
+        const hasBaseDice = Boolean(card.baseDice && card.baseDice.quantity > 0);
+        const cardHistoryRoll = hasBaseDice
+            ? { ...cardRoll, total: cardRollTotal }
+            : undefined;
+
         if (battleState.currentActorId !== currentId) {
             throw new Error("Apenas o token do turno atual pode usar um card.");
         }
@@ -139,7 +147,7 @@ export class BattleEngineCardResolution extends BattleEngineService {
                         currentId,
                         target,
                         card,
-                        { consumeCardCosts: !isArtifice },
+                        { consumeCardCosts: !isArtifice, cardRoll },
                     )
                 };
 
@@ -192,6 +200,9 @@ export class BattleEngineCardResolution extends BattleEngineService {
                                     card.duration,
                                     currentTokenR.col,
                                     currentTokenR.row,
+                                    card.effectsAffectCaster,
+                                    card.casterEffectsToApply,
+                                    card.triggerEffectsToApply,
                                 );
                                 if (!isArtifice && actionCost > 0) {
                                     await this.battleSetter.tokenDecreaseAction(
@@ -242,6 +253,20 @@ export class BattleEngineCardResolution extends BattleEngineService {
                 }
 
             }
+
+            await this.battleSetter.addCardHistory({
+                battleStateId: battleId,
+                tokenId: currentId,
+                card: {
+                    id: card.id,
+                    name: card.name,
+                    img: card.img,
+                    desc: card.desc,
+                    causality: card.causality,
+                    baseDice: card.baseDice,
+                },
+                displayRoll: cardHistoryRoll,
+            });
 
             // Marca que o token AGIU voluntariamente neste turno
             await this.battleSetter.addDidActThisTurn(battleId, currentId, true)

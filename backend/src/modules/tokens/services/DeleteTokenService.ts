@@ -1,41 +1,29 @@
 import { TokenRepository } from "../repositories/TokenRepository";
 import { TokenIdValidator } from "../validators/TokenIdValidator";
 import { CampaignRepository } from "@/modules/campaigns/repositories/CampaignRepository";
-import { UserRepository } from "@/modules/auth/repositories/UserRepository";
 
 export class DeleteTokenService {
     constructor(
         private readonly repository = new TokenRepository(),
         private readonly campaignRepository = new CampaignRepository(),
-        private readonly userRepository = new UserRepository()
     ) {}
 
-    async execute(
-        userId: string,
-        tokenId: string,
-    ) {
+    async execute(userId: string, tokenId: string) {
         const id = TokenIdValidator.parse(tokenId);
         const token = await this.repository.findById(id);
-
-        if(!token?.campaignId) {
-            throw new Error("Token não está inserido em uma campanha!")
-        }
-
-        const campaign = await this.campaignRepository.findCampaignById(token.campaignId)
-
         if (!token) {
             throw new Error("Token não encontrado.");
         }
+        if (!token.campaignId) {
+            throw new Error("Token não está inserido em uma campanha!");
+        }
 
-        console.log("[TOKEN USER ID]: ", token.userId)
-
-        const user = await this.userRepository.findById(token.userId)
-        console.log("[NOME DO USUÀRIO]: ", user?.name)
-
-        console.log("[CAMPAIGN OWNER]: ", campaign?.ownerId)
-
-        if (token.userId !== userId && userId !== campaign?.ownerId) {
-            throw new Error("Você não possui acesso a este token.");
+        const campaign = await this.campaignRepository.findCampaignById(token.campaignId);
+        if (!campaign) {
+            throw new Error("Campanha não encontrada.");
+        }
+        if (userId !== campaign.ownerId) {
+            throw new Error("Apenas o dono da campanha pode remover tokens.");
         }
 
         return this.repository.delete(id);

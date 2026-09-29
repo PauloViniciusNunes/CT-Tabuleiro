@@ -39,7 +39,7 @@ O Vite funciona como gateway local na porta `5173`:
 
 O `cloudflared` aponta somente para o gateway Vite. A API e o Socket.IO não
 ganham URLs públicas independentes. O frontend usa caminhos da mesma origem,
-portanto funciona tanto em `http://ct-tabuleiro.local:5173` quanto na URL HTTPS
+portanto funciona tanto em `http://localhost:5173` quanto na URL HTTPS
 do tunnel.
 
 ### Executar sem Cloudflare

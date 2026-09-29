@@ -32,7 +32,6 @@ export default defineConfig(({ mode }) => {
         strictPort: true,
         allowedHosts: [
             "ct-tabuleiro.onrender.com",
-            "ct-tabuleiro.local",
             "localhost",
             "127.0.0.1",
             ".trycloudflare.com",

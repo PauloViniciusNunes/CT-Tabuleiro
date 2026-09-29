@@ -26,11 +26,18 @@ export function mountMechanicEntity(
     duration: number,
     col: number,
     row: number,
+    effectsAffectCaster = false,
+    casterEffectsToApply: string[] = [],
+    triggerEffectsToApply: string[] = [],
 ): MechanicEntityInstance {
     return {
         id: crypto.randomUUID(),
         triggerId: triggerId,
         effectToApply: effectsMechanics,
+        effectsAffectCaster,
+        casterEffectsToApply,
+        triggerEffectsToApply,
+        effectsApplied: false,
         pivotSettings: {
             areaImgUrl: img,
             pivotType: pivotType,

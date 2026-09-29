@@ -20,6 +20,7 @@ import CreateMapObject from "../components/ui/CreateMapObject";
 import BoardToolbox from "../components/ui/BoardToolbox";
 import ActiveMechanicsTooltip from "../components/ui/ActiveMechanicsTooltip";
 import SpecialResponseForm from "../components/ui/SpecialResponseForm";
+import TransformationForm from "../components/ui/TransformationForm";
 
 /* WEB API */
 import { MapaAPI, useMaps } from "../api/modules/maps";
@@ -76,7 +77,7 @@ import type {
 import type {
   BattleState,
   RollResult,
-  ActionChoice,
+  BattleHistoryEntry,
   PendingAttack,
   AllocatedPoints,
   ActiveMechanic,
@@ -96,6 +97,7 @@ import type {
   GridPoint,
   RulerMeasurement,
 } from "../types/tools";
+import type { PendingTransformationResolution } from "../types/transformation";
 import type {
   PendingSpecialResponse,
   SpecialResponseValues,
@@ -166,6 +168,8 @@ const BoardPage: React.FC = () => {
   const [campaign, setCampaign] = useState<Campaign | null>(null)
   const [mapRouting, setMapRouting] = useState<CampaignMapRouting | null>(null)
   const [pendingSpecialResponse, setPendingSpecialResponse] = useState<PendingSpecialResponse | null>(null);
+  const [pendingTransformation, setPendingTransformation] =
+    useState<PendingTransformationResolution | null>(null);
   const selectedMapIdRef = useRef<string | undefined>(undefined);
 
   const [boardTokens, setBoardTokens] = useState<Token[]>([]);
@@ -319,6 +323,32 @@ const BoardPage: React.FC = () => {
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0 });
 
+  const clampPanToViewport = useCallback((nextPan: { x: number; y: number }, zoomValue: number) => {
+    const viewport = boardViewportRef.current;
+    if (!viewport) return nextPan;
+
+    const viewportWidth = viewport.clientWidth;
+    const viewportHeight = viewport.clientHeight;
+    if (viewportWidth <= 0 || viewportHeight <= 0) return nextPan;
+
+    // Includes the coordinate headers and the top spacing used by the world.
+    const boardWidth = (cols + 1) * cellSize * zoomValue;
+    const boardHeight = (48 + (rows + 1) * cellSize) * zoomValue;
+    const visibleWidth = Math.min(120, boardWidth / 2, viewportWidth / 2);
+    const visibleHeight = Math.min(120, boardHeight / 2, viewportHeight / 2);
+
+    return {
+      x: Math.min(
+        viewportWidth - visibleWidth,
+        Math.max(visibleWidth - boardWidth, nextPan.x),
+      ),
+      y: Math.min(
+        viewportHeight - visibleHeight,
+        Math.max(visibleHeight - boardHeight, nextPan.y),
+      ),
+    };
+  }, [cols, rows, cellSize]);
+
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 2) { // botão direito
       e.preventDefault();
@@ -335,10 +365,10 @@ const BoardPage: React.FC = () => {
 
     setViewportTransform((current) => ({
       ...current,
-      pan: {
+      pan: clampPanToViewport({
         x: e.clientX - panStart.current.x,
         y: e.clientY - panStart.current.y,
-      },
+      }, current.zoom),
     }));
   };
 
@@ -373,13 +403,13 @@ const BoardPage: React.FC = () => {
 
       return {
         zoom: nextZoom,
-        pan: {
+        pan: clampPanToViewport({
           x: cursorX - (cursorX - current.pan.x) * zoomRatio,
           y: cursorY - (cursorY - current.pan.y) * zoomRatio,
-        },
+        }, nextZoom),
       };
     });
-  }, []);
+  }, [clampPanToViewport]);
 
   useEffect(() => {
     const viewport = boardViewportRef.current;
@@ -388,6 +418,26 @@ const BoardPage: React.FC = () => {
     viewport.addEventListener("wheel", handleBoardWheel, { passive: false });
     return () => viewport.removeEventListener("wheel", handleBoardWheel);
   }, [handleBoardWheel]);
+
+  useEffect(() => {
+    const viewport = boardViewportRef.current;
+    if (!viewport) return;
+
+    const constrainPan = () => {
+      setViewportTransform((current) => {
+        const constrainedPan = clampPanToViewport(current.pan, current.zoom);
+        return constrainedPan.x === current.pan.x && constrainedPan.y === current.pan.y
+          ? current
+          : { ...current, pan: constrainedPan };
+      });
+    };
+
+    const observer = new ResizeObserver(constrainPan);
+    observer.observe(viewport);
+    constrainPan();
+
+    return () => observer.disconnect();
+  }, [clampPanToViewport]);
 
   const clearRulerMeasurement = useCallback(() => {
     setIsRulerMeasuring(false);
@@ -539,7 +589,7 @@ const BoardPage: React.FC = () => {
   /* GENERAL LISTENER */
   useEffect(() => {
 
-    const tokenInstanceListener = new TokenInstanceSocketListener(socket, boardTokensRef, setBoardTokens, setTokenInAmbientPivotSelection, cardsRef, itemsRef)
+    const tokenInstanceListener = new TokenInstanceSocketListener(socket, boardTokensRef, setBoardTokens, cardsRef, itemsRef)
     const battleStateListener = new BattleSocketListener(socket, setBattleState)
     const pendingListener = new PendingSocketListener(
       socket,
@@ -549,22 +599,23 @@ const BoardPage: React.FC = () => {
       setPendingCardResolution,
       setOffensivePendingCard,
       setOffensiveCardAttackerId,
+      setOffensiveCardResolutionId,
+      setOffensiveCardScore,
+      setOffensiveCardTestScore,
+      setInCardSelection,
+      setIsInDefenseResolution,
+      setIsAmbientPivotSelection,
+      setArmedCard,
+      setTokenInAmbientPivotSelection,
+      setAmbientPivotPhase,
       setPendingSpecialResponse,
+      setPendingTransformation,
       () => selectedMapIdRef.current,
     )
     const frontendListener = new FrontendSocketListener(
       socket,
-      setInCardSelection,
-      setIsInDefenseResolution,
       setPreviewCells,
-      setSelectedTarget,
-      setOffensiveCardScore,
-      setOffensiveCardTestScore,
-      setInTargetSelection,
-      setIsAmbientPivotSelection,
-      setArmedCard,
-      setSelectedCell,
-      setAmbientPivotPhase
+      () => selectedMapIdRef.current
     )
 
     /* REGISTERS */
@@ -730,7 +781,25 @@ const BoardPage: React.FC = () => {
 
   useEffect(() => {
     const mapId = selectedMapa?.id;
+    setPendingAttack(null);
+    setPendingEsquivaRoll(null);
+    setPendingFreeResponse(null);
+    setPendingCardResolution(null);
+    setOffensivePendingCard(undefined);
+    setOffensiveCardAttackerId(null);
+    setOffensiveCardResolutionId(null);
+    setOffensiveCardScore(null);
+    setOffensiveCardTestScore(null);
     setPendingSpecialResponse(null);
+    setInCardSelection(false);
+    setIsInDefenseResolution(false);
+    setIsAmbientPivotSelection(false);
+    setArmedCard(undefined);
+    setTokenInAmbientPivotSelection("");
+    setAmbientPivotPhase("confirm");
+    setPreviewCells(new Set());
+    setSelectedTarget(null);
+    setInTargetSelection(false);
     selectedMapIdRef.current = mapId;
     if (!mapId) return;
 
@@ -746,6 +815,7 @@ const BoardPage: React.FC = () => {
 
     return () => {
       socket.off("connect", joinCurrentMap);
+      socket.emit("leave-map", mapId);
       if (selectedMapIdRef.current === mapId) {
         selectedMapIdRef.current = undefined;
       }
@@ -852,6 +922,7 @@ const BoardPage: React.FC = () => {
   const [sidebarWidth, setSidebarWidth] = useState<number>(320); // inicial
 
   const [pendingFreeResponse, setPendingFreeResponse] = useState<{
+    requestId: string;
     responderId: string;  // quem ganhou a ação livre
     paralyzedId: string;  // quem ficou sem poder reagir a este próximo ataque
   } | null>(null);
@@ -908,6 +979,7 @@ const BoardPage: React.FC = () => {
     setCreatedTokens(prev =>
       prev.map(t => t.id === persistedToken.id ? persistedToken : t)
     );
+    setTokensRefreshKey((current) => current + 1);
     setTokenBeingEdited(null);
   }
 
@@ -1037,6 +1109,9 @@ const BoardPage: React.FC = () => {
   useEffect(() => {
     if (battleState.status !== "In Battle") {
       clearMechanicOverlays();
+      setSelectedTarget(null);
+      setInTargetSelection(false);
+      setPreviewCells(new Set());
     }
   }, [battleState.status, clearMechanicOverlays]);
 
@@ -1367,31 +1442,26 @@ const BoardPage: React.FC = () => {
   const [isCooling, setIsCooling] = useState<boolean>(false);
   const movementPendingRef = useRef(false);
 
-  const [isInDefenseResolution, setIsInDefenseResolution] = useState(false);
+  const [, setIsInDefenseResolution] = useState(false);
   ;
   const [offensivePendingCard, setOffensivePendingCard] = useState<Card>();
   const [offensiveCardAttackerId, setOffensiveCardAttackerId] = useState<string | null>(null);
+  const [offensiveCardResolutionId, setOffensiveCardResolutionId] = useState<string | null>(null);
   const [armedCard, setArmedCard] = useState<Card>()
+  const [tokenInAmbientPivotSelection, setTokenInAmbientPivotSelection] = useState<string>("")
 
-  const freeResponseFormKey = useFormSessionKey("free-response", pendingFreeResponse);
-  const reactionFormKey = useFormSessionKey("reaction", pendingAttack);
-  const defenseFormKey = useFormSessionKey("defense", pendingEsquivaRoll);
-  const cardFormKey = useFormSessionKey("card", pendingCardResolution);
-  const offensiveCardFormKey = useFormSessionKey("offensive-card", offensivePendingCard);
-
-  useEffect(() => {
-    setArmedCard(offensivePendingCard)
-  },
-    [offensivePendingCard]);
+  const freeResponseFormKey = useFormSessionKey("free-response", pendingFreeResponse?.requestId ?? null);
+  const reactionFormKey = useFormSessionKey("reaction", pendingAttack?.requestId ?? null);
+  const defenseFormKey = useFormSessionKey("defense", pendingAttack && pendingEsquivaRoll ? pendingAttack.requestId + ":defense" : null);
+  const cardFormKey = useFormSessionKey("card", pendingCardResolution?.formRequestId ?? null);
+  const offensiveCardFormKey = useFormSessionKey("offensive-card", offensiveCardResolutionId);
 
   useEffect(() => {
-    if (armedCard) {
-
-      if (armedCard.target.pivotSettings?.pivotType === "Trigger-Fix") {
-        void confirmAmbientPivots();
-      }
-    }
-  }, [armedCard]);
+    if (!armedCard || armedCard.target.pivotSettings?.pivotType !== "Trigger-Fix") return;
+    const ambientToken = boardTokens.find((token) => token.id === tokenInAmbientPivotSelection);
+    if (!BattleViewRules.showTokenResponseForm(campaign, userId, ambientToken?.ownerId)) return;
+    void confirmAmbientPivots();
+  }, [armedCard, boardTokens, tokenInAmbientPivotSelection, campaign, userId]);
 
 
   const [offensiveCardScore, setOffensiveCardScore] = useState<number | null>(null);
@@ -1414,19 +1484,8 @@ const BoardPage: React.FC = () => {
   const [previewCells, setPreviewCells] = useState<Set<string>>(new Set());
 
   const [isAmbientPivotSelection, setIsAmbientPivotSelection] = useState(false);
-  const [tokenInAmbientPivotSelection, setTokenInAmbientPivotSelection] = useState<string>("");
   const [isConfirmingAmbientPivots, setIsConfirmingAmbientPivots] = useState(false);
   const ambientPivotConfirmationPendingRef = useRef(false);
-
-  useEffect(() => {
-
-    console.debug("AMBIENT PIVOT SELECTION: ", isAmbientPivotSelection)
-    console.debug("ARMED CARD: ", armedCard?.name)
-
-    if (!isAmbientPivotSelection) return;
-
-    setAmbientPivotPhase("awaiting-pivot");
-  }, [isAmbientPivotSelection]);
 
   const [ambientPivotPhase, setAmbientPivotPhase] =
     useState<"awaiting-pivot" | "preview" | "confirm">("awaiting-pivot");
@@ -1442,19 +1501,20 @@ const BoardPage: React.FC = () => {
         setSelectedTokenId(null);
       } else if (e.key === "+" || e.key === "=") {
         e.preventDefault();
-        setViewportTransform((current) => ({
-          ...current,
-          zoom: Math.min(current.zoom + KEYBOARD_ZOOM_STEP, MAX_BOARD_ZOOM),
-        }));
+        setViewportTransform((current) => {
+          const nextZoom = Math.min(current.zoom + KEYBOARD_ZOOM_STEP, MAX_BOARD_ZOOM);
+          return { ...current, zoom: nextZoom, pan: clampPanToViewport(current.pan, nextZoom) };
+        });
       } else if (e.key === "-" || e.key === "_") {
         e.preventDefault();
-        setViewportTransform((current) => ({
-          ...current,
-          zoom: Math.max(current.zoom - KEYBOARD_ZOOM_STEP, MIN_BOARD_ZOOM),
-        }));
+        setViewportTransform((current) => {
+          const nextZoom = Math.max(current.zoom - KEYBOARD_ZOOM_STEP, MIN_BOARD_ZOOM);
+          return { ...current, zoom: nextZoom, pan: clampPanToViewport(current.pan, nextZoom) };
+        });
       } else if (
         (e.key === "Delete" || e.key === "Backspace") &&
-        selectedTokenId
+        selectedTokenId &&
+        campaign?.ownerId === userId
       ) {
         e.preventDefault();
         TokenInstanceAPI.deleteTokenInstance(selectedTokenId)
@@ -1464,7 +1524,7 @@ const BoardPage: React.FC = () => {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [selectedTokenId]);
+  }, [selectedTokenId, campaign?.ownerId, userId, clampPanToViewport]);
 
   // Movement keys when Not in Battle
 
@@ -1748,7 +1808,7 @@ const BoardPage: React.FC = () => {
     const distance = measureCells(movingToken.position, { col, row }).distance;
     if (distance === 0) return;
     if (isInBattle &&
-        (id !== battleState.currentActorId || battleState.movedThisTurn?.[id] ||
+        (!canChooseTurnAction || id !== battleState.currentActorId || battleState.movedThisTurn?.[id] ||
          distance > (movingToken.naturalMovement ?? 6))) {
       return;
     }
@@ -1811,6 +1871,7 @@ const BoardPage: React.FC = () => {
     }
 
     if (isAmbientPivotSelection && armedCard) {
+      if (!canAnswerAmbientPivot) return;
       const pivotType = armedCard.target.pivotSettings?.pivotType;
 
       // So aceita tokens, se for Token-Fix.
@@ -1924,9 +1985,10 @@ const BoardPage: React.FC = () => {
     return BattleEngineAPI.defense(newChoice)
   }
 
-  function closeCardForm() {
-    console.debug("[DEBUG] Pending Attack: ", pendingAttack);
-    console.debug("[DEBUG] Pending Esquiva Roll: ", pendingEsquivaRoll);
+  async function closeCardForm() {
+    if (!battleState.id) return;
+    await BattleEngineAPI.cancelCardSelection(battleState.id);
+    setPendingCardResolution(null);
     setInCardSelection(false);
   }
 
@@ -2009,11 +2071,55 @@ const BoardPage: React.FC = () => {
   const currentId = currentData?.tokenId;
   const currentToken = currentId ? boardTokens.find((t) => t.id === currentId) : undefined;
   const isPlayerTurn = battleState.status === "In Battle" && currentToken?.type === "player";
+  const canChooseTurnAction = Boolean(
+    !pendingSpecialResponse &&
+    isPlayerTurn &&
+    currentToken &&
+    !pendingAttack &&
+    !pendingFreeResponse &&
+    !pendingCardResolution &&
+    !pendingTransformation &&
+    battleState.tokensInOffensiveCard.length <= 0 &&
+    !isAmbientPivotSelection &&
+    BattleViewRules.showForm(campaign, battleState, userId)
+  );
   const isGameMaster = campaign?.ownerId === userId;
+  const canAnswerTransformation = Boolean(
+    pendingTransformation &&
+    BattleViewRules.showTransformationForm(
+      campaign,
+      userId,
+      pendingTransformation.ownerId,
+    )
+  );
+  const ambientPivotToken = boardTokens.find((token) => token.id === tokenInAmbientPivotSelection);
+  const canAnswerAmbientPivot = Boolean(
+    isAmbientPivotSelection &&
+    ambientPivotToken &&
+    BattleViewRules.showTokenResponseForm(campaign, userId, ambientPivotToken.ownerId),
+  );
   const canAnswerSpecialResponse = Boolean(
     pendingSpecialResponse &&
-    (isGameMaster || pendingSpecialResponse.responderUserId === userId),
+    pendingSpecialResponse.responderUserId === userId,
   );
+  const handleSubmitTransformation = async (templateId: string) => {
+    if (!pendingTransformation || !battleState.id) return;
+    await BattleEngineAPI.transform({
+      battleId: battleState.id,
+      requestId: pendingTransformation.requestId,
+      action: "submit",
+      templateId,
+    });
+  };
+  const handleCancelTransformation = async () => {
+    if (!pendingTransformation || !battleState.id) return;
+    await BattleEngineAPI.transform({
+      battleId: battleState.id,
+      requestId: pendingTransformation.requestId,
+      action: "cancel",
+    });
+  };
+
   const handleSubmitSpecialResponse = async (values: SpecialResponseValues) => {
     if (!pendingSpecialResponse || !battleState.id) return;
     await BattleEngineAPI.resolveSpecialResponse(
@@ -2236,7 +2342,7 @@ const BoardPage: React.FC = () => {
                           }
 
                           className={[
-                            "border border-gray-700 flex items-center justify-center transition-colors duration-150 relative",
+                            "border-[0.5px] border-gray-700 flex items-center justify-center transition-colors duration-150 relative",
                             isSel
                               ? "border-green-400 shadow-[0_0_10px_2px_rgba(34,197,94,0.7)]"
                               : "hover:bg-gray-800",
@@ -2357,7 +2463,7 @@ const BoardPage: React.FC = () => {
 
 
                                 ].join(" ")}
-                                draggable={tok?.id === currentId}
+                                draggable={tok?.id === currentId && canChooseTurnAction}
                                 onDragStart={(e) => {
                                   const isTokenArrested = boardTokens.some(
                                     (t) =>
@@ -2370,6 +2476,7 @@ const BoardPage: React.FC = () => {
 
                                   if (
                                     tok?.id !== currentId ||
+                                    !canChooseTurnAction ||
                                     isTokenArrested
                                   )
                                     { e.preventDefault(); return; }
@@ -2525,12 +2632,22 @@ const BoardPage: React.FC = () => {
         />
       )}
 
+      {pendingTransformation && canAnswerTransformation && (
+        <TransformationForm
+          key={"transformation:" + pendingTransformation.requestId}
+          pending={pendingTransformation}
+          onSubmit={handleSubmitTransformation}
+          onCancel={handleCancelTransformation}
+        />
+      )}
+
       {/* Renderização do ActionForm de resposta imediata (modal central, sem pular) */}
-      {!pendingSpecialResponse && pendingFreeResponse && BattleViewRules.showForm(campaign, battleState, userId) && (() => {
+      {!pendingSpecialResponse && pendingFreeResponse && (() => {
         const responder = boardTokens.find(t => t.id === pendingFreeResponse.responderId);
         const target = boardTokens.find(t => t.id === pendingFreeResponse.paralyzedId);
         if (!responder || !target) return null;
         if (responder.type !== "player") return null;
+        if (!BattleViewRules.showTokenResponseForm(campaign, userId, responder.ownerId)) return null;
 
         // Segurança extra: se por algum motivo range mudou, não renderiza
         if (!isInAttackRange(responder, target, "fisico")) return null;
@@ -2621,7 +2738,7 @@ const BoardPage: React.FC = () => {
                 attackerName: attacker?.name || "Desconhecido",
                 targetName: target?.name || "Desconhecido",
               };
-            }) as (ActionChoice & { round: number; attackerName: string; targetName: string })[]}
+            }) as (BattleHistoryEntry & { round: number; attackerName: string; targetName: string })[]}
           // passe os controles de largura para o Sidebar
           widthPx={sidebarWidth}
           onWidthChange={setSidebarWidth}
@@ -2660,7 +2777,7 @@ const BoardPage: React.FC = () => {
         </div>
       )}
       {/* ActionForm during battle */}
-      {!pendingSpecialResponse && isPlayerTurn && currentToken && !pendingAttack && !pendingFreeResponse && !inCardSelection && battleState.tokensInOffensiveCard.length <= 0 && !isAmbientPivotSelection && BattleViewRules.showForm(campaign, battleState, userId) && (
+      {canChooseTurnAction && currentToken && (
         <div className="fixed bottom-4 left-4 z-30">
           <ActionForm
             key={`turn-action:${battleState.id}:${currentId}:${battleState.turnVersion}:${battleState.phase}:${battleState.accumulatedActions[currentId] ?? 0}`}
@@ -2681,7 +2798,11 @@ const BoardPage: React.FC = () => {
         boardTokens.find((t) => t.id === pendingAttack.targetId)?.type === "player" &&
         pendingAttack.isReactionAllowed &&
         pendingAttack.pendingReactions.length > 0 &&
-        !pendingEsquivaRoll && BattleViewRules.showForm(campaign, battleState, userId) && (
+        !pendingEsquivaRoll && BattleViewRules.showTokenResponseForm(
+          campaign,
+          userId,
+          boardTokens.find((t) => t.id === pendingAttack.targetId)?.ownerId,
+        ) && (
           <ReactionPrompt
             key={reactionFormKey}
             actor={{
@@ -2715,10 +2836,14 @@ const BoardPage: React.FC = () => {
         )}
 
       {/* DefenseResolutionForm */}
-      {!pendingSpecialResponse && isInDefenseResolution && pendingEsquivaRoll !== null &&
+      {!pendingSpecialResponse && pendingEsquivaRoll !== null &&
         pendingAttack &&
         boardTokens.find((t) => t.id === pendingAttack.attackerId)?.type === "player" &&
-        BattleViewRules.showForm(campaign, battleState, userId) && (
+        BattleViewRules.showTokenResponseForm(
+          campaign,
+          userId,
+          boardTokens.find((t) => t.id === pendingAttack.attackerId)?.ownerId,
+        ) && (
           <div className="fixed bottom-4 left-4 z-40">
             <DefenseResolutionForm
               key={defenseFormKey}
@@ -2740,8 +2865,12 @@ const BoardPage: React.FC = () => {
         )}
 
       {/* Card Form */}
-      {!pendingSpecialResponse && inCardSelection && pendingCardResolution && pendingCardResolution?.type === "player" && !pendingAttack &&
-        BattleViewRules.showForm(campaign, battleState, userId) && (
+      {!pendingSpecialResponse && pendingCardResolution && pendingCardResolution?.type === "player" && !pendingAttack &&
+        BattleViewRules.showTokenResponseForm(
+          campaign,
+          userId,
+          pendingCardResolution.ownerId,
+        ) && (
         <>
           <CardForm
             key={cardFormKey}
@@ -2762,10 +2891,10 @@ const BoardPage: React.FC = () => {
         offensivePendingCard && offensiveCardAttackerId &&
         offensiveCardScore !== null &&
         offensiveCardTestScore !== null &&
-        BattleViewRules.showForm(campaign, battleState, userId) &&
         battleState.tokensInOffensiveCard.slice(0, 1).map((queuedDefender) => {
           const defenderToken = boardTokens.find((token) => token.id === queuedDefender.id);
           if (!defenderToken) return null;
+          if (!BattleViewRules.showTokenResponseForm(campaign, userId, defenderToken.ownerId)) return null;
 
           return (
             <OffensiveCardResolution
@@ -2784,7 +2913,7 @@ const BoardPage: React.FC = () => {
           );
         })}
 
-      {!pendingSpecialResponse && isAmbientPivotSelection && armedCard && (
+      {!pendingSpecialResponse && isAmbientPivotSelection && armedCard && canAnswerAmbientPivot && (
         <div className="fixed inset-0 z-[90] pointer-events-none">
           {/* painel flutuante — ESTE sim recebe clique */}
           <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-900 border border-orange-500 rounded p-3 shadow-lg pointer-events-auto">

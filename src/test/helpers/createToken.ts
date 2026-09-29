@@ -84,6 +84,7 @@ export function createToken(
         campaignId: "",
 
         ...overrides,
+        passiveMechanics: overrides.passiveMechanics ?? [],
 
         attributes: {
             ...defaultAttributes,

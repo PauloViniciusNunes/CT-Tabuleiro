@@ -5,7 +5,8 @@ export enum ActionType {
     MANA_RECOVER = "mana.recover",
     CARD_DISPATCH = "card.dispatch",
     PREDICT = "predict",
-    DISORIENT = "disorient"
+    DISORIENT = "disorient",
+    TRANSFORM = "transform"
 }
 
 const CLIENT_ACTION_TYPE: Readonly<Record<string, ActionType>> = {
@@ -15,12 +16,14 @@ const CLIENT_ACTION_TYPE: Readonly<Record<string, ActionType>> = {
     [ActionType.CARD_DISPATCH]: ActionType.CARD_DISPATCH,
     [ActionType.PREDICT]: ActionType.PREDICT,
     [ActionType.DISORIENT]: ActionType.DISORIENT,
+    [ActionType.TRANSFORM]: ActionType.TRANSFORM,
     ataque_fisico: ActionType.ATTACK,
     surpreender: ActionType.SURPRISE,
     mana_recover: ActionType.MANA_RECOVER,
     card_selection: ActionType.CARD_DISPATCH,
     previnir: ActionType.PREDICT,
     desnortear: ActionType.DISORIENT,
+    transformar: ActionType.TRANSFORM,
 };
 
 export function resolveActionType(value: unknown): ActionType {

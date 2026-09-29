@@ -1,6 +1,7 @@
 import type React from "react";
 import { useRef, useState } from "react";
 import { Shield, XCircle } from "lucide-react";
+import { BattleFormToggle } from "./BattleFormToggle";
 import {GiDiceTwentyFacesTwenty } from "react-icons/gi";
 import { Brain } from "lucide-react";
 
@@ -26,7 +27,7 @@ interface OffensiveCardProps {
     attribute: OffensiveCardAttribute;
     usedMana: number;
     usedActions: number;
-    usedCertainDie: boolean;
+    usedCertaintyDie: boolean;
     previewAction: boolean;
   }) => void | Promise<void>;
   onCancel?: () => void | Promise<void>;
@@ -57,6 +58,7 @@ const OffensiveCardResolution: React.FC<OffensiveCardProps> = ({
     useState<OffensiveCardAttribute>("forca");
   const [usedCertaintyDie, setUsedCertaintyDie] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [displayForm, setDisplayForm] = useState(true);
   const submissionLockRef = useRef(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
 
@@ -92,7 +94,7 @@ const OffensiveCardResolution: React.FC<OffensiveCardProps> = ({
         attribute: selectedAttribute,
         usedMana,
         usedActions,
-        usedCertainDie: usedCertaintyDie,
+        usedCertaintyDie: usedCertaintyDie,
         previewAction,
       });
       submitted = true;
@@ -142,7 +144,9 @@ const OffensiveCardResolution: React.FC<OffensiveCardProps> = ({
       : "bg-purple-500 border-purple-600";
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+    <>
+      {displayForm && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60" />
 
       <div className="relative z-10 w-full max-w-md rounded-lg border-2 border-orange-600 bg-gray-800 p-4 text-gray-100 shadow-2xl">
@@ -283,7 +287,14 @@ const OffensiveCardResolution: React.FC<OffensiveCardProps> = ({
           </button>
         </div>
       </div>
-    </div>
+        </div>
+      )}
+      <BattleFormToggle
+        visible={displayForm}
+        onToggle={() => setDisplayForm((visible) => !visible)}
+        label="formulário de defesa do card"
+      />
+    </>
   );
 };
 

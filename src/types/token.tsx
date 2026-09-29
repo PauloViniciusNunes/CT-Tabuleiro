@@ -1,8 +1,12 @@
 // Acrescente no seu arquivo Token
-import type { ParalysisState } from './status';
-import type {TokenEffect, TokenPrimaryDisvantage, PrimaryMechanic} from './effects'
-import type {Card } from './card';
-import type { Item } from './item';
+import type { ParalysisState } from "./status";
+import type {
+  TokenEffect,
+  TokenPrimaryDisvantage,
+  PrimaryMechanic,
+} from "./effects";
+import type { Card } from "./card";
+import type { Item, PassiveMechanic } from "./item";
 
 export interface TokenAttributes {
   forca: number;
@@ -23,19 +27,27 @@ export type TokenMultipliableAttribute =
   | "sabedoria"
   | "carisma";
 
-export type TokenAttributeMultipliers = Record<TokenMultipliableAttribute, number>;
+export type TokenAttributeMultipliers = Record<
+  TokenMultipliableAttribute,
+  number
+>;
+
+export type TokenTransformationDurationMode = "persistent" | "rounds";
 
 export interface TokenTransformation {
   baseTokenId: string;
   inheritBaseCards: boolean;
+  durationMode: TokenTransformationDurationMode;
+  durationRounds?: number;
+  rechargeRounds: number;
   attributeMultipliers: TokenAttributeMultipliers;
   additionalCards: Card[];
   additionalMechanics: PrimaryMechanic[];
   additionalDisadvantages: TokenPrimaryDisvantage[];
+  additionalPassiveMechanics: PassiveMechanic[];
 }
 
-export interface TokenOccasionalAddition
-{
+export interface TokenOccasionalAddition {
   forca: number;
   destreza: number;
   consistencia: number;
@@ -53,10 +65,10 @@ export interface TokenProficiencies {
   carisma: boolean;
 }
 
-export type InventoryDimensions ={
+export type InventoryDimensions = {
   rows: number;
   cols: number;
-}
+};
 
 export interface TokenInventory {
   inventoryDimensions: InventoryDimensions;
@@ -71,7 +83,8 @@ export interface TokenInventory {
 
 export type TokenStatus = "Vivo" | "Morto";
 export type TokenTeam = "Red" | "Blue" | "Green" | "Yellow";
-export type TokenClass = "Guerreiro" | "Mago" | "Bárbaro" | "Ladino" | "Feitiçeiro";
+export type TokenClass =
+  "Guerreiro" | "Mago" | "Bárbaro" | "Ladino" | "Feitiçeiro";
 export type TokenType = "player" | "ia" | "boss";
 
 export interface TokenPosition {
@@ -91,6 +104,8 @@ export interface Token {
   createId: string;
   id: string;
   lastDamagerId: string | undefined;
+  /** Identifies the persisted combat form session, when this token is a pending payload. */
+  formRequestId?: string;
   name: string;
   type: TokenType;
   imageUrl: string;
@@ -98,7 +113,7 @@ export interface Token {
   ocassionalAddition: TokenOccasionalAddition;
   proficiencies: TokenProficiencies;
   class: TokenClass;
-    tokenCards: Card[];
+  tokenCards: Card[];
   cards: Card[]; // AQUI
 
   inventory: TokenInventory;
@@ -106,8 +121,8 @@ export interface Token {
   team: TokenTeam;
   position: TokenPosition;
 
-  bodytobodyRange: number;       // Alcance de ataque físico (padrão: 1)
-  magicalRange: number;          // Alcance de ataque mágico (padrão: 6)
+  bodytobodyRange: number; // Alcance de ataque físico (padrão: 1)
+  magicalRange: number; // Alcance de ataque mágico (padrão: 6)
   naturalMovement?: number;
   pendingXPAllocating: number;
 
@@ -121,6 +136,7 @@ export interface Token {
   tokenEffects?: TokenEffect[]; // default: 'none'
   tokenPrimaryElement?: PrimaryMechanic[];
   tokenPrimaryDisvantege?: TokenPrimaryDisvantage[];
+  passiveMechanics: PassiveMechanic[];
   visualOverlays?: {
     id: string;
     type: string;
@@ -130,8 +146,8 @@ export interface Token {
     mechanicInstanceIds?: string[];
   }[];
   bossSettings?: BossInterfaceColors;
-  ownerId: string,
-  campaignId: string
+  ownerId: string;
+  campaignId: string;
   /** Present only when this template/instance represents a transformation. */
   transformation?: TokenTransformation;
 }

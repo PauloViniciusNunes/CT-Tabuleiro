@@ -2,6 +2,7 @@ import { PendingQueueRepository } from "@/modules/battles/repositories/PendingQu
 import { Prisma } from "@prisma/client";
 import type { PendingOffensiveCard } from "./dao/pendingDaos";
 import type { PendingSpecialResponse } from "../special-response/types";
+import type { PendingTransformationResolution } from "../transformation/types";
 
 export class PendingSetter {
 
@@ -26,6 +27,7 @@ export class PendingSetter {
     ) {
         return await this.pendingQueueRepository.update(pendingQueueId, {
             pendingAttack: {
+                requestId: crypto.randomUUID(),
                 attackerId: tokenId,
                 targetId: targetId,
                 rawDamage: rawDamage, // já crítico se Dado Certo
@@ -78,6 +80,7 @@ export class PendingSetter {
     ) {
         return await this.pendingQueueRepository.update(pendingQueueId, {
             pendingFreeResponse: {
+                requestId: crypto.randomUUID(),
                 responderId,
                 paralyzedId,
             }
@@ -118,7 +121,7 @@ export class PendingSetter {
             throw new Error("Nenhuma pendência foi encontrada.");
 
         return await this.pendingQueueRepository.update(pendingQueueId, {
-            pendingCardResolution: token
+            pendingCardResolution: { ...token, formRequestId: crypto.randomUUID() }
         })
 
 
@@ -136,6 +139,27 @@ export class PendingSetter {
     async cleanPendingSpecialResponse(pendingQueueId: string) {
         return this.pendingQueueRepository.update(pendingQueueId, {
             pendingSpecialResponse: {},
+        });
+    }
+
+    async setPendingTransformationResolution(
+        pendingQueueId: string,
+        pending: Omit<PendingTransformationResolution, "requestId">,
+    ) {
+        const resolution: PendingTransformationResolution = {
+            ...pending,
+            requestId: crypto.randomUUID(),
+        };
+        await this.pendingQueueRepository.update(pendingQueueId, {
+            pendingTransformationResolution:
+                resolution as unknown as Prisma.InputJsonValue,
+        });
+        return resolution;
+    }
+
+    async cleanPendingTransformationResolution(pendingQueueId: string) {
+        return this.pendingQueueRepository.update(pendingQueueId, {
+            pendingTransformationResolution: {},
         });
     }
 

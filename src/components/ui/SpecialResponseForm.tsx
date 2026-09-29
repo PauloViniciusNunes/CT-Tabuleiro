@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { BattleFormToggle } from "./BattleFormToggle";
 import type {
   PendingSpecialResponse,
   SpecialResponseValues,
@@ -26,11 +27,13 @@ export default function SpecialResponseForm({
   const [values, setValues] = useState<SpecialResponseValues>(() => initialValues(pending));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [displayForm, setDisplayForm] = useState(true);
 
   useEffect(() => {
     setValues(initialValues(pending));
     setSubmitting(false);
     setError(null);
+    setDisplayForm(true);
   }, [pending]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -62,7 +65,9 @@ export default function SpecialResponseForm({
   }
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm">
+    <>
+      {displayForm && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm">
       <form
         onSubmit={handleSubmit}
         className="w-full max-w-md rounded-2xl border border-orange-400/70 bg-slate-900 p-5 text-slate-100 shadow-2xl shadow-black/60"
@@ -156,6 +161,13 @@ export default function SpecialResponseForm({
           </button>
         </div>
       </form>
-    </div>
+        </div>
+      )}
+      <BattleFormToggle
+        visible={displayForm}
+        onToggle={() => setDisplayForm((visible) => !visible)}
+        label="resposta especial"
+      />
+    </>
   );
 }

@@ -25,6 +25,13 @@ export function CardMapper(json: any): Card {
     causalityType: json.causalityType as CardCausality,
     defenseReplicate: json.defenseReplicate as NonDefensiveCardCausality,
     partialOffensive: json.partialOffensive ?? undefined,
+    effectsAffectCaster: json.effectsAffectCaster === true,
+    casterEffectsToApply: Array.isArray(json.casterEffectsToApply)
+      ? (json.casterEffectsToApply as EffectType[])
+      : [],
+    triggerEffectsToApply: Array.isArray(json.triggerEffectsToApply)
+      ? (json.triggerEffectsToApply as EffectType[])
+      : [],
     entityQuantity: json.entityQuantity,
 
     effectToApply: Array.isArray(json.effectToApply)
@@ -49,7 +56,7 @@ export function JsonCardMapper(card: Card): any {
     baseDice: card.baseDice ?? null,
     manaRequired: card.manaRequired ?? 0,
     actionsRequired: card.actionsRequired ?? 0,
-    duration: card.duration ?? 1,
+    duration: card.duration ?? 0,
 
     recharge: Number(card.recharge),
     remainingDuration: card.remainingDuration,
@@ -59,6 +66,9 @@ export function JsonCardMapper(card: Card): any {
     causalityType: card.causalityType,
     defenseReplicate: card.defenseReplicate ?? "None",
     partialOffensive: card.partialOffensive ?? false,
+    effectsAffectCaster: card.effectsAffectCaster === true,
+    casterEffectsToApply: card.casterEffectsToApply ?? [],
+    triggerEffectsToApply: card.triggerEffectsToApply ?? [],
     entityQuantity: card.entityQuantity,
 
     effectToApply: card.effectToApply ?? [],

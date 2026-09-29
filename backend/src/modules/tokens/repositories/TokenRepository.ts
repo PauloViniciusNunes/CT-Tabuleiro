@@ -43,6 +43,13 @@ export class TokenRepository {
         });
     }
 
+    async findManyByBaseTokenId(baseTokenId: string) {
+        return prisma.token.findMany({
+            where: { baseTokenId },
+            orderBy: { createdAt: "asc" },
+        });
+    }
+
     async update(
         id: string,
         data: UpdateTokenDAO,

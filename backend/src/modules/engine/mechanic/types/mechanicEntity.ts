@@ -12,6 +12,10 @@ export type MechanicEntityInstance = {
     anchorTokenId?: string;
     effectToApply: string[];
     pivotSettings: Pivot;
+    effectsAffectCaster: boolean;
+    casterEffectsToApply: string[];
+    triggerEffectsToApply: string[];
+    effectsApplied: boolean;
     duration: number;
     position:  {
         col: number,

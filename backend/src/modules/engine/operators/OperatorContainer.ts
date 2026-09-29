@@ -13,6 +13,7 @@ import { ManaIncrementOperator } from "./ManaIncrementOperator";
 import { LifeIncrementOperator } from "./LifeIncrementOperator";
 import { LifeDecreaseOperator } from "./LifeDecreaseOperator";
 import { ActionIncrementOperator } from "./ActionIncrementOperator";
+import { MechanicRemovalOperator } from "./MechanicRemovalOperator";
 
 interface OperatorMap {
     [OperatorType.DAMAGE]: DamageOperator;
@@ -25,6 +26,7 @@ interface OperatorMap {
     [OperatorType.MANA_INCREMENT]: ManaIncrementOperator;
     [OperatorType.ACTION_INCREMENT]: ActionIncrementOperator;
     [OperatorType.MECHANIC_APPLICATION]: MechanicApplicationOperator;
+    [OperatorType.MECHANIC_REMOVAL]: MechanicRemovalOperator;
     [OperatorType.RESOURCE_SET]: TokenResourceOperator;
     [OperatorType.ACTION_DISPATCH]: ActionDispatchOperator;
 }
@@ -78,6 +80,10 @@ export class OperatorContainer {
         this.register(
             OperatorType.MECHANIC_APPLICATION,
             new MechanicApplicationOperator(runtime),
+        );
+        this.register(
+            OperatorType.MECHANIC_REMOVAL,
+            new MechanicRemovalOperator(runtime),
         );
         this.register(
             OperatorType.RESOURCE_SET,

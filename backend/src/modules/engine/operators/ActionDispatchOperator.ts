@@ -1,6 +1,7 @@
 import { runtime } from "@/runtime";
 import { SocketEvent } from "@/runtime/Events";
 import { TokenTemplateRepository } from "@/modules/asset-library/tokens/repositories/TokenTemplateRepository";
+import { TokenRepository } from "@/modules/tokens/repositories/TokenRepository";
 import { BattleStateRepository } from "@/modules/battles/repositories/BattleStateRepository";
 import { PendingQueueRepository } from "@/modules/battles/repositories/PendingQueueRepository";
 import { BattleStateValidator } from "@/modules/battles/validators/BattleStateCreateValidator";
@@ -42,6 +43,8 @@ import { Operator, type OperatorRuntime } from "./Operator";
 import type { OperationContext, OperationIntent } from "./OperationContext";
 import { RollOperator } from "./RollOperator";
 import { SPECIAL_RESPONSE_CONTINUATION_METADATA_KEY } from "../special-response/types";
+import { listTransformationOptions } from "../transformation/options";
+import { parseTransformationStates } from "../transformation/types";
 
 type EngineActionChoice = ReturnType<typeof ChoiceValidator.parse>;
 type BattleSnapshot = ReturnType<typeof BattleStateValidator.parse>;
@@ -55,6 +58,7 @@ export type ActionDispatchOutcome =
     | "attack-pending"
     | "attack-resolved"
     | "special-response-pending"
+    | "transformation-pending"
     | "cancelled"
     | "rejected";
 
@@ -103,6 +107,7 @@ export class ActionDispatchOperator extends Operator<ActionDispatchInput, Action
     private readonly manaIncrementOperator: ManaIncrementOperator;
     private readonly damageOperator: DamageOperator;
     private readonly mechanicApplicationOperator: MechanicApplicationOperator;
+    private readonly tokenDefinitionRepository = new TokenRepository();
 
     constructor(
         runtimeAdapter: OperatorRuntime,
@@ -154,6 +159,11 @@ export class ActionDispatchOperator extends Operator<ActionDispatchInput, Action
         const currentSpecialResponse = await this.pendingGetter.getPendingSpecialResponse(
             pendingQueue.id,
         );
+        const currentTransformation = await this.pendingGetter
+            .getPendingTransformationResolution(pendingQueue.id);
+        if (currentTransformation) {
+            throw new Error("A batalha aguarda uma escolha de transformação.");
+        }
         if (currentSpecialResponse && currentSpecialResponse.requestId !== continuationId) {
             throw new Error("A ação aguarda a resolução de uma resposta especial.");
         }
@@ -253,6 +263,12 @@ export class ActionDispatchOperator extends Operator<ActionDispatchInput, Action
                 return this.cardDispatch(pendingQueueId, tokenId);
             case ActionType.MANA_RECOVER:
                 return this.manaRecover(choice, battle, tokenId);
+            case ActionType.TRANSFORM:
+                return this.transformationDispatch(
+                    pendingQueueId,
+                    tokenId,
+                    battle.transformationStates,
+                );
             case ActionType.ATTACK:
             case ActionType.SURPRISE:
             case ActionType.DISORIENT:
@@ -282,6 +298,30 @@ export class ActionDispatchOperator extends Operator<ActionDispatchInput, Action
         runtime.emit(SocketEvent.PENDING_CARD_RESOLUTION, token);
 
         return { outcome: "card-pending", shouldAdvanceTurn: false };
+    }
+
+    private async transformationDispatch(
+        pendingQueueId: string,
+        tokenId: string,
+        rawStates: unknown,
+    ): Promise<ActionResult> {
+        const token = await this.requireToken(tokenId);
+        const options = await listTransformationOptions(
+            token,
+            parseTransformationStates(rawStates),
+            this.tokenDefinitionRepository,
+        );
+        if (options.length === 0) {
+            return { outcome: "rejected", shouldAdvanceTurn: false };
+        }
+        await this.pendingSetter.setPendingTransformationResolution(
+            pendingQueueId,
+            { tokenId, ownerId: token.userId, options },
+        );
+        return {
+            outcome: "transformation-pending",
+            shouldAdvanceTurn: false,
+        };
     }
 
     private async manaRecover(

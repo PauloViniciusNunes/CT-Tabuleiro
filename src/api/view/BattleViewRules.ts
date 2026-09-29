@@ -3,14 +3,31 @@ import type { Campaign } from "../../types/campaign";
 
 export class BattleViewRules {
 
+    static showTokenResponseForm(
+        campaign: Campaign | null,
+        userId: string | null,
+        tokenOwnerId: string | null | undefined,
+    ): boolean {
+        if (!campaign || !userId) {
+            return false
+        }
+
+        return userId === tokenOwnerId
+    }
+
+    static showTransformationForm(
+        campaign: Campaign | null,
+        userId: string | null,
+        tokenOwnerId: string | null | undefined,
+    ): boolean {
+        if (!campaign || !userId || !tokenOwnerId) return false;
+        return userId === tokenOwnerId || userId === campaign.ownerId;
+    }
+
     static showForm(campaign: Campaign | null, battleState: BattleState, userId: string | null): boolean {
 
         if(!campaign) {
             return false
-        }
-
-        if(userId === campaign.ownerId) {
-            return true
         }
 
         if(!userId) {

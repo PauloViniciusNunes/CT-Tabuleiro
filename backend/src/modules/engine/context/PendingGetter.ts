@@ -5,6 +5,7 @@ import { PendingAttack, type PendingOffensiveCard } from "./dao/pendingDaos";
 import { RollResultValidator } from "../validators/RollResultValidator";
 import { pendingSpecialResponseSchema } from "../special-response/SpecialResponseValidation";
 import type { PendingSpecialResponse } from "../special-response/types";
+import type { PendingTransformationResolution } from "../transformation/types";
 
 export class PendingGetter {
     constructor(
@@ -31,7 +32,13 @@ export class PendingGetter {
             return null;
         }
 
-        const pendingAttack = rawAttack as PendingAttack;
+        const rawPendingAttack = rawAttack as PendingAttack;
+        const pendingAttack: PendingAttack = {
+            ...rawPendingAttack,
+            requestId: typeof rawPendingAttack.requestId === "string"
+                ? rawPendingAttack.requestId
+                : "legacy-attack:" + rawPendingAttack.attackerId + ":" + rawPendingAttack.targetId,
+        };
 
         console.log("PENDING ATTACK: ", pendingAttack);
 
@@ -120,11 +127,21 @@ export class PendingGetter {
 
         const pendingFreeResponse: any = pendingQueue.pendingFreeResponse
 
-        if(!pendingFreeResponse) {
+        if (
+            !pendingFreeResponse ||
+            typeof pendingFreeResponse !== "object" ||
+            typeof pendingFreeResponse.responderId !== "string" ||
+            typeof pendingFreeResponse.paralyzedId !== "string"
+        ) {
             return null
         }
 
-        return pendingFreeResponse
+        return {
+            ...pendingFreeResponse,
+            requestId: typeof pendingFreeResponse.requestId === "string"
+                ? pendingFreeResponse.requestId
+                : "legacy-free:" + pendingFreeResponse.responderId + ":" + pendingFreeResponse.paralyzedId,
+        }
     }
 
     async getPendingSpecialResponse(
@@ -146,4 +163,30 @@ export class PendingGetter {
             ? parsed.data as PendingSpecialResponse
             : null;
     }
+    async getPendingTransformationResolution(
+        pendingQueueId: string,
+    ): Promise<PendingTransformationResolution | null> {
+        const queue = await this.pendingQueueRepository.findById(pendingQueueId);
+        if (!queue) {
+            throw new Error("Não foi possível encontrar a fila de pendências.");
+        }
+        const raw = queue.pendingTransformationResolution;
+        if (
+            !raw ||
+            typeof raw !== "object" ||
+            Array.isArray(raw) ||
+            !("requestId" in raw) ||
+            !("tokenId" in raw) ||
+            !("ownerId" in raw) ||
+            !("options" in raw) ||
+            typeof raw.requestId !== "string" ||
+            typeof raw.tokenId !== "string" ||
+            typeof raw.ownerId !== "string" ||
+            !Array.isArray(raw.options)
+        ) {
+            return null;
+        }
+        return raw as unknown as PendingTransformationResolution;
+    }
+
 }

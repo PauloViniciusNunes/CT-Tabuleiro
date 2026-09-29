@@ -5,14 +5,158 @@ import TokenEditForm from "./TokenEditForm";
 import CardCreateForm from "./CardCreateForm";
 import type { Token } from "../../types/token";
 import type { Card } from "../../types/card";
-import type { ActionChoice, BattleState } from "../../types/battle";
+import type { BattleHistoryEntry as StoredBattleHistoryEntry, BattleState } from "../../types/battle";
 import MusicList from "../music/MusicList";
-import { PencilLine, Search } from "lucide-react";
+import { Dices, PencilLine, Search } from "lucide-react";
 import type { Item, ItemRarity } from "../../types/item";
 import ItemCreateForm from "./ItemCreateForm";
 import CardEditForm from "./CardEditForm";
 import ItemEditForm from "./ItemEditForm";
 import type { Campaign, User } from "../../types/campaign";
+
+type BattleHistoryEntry = StoredBattleHistoryEntry & {
+  round: number;
+  attackerName: string;
+  targetName: string;
+};
+
+function resolveHistoryKind(action: BattleHistoryEntry) {
+  if (action.historyKind) return action.historyKind;
+
+  const normalizedType = normalizeSearch(action.type);
+  return normalizedType === "destreza" ||
+    normalizedType === "consistencia" ||
+    normalizedType === "offensive-card-defense" ||
+    normalizedType.includes("reacao")
+    ? "reaction"
+    : "action";
+}
+
+function formatAttributeName(attribute: string): string {
+  const labels: Record<string, string> = {
+    forca: "Força",
+    destreza: "Destreza",
+    consistencia: "Consistência",
+    inteligencia: "Inteligência",
+    sabedoria: "Sabedoria",
+    carisma: "Carisma",
+  };
+
+  return labels[normalizeSearch(attribute)] ?? attribute;
+}
+
+function DiceRollSummary({ action }: { action: BattleHistoryEntry }) {
+  const roll = action.rollResult;
+  if (!roll || roll.rawRolls.length === 0) return null;
+
+  const rawTotal = roll.rawRolls.reduce((total, value) => total + value, 0);
+  const modifier = roll.total - rawTotal;
+  const firstDice = roll.rawRolls[0];
+  const modifierOperator = modifier >= 0 ? "+" : "−";
+  const modifierValue = Math.abs(modifier);
+  const diceStyle = firstDice === 20
+    ? "text-green-400 font-bold drop-shadow-[0_0_8px_rgba(34,197,94,0.8)]"
+    : firstDice === 1
+      ? "text-red-400 font-bold drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]"
+      : "text-white";
+
+  return (
+    <div
+      className="mt-2 flex items-center justify-center gap-1.5 text-sm"
+      aria-label={"Resultado do dado: " + rawTotal + " " + modifierOperator + " " + modifierValue + " igual a " + roll.total}
+    >
+      <Dices aria-hidden="true" className="h-4 w-4 text-cyan-300" />
+      <span className={diceStyle}>{rawTotal}</span>
+      <span className="text-gray-400">{modifierOperator}</span>
+      <span className="text-cyan-100">{modifierValue}</span>
+      <span className="text-gray-400">=</span>
+      <span className="font-bold text-green-300">{roll.total}</span>
+    </div>
+  );
+}
+
+function BattleHistoryContent({ action }: { action: BattleHistoryEntry }) {
+  const kind = resolveHistoryKind(action);
+  const actorTag = (action.attackerName.trim().split(/\s+/)[0] || "Desconhecido")
+    .toLocaleUpperCase("pt-BR");
+
+  if (kind === "card" && action.card) {
+    return (
+      <div className="min-w-0 text-xs text-gray-200">
+        <p className="pr-7 leading-relaxed">
+          <span className="font-bold text-orange-300">[{actorTag}]</span>{" "}
+          <span className="font-semibold text-white">{action.attackerName}</span>{" "}
+          utilizou um card:
+        </p>
+
+        <div className="mt-3 space-y-2 text-center">
+          <p className="break-words text-sm font-bold italic text-orange-200">
+            {action.card.name}
+          </p>
+          {action.card.img && (
+            <a
+              href={action.card.img}
+              target="_blank"
+              rel="noreferrer"
+              className="mx-auto block w-fit max-w-full"
+              title="Abrir imagem do card"
+            >
+              <img
+                src={action.card.img}
+                alt={action.card.name}
+                className="mx-auto max-h-32 max-w-full rounded border border-gray-600 object-contain"
+              />
+            </a>
+          )}
+          <p className="break-words text-center italic text-gray-400">
+            {action.card.desc}
+          </p>
+          <p className="break-words text-center font-medium text-gray-100">
+            {action.card.causality}
+          </p>
+          <DiceRollSummary action={action} />
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === "reaction") {
+    const attribute = formatAttributeName(
+      action.attribute ?? action.type.split("|")[0].trim(),
+    );
+    return (
+      <div className="min-w-0 text-xs leading-relaxed text-gray-200">
+        <p className="pr-7">
+          <span className="font-bold text-purple-300">[{actorTag}]</span>{" "}
+          Efetuou uma reação com{" "}
+          <span className="font-semibold capitalize text-purple-200">{attribute}</span>{" "}
+          para o ataque de{" "}
+          <span className="font-semibold text-yellow-300">{action.targetName}</span>.
+        </p>
+        <DiceRollSummary action={action} />
+      </div>
+    );
+  }
+
+  const normalizedType = normalizeSearch(action.type);
+  const actionDescription = normalizedType.includes("ataque")
+    ? "Realizou um ataque para"
+    : action.type + (action.targetId ? " para" : ".");
+
+  return (
+    <div className="min-w-0 text-xs leading-relaxed text-gray-200">
+      <p className="pr-7">
+        <span className="font-bold text-blue-300">[{actorTag}]</span>{" "}
+        {actionDescription}{" "}
+        {action.targetId && (
+          <span className="font-semibold text-yellow-300">{action.targetName}</span>
+        )}
+        {action.targetId && "."}
+      </p>
+      <DiceRollSummary action={action} />
+    </div>
+  );
+}
 
 interface SidebarProps {
   tokens: Token[];
@@ -38,7 +182,7 @@ interface SidebarProps {
   onCloseEditedItem: (item: Item | null) => void;
   setIntroduction: (b: boolean) => void;
   removeItem: (itemId: string) => void;
-  battleHistory: (ActionChoice & { round: number; attackerName: string; targetName: string })[];
+  battleHistory: BattleHistoryEntry[];
   // Controle de largura vindo do BoardPage (wrapper fixed right-0)
   widthPx: number;
   onWidthChange: (w: number) => void;
@@ -133,7 +277,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [itemFormOpen, setItemFormOpen] = useState<boolean>(false);
 
   const [activeTab, setActiveTab] = useState<TabType>("chat");
-  const [chatInput, setChatInput] = useState("");
+  const [historyFilterInput, setHistoryFilterInput] = useState("");
+  const [historyFilter, setHistoryFilter] = useState("");
   const [tokenSearch, setTokenSearch] = useState("");
   const [cardSearch, setCardSearch] = useState("");
   const [itemSearch, setItemSearch] = useState("");
@@ -142,6 +287,26 @@ const Sidebar: React.FC<SidebarProps> = ({
   const filteredTokens = tokens.filter((token) => includesSearch(token.name, tokenSearch));
   const filteredCards = cards.filter((card) => includesSearch(card.name, cardSearch));
   const filteredItems = items.filter((item) => includesSearch(item.name, itemSearch));
+  const normalizedHistoryFilter = normalizeSearch(historyFilter.trim());
+  const filteredBattleHistory = battleHistory.filter((entry) => {
+    if (!normalizedHistoryFilter) return true;
+
+    const searchableText = [
+      entry.attackerName,
+      entry.targetName,
+      entry.type,
+      entry.attribute,
+      entry.round.toString(),
+      "round " + entry.round,
+      entry.card?.name,
+      entry.card?.desc,
+      entry.card?.causality,
+    ]
+      .filter((value): value is string => typeof value === "string")
+      .join(" ");
+
+    return normalizeSearch(searchableText).includes(normalizedHistoryFilter);
+  });
   
   const rarityNameFormated: Record<ItemRarity, string> = 
   {
@@ -237,34 +402,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       window.removeEventListener("touchend", onTouchEnd);
     };
   }, []);
-
-  const formatActionHistory = (
-    action: ActionChoice & { round: number; attackerName: string; targetName: string }
-  ) => {
-    const firstDice = action.rollResult?.rawRolls[0];
-    let diceStyle = "";
-    if (firstDice === 20) {
-      diceStyle = "text-green-400 font-bold drop-shadow-[0_0_8px_rgba(34,197,94,0.8)]";
-    } else if (firstDice === 1) {
-      diceStyle = "text-red-400 font-bold drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]";
-    } else {
-      diceStyle = "text-white";
-    }
-    const isReaction = action.type.includes("Reação");
-    return (
-      <div className="text-xs text-gray-200 leading-relaxed">
-        <span className="font-bold text-white">[Round {action.round}]</span>{" "}
-        <span className={isReaction ? "text-purple-400" : "text-blue-400"}>
-          {action.attackerName}
-        </span>
-        : {action.type} para{" "}
-        <span className="text-yellow-400">{action.targetName}</span> ⟶{" "}
-        <span className={diceStyle}>{firstDice}</span> + ({action.rollResult?.total} - {firstDice}) ={" "}
-        <span className="font-semibold text-green-300">{action.rollResult?.total}</span>
-      </div>
-    );
-  };
-
 
   return (
     <>
@@ -581,40 +718,66 @@ const Sidebar: React.FC<SidebarProps> = ({
                   boardBoss={boardBoss}
                   isGameMaster={campaign?.ownerId === userId}
                 />         
-                <h2 className="mt-2 text-lg font-bold text-white select-none mb-2 text-center">Historic Battle</h2>
+                <h2 className="mt-2 text-lg font-bold text-white select-none mb-2 text-center">Histórico de Batalha</h2>
                   <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-800 rounded p-3 mb-2 space-y-2">
-                    {battleHistory.length === 0 ? (
-                      <p className="text-gray-400 text-sm">Nenhuma ação registrada.</p>
+                    {filteredBattleHistory.length === 0 ? (
+                      <p className="text-gray-400 text-sm">
+                        {battleHistory.length === 0
+                          ? "Nenhuma ação registrada."
+                          : "Nenhum registro corresponde ao filtro."}
+                      </p>
                     ) : (
-                      battleHistory.map((act, idx) => (
-                        <div
-                          key={idx}
-                          className="bg-gray-700 p-2 rounded hover:bg-gray-600 transition-colors break-words"
+                      filteredBattleHistory.map((act, idx) => (
+                        <article
+                          key={act.historyId ?? act.round + ":" + idx}
+                          className="relative min-w-0 break-words rounded bg-gray-700 p-2 pr-10 transition-colors hover:bg-gray-600"
                         >
-                          {/* Garante truncamento/corte seguro em strings muito longas */}
-                          <div className="break-words break-all min-w-0">
-                            {formatActionHistory(act)}
-                          </div>
-                        </div>
+                          <span
+                            className="absolute right-2 top-2 flex h-6 min-w-6 items-center justify-center rounded-full border border-cyan-400/60 bg-gray-900 px-1 text-[11px] font-bold text-cyan-200"
+                            title={"Round " + act.round}
+                            aria-label={"Round " + act.round}
+                          >
+                            {act.round}
+                          </span>
+                          <BattleHistoryContent action={act} />
+                        </article>
                       ))
                     )}
                   </div>
-                  <div className="flex gap-2 min-w-0">
+                  <form
+                    className="flex min-w-0 flex-wrap gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      setHistoryFilter(historyFilterInput);
+                    }}
+                  >
                     <input
-                      type="text"
-                      placeholder="Filtro (opcional)..."
+                      type="search"
+                      placeholder="Filtrar histórico..."
+                      aria-label="Filtrar histórico de batalha"
                       className="flex-1 min-w-0 p-2 rounded bg-gray-800 text-white text-sm border border-gray-700"
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      disabled
+                      value={historyFilterInput}
+                      onChange={(event) => setHistoryFilterInput(event.target.value)}
                     />
                     <button
+                      type="submit"
                       className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white text-sm font-bold flex-shrink-0"
-                      disabled
                     >
                       Filtrar
                     </button>
-                  </div>
+                    {historyFilter && (
+                      <button
+                        type="button"
+                        className="px-3 py-2 rounded bg-gray-700 text-gray-200 text-sm hover:bg-gray-600"
+                        onClick={() => {
+                          setHistoryFilterInput("");
+                          setHistoryFilter("");
+                        }}
+                      >
+                        Limpar
+                      </button>
+                    )}
+                  </form>
               </div>
             )}
           </div>

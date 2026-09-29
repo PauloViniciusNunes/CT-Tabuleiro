@@ -29,7 +29,29 @@ export const PASSIVE_MECHANIC_OPTIONS = [
   { id: "repeticao-dano-fisico", label: "Repetição de dano físico"},
   { id: "dano-para-bonus-forca", label: "Dano para Bônus Força"},
   { id: "drenar-sangue", label: "Drenagem sanguínea" },
-  { id: "roubo-elementar", label: "Roubo Elementar" }
+  { id: "roubo-elementar", label: "Roubo Elementar" },
+  { id: "fogo-negro", label: "Fogo negro" },
+  { id: "eletrico", label: "Elétrico" },
+  { id: "escurecido", label: "Escurecido" },
+  { id: "arma-magica", label: "Arma mágica" },
+  { id: "visao-noturna", label: "Visão noturna" },
+  { id: "asas-dragao", label: "Asas de dragão" },
+  { id: "vida-por-mana", label: "Vida por mana" },
+  { id: "cancelar-dano", label: "Cancelar dano" },
+  { id: "carga-veneno", label: "Carga de veneno" },
+  { id: "veneno", label: "Veneno" },
+  { id: "surto-acao", label: "Surto de ação" },
+  { id: "tres-ataques-extra", label: "Três ataques extras" },
+  { id: "prisao", label: "Prisão" },
+  { id: "desvantagem-cosistencia", label: "Desvantagem em consistência" },
+  { id: "desvantagem-destreza", label: "Desvantagem em destreza" },
+  { id: "turno-cancelado", label: "Cancelar próximo turno" },
+  { id: "vantagem-forca", label: "Vantagem em força" },
+  { id: "vantagem-consistencia", label: "Vantagem em consistência" },
+  { id: "vida-virtual", label: "Vida virtual" },
+  { id: "basica-regeneracao", label: "Regeneração básica" },
+  { id: "cancelar-acao-aplicar-fogo", label: "Cancelar ação e aplicar fogo" },
+  { id: "amplificador-fogo", label: "Amplificador de fogo" }
 ] as const;
 
 export type PassiveMechanic = typeof PASSIVE_MECHANIC_OPTIONS[number]["id"];

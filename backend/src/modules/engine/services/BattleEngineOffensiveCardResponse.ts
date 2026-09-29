@@ -1,9 +1,11 @@
 import { runtime } from "@/runtime";
 import { SocketEvent } from "@/runtime/Events";
 import { MechanicEngine } from "../mechanic/MechanicEngine";
+import { cardDurationOverride } from "../mechanic/utils/cardDurationOverride";
 import { OperatorType } from "../operators/OperatorType";
 import { calculateCertainyDieRoll, formatPrevisionAttackKey } from "../utils/calculations";
 import { syncBattleState } from "../utils/syncBattleState";
+import { normalizeElement } from "../utils/elementalAffinity";
 import { OffensiveCardResponseValidator } from "../validators/OffensiveCardResponseValidator";
 import { BattleEngineService } from "./BattleEngineService";
 import { BattleEngineNextTurnService } from "./micro-services/BattleEngineNextTurnService";
@@ -61,7 +63,7 @@ export class BattleEngineOffensiveCardResponse extends BattleEngineService {
         }
 
         const campaign = await this.campaignRepository.findCampaignById(map.campaignId);
-        const canResolve = battleState.currentActorUserId === userId || campaign?.ownerId === userId;
+        const canResolve = defender.userId === userId || campaign?.ownerId === userId;
         if (!canResolve) {
             throw new Error("O usuário atual não pode responder por este defensor.");
         }
@@ -127,6 +129,8 @@ export class BattleEngineOffensiveCardResponse extends BattleEngineService {
             },
             wasCertainty: choice.usedCertaintyDie,
             displayRoll,
+            historyKind: "reaction",
+            targetTokenId: attacker.id,
         });
 
         if (choice.usedCertaintyDie) {
@@ -189,7 +193,7 @@ export class BattleEngineOffensiveCardResponse extends BattleEngineService {
 
         if (remainingDefenders.length === 0) {
             await this.pendingSetter.cleanPendingOffensiveCard(pendingQueue.id);
-            runtime.emit(SocketEvent.PENDING_OFFENSIVE_CARD, null);
+            runtime.emit(SocketEvent.PENDING_OFFENSIVE_CARD, { mapId: battleState.mapId });
             runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_SCORE, null);
             runtime.emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_TEST_SCORE, null);
 
@@ -230,7 +234,7 @@ export class BattleEngineOffensiveCardResponse extends BattleEngineService {
         for (const effect of effects) {
             await MechanicEngine.createMechanic(attackerId, battleId, effect, {
                 targetId: defenderId,
-                duration: card.duration ?? 1,
+                ...cardDurationOverride(card.duration),
                 intensity,
                 cardId: card.id,
                 resolutionId,
@@ -242,6 +246,9 @@ export class BattleEngineOffensiveCardResponse extends BattleEngineService {
         const damage = testSucceeded
             ? Math.floor(rawCardResult / 2)
             : rawCardResult;
+        const carriesFire = effects.some(
+            (effect) => normalizeElement(effect) === "fogo",
+        );
 
         if (damage > 0) {
             await this.operators.execute(OperatorType.DAMAGE, {
@@ -250,12 +257,14 @@ export class BattleEngineOffensiveCardResponse extends BattleEngineService {
                 targetTokenId: defenderId,
                 amount: damage,
                 cause: "OFFENSIVE_CARD",
+                element: carriesFire ? "fogo" : undefined,
                 metadata: {
                     cardId: card.id,
                     attackType: "magico",
                     testAttribute,
                     testSucceeded,
                     resolutionId,
+                    damageElements: effects,
                 },
             });
         }

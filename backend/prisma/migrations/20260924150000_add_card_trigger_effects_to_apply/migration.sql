@@ -1,0 +1,1 @@
+ALTER TABLE "Card" ADD COLUMN "triggerEffectsToApply" JSONB NOT NULL DEFAULT '[]';

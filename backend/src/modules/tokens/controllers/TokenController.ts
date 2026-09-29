@@ -106,6 +106,7 @@ export class TokenController {
                 headers: CORS_HEADERS,
             });
         } catch (error) {
+            console.error(error)
             return this.error(error);
         }
     }

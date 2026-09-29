@@ -21,6 +21,9 @@ export interface CardFormModel {
   spellType: SpellType;
   spellCircle: SpellCircle;
   entityQuantity: number;
+  effectsAffectCaster: boolean;
+  casterEffectsToApply: EffectType[];
+  triggerEffectsToApply: EffectType[];
   partialOffensive?: boolean;
   actionsRequired: number;
   targetType: TargetType;
@@ -53,6 +56,13 @@ export function cardFromForm(model: CardFormModel): Card {
     spellCircle: model.spellCircle,
     spellType: model.spellType,
     entityQuantity: Math.max(0, Math.trunc(model.entityQuantity)),
+    effectsAffectCaster: targetType === "Ambient" && model.effectsAffectCaster,
+    casterEffectsToApply: targetType === "Ambient" && model.effectsAffectCaster
+      ? model.casterEffectsToApply.filter((effect) => model.effects.includes(effect))
+      : [],
+    triggerEffectsToApply: targetType === "Ambient"
+      ? [...new Set(model.triggerEffectsToApply)]
+      : [],
     partialOffensive: model.partialOffensive,
     // O custo de ação é independente da rolagem do card. Um card pode ser
     // gratuito, mas nunca pode persistir um custo negativo.

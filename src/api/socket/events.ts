@@ -7,6 +7,7 @@ export const SocketEvent = {
     BATTLE_STARTED: "combat.battle.started",
     BATTLE_UPDATED: "combat.battle.updated",
     BATTLE_ENDED: "combat.battle.ended",
+    BATTLE_FORM_STATE: "combat.form.state",
     FRONTEND_CARD_SELECTION: "frontend.card.selection",
     FRONTEND_IN_DEFENSE_RESOLUTION: "frontend.defense.resolution",
     FRONTEND_ADD_PREVIEW_CELLS: "frontend.preview.cells",

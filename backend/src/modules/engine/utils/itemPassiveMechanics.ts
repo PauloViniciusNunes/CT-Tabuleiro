@@ -84,6 +84,8 @@ export function reconcileEquippedItemPassives(
         reconciled.push(MechanicFactory.create(tokenId, desired.tag, {
             targetId: tokenId,
             passive: true,
+            passiveSourceType: "item",
+            passiveSourceId: desired.item.id,
             sourceItemId: desired.item.id,
             sourceItemName: desired.item.name,
             sourcePassiveMechanic: desired.tag,

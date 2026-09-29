@@ -77,6 +77,18 @@ export const CreateCardValidator = z.object({
         .boolean()
         .optional(),
 
+    effectsAffectCaster: z
+        .boolean()
+        .optional(),
+
+    casterEffectsToApply: z
+        .array(z.string())
+        .optional(),
+
+    triggerEffectsToApply: z
+        .array(z.string())
+        .optional(),
+
     entityQuantity: z
         .number()
         .int()

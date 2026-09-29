@@ -9,6 +9,7 @@ import { discoverCurrentUserId } from "@/shared/utils/discoverCurrentUserId";
 import { BattleEngineService } from "./BattleEngineService";
 import { EQUIPPED_ITEM_ID_FIELDS, uniqueIds } from "../utils/inventoryCards";
 import { reconcileEquippedItemPassives } from "../utils/itemPassiveMechanics";
+import { reconcileTokenPassives } from "../utils/tokenPassiveMechanics";
 import type { MechanicInstance } from "../mechanic/mechanics/MechanicInstance";
 import type { VisualOverlay } from "../mechanic/types/visualOverlays";
 import { reconcileMechanicVisualOverlays } from "../mechanic/utils/reconcileMechanicVisualOverlays";
@@ -165,7 +166,7 @@ export class BattleEngineStartBattleService extends BattleEngineService {
 
         const createdBattleState = await this.battleStateRepository.create(battleState)
 
-        await this.instantiateEquippedItemPassives(createdBattleState.id, initialized)
+        await this.instantiatePassiveMechanics(createdBattleState.id, initialized)
 
         const battleStateWithPassives = await this.battleStateRepository.findById(
             createdBattleState.id,
@@ -189,10 +190,10 @@ export class BattleEngineStartBattleService extends BattleEngineService {
     };
 
     /**
-     * Establishes the initial item passives. The same reconciliation rule is
-     * used by inventory swaps while this battle remains active.
+     * Establishes token-owned and equipped-item passives. Item passives are later
+     * reconciled again whenever equipment changes during the battle.
      */
-    private async instantiateEquippedItemPassives(
+    private async instantiatePassiveMechanics(
         battleId: string,
         tokens: readonly TokenInstance[],
     ) {
@@ -219,8 +220,13 @@ export class BattleEngineStartBattleService extends BattleEngineService {
                     return item;
                 });
 
-                return reconcileEquippedItemPassives(
+                const mechanicsWithTokenPassives = reconcileTokenPassives(
                     mechanics,
+                    token,
+                );
+
+                return reconcileEquippedItemPassives(
+                    mechanicsWithTokenPassives,
                     token.id,
                     equippedItems,
                 );

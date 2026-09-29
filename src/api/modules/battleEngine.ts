@@ -5,6 +5,7 @@ import type {
     SpecialResponseValues,
 } from "../../types/specialResponse";
 import type { Target } from "../../types/target";
+import type { TransformationCommand } from "../../types/transformation";
 
 export type EquippedInventorySlot =
     | "primaryHand"
@@ -32,7 +33,7 @@ export type OffensiveCardResponseCommand = {
     attribute: OffensiveCardAttribute;
     usedMana: number;
     usedActions: number;
-    usedCertainDie: boolean;
+    usedCertaintyDie: boolean;
     previewAction: boolean;
 };
 
@@ -68,10 +69,17 @@ export class BattleEngineAPI {
     }
 
     static async executeAction(choice: any) {
-        await api<any>('/battles/engine/execute', {
+        return api<{ message: string; accepted: boolean }>('/battles/engine/execute', {
             method: "POST",
             body: JSON.stringify(choice)
         })
+    }
+
+    static async transform(command: TransformationCommand) {
+        return api<{ message: string }>("/battles/engine/transform", {
+            method: "POST",
+            body: JSON.stringify(command),
+        });
     }
 
     static async reaction(choice: any) {
@@ -126,6 +134,13 @@ export class BattleEngineAPI {
             method: "POST",
             body: JSON.stringify(choice)
         })
+    }
+
+    static async cancelCardSelection(battleId: string) {
+        return api<{ message: string }>("/battles/engine/cancel-card-selection", {
+            method: "POST",
+            body: JSON.stringify({ battleId }),
+        });
     }
 
     static async cancelReaction(battleId: string) {

@@ -26,6 +26,7 @@ export function TokenInstaceMapper(
     id: json.id,
     createId: json.templateTokenId ?? json.createId ?? json.id,
     lastDamagerId: json.lastDamagerId ?? undefined,
+    formRequestId: json.formRequestId ?? undefined,
     name: json.name,
     type: json.type as TokenType,
     imageUrl: json.imageUrl,
@@ -47,6 +48,7 @@ export function TokenInstaceMapper(
     paralysisState: json.paralysisState ?? undefined,
     tokenPrimaryElement: normalizePrimaryMechanics(json.tokenPrimaryElement),
     tokenPrimaryDisvantege: normalizeMechanicDisadvantages(json.tokenPrimaryDisvantage),
+    passiveMechanics: Array.isArray(json.passiveMechanics) ? json.passiveMechanics : [],
     bossSettings: json.bossSettings ?? undefined,
 
     position: {
