@@ -2,24 +2,41 @@ import type { Mapa } from "../../types/mapas";
 import { TokenInstaceMapper } from "./tokenInstanceMapper";
 import type { Card } from "../../types/card";
 import type { Item } from "../../types/item";
+import { MapObjectMapper } from "./mapObjectMapper";
 
-export function MapMapper(json: any, cards: Card[], items: Item[]): Mapa {
+interface RawMap {
+    readonly name?: unknown;
+    readonly id?: unknown;
+    readonly rows?: unknown;
+    readonly cols?: unknown;
+    readonly img?: unknown;
+    readonly mapObjs?: unknown;
+    readonly boardTokens?: unknown;
+    readonly campaignId?: unknown;
+}
+
+export function MapMapper(value: unknown, cards: Card[], items: Item[]): Mapa {
+    const json = value as RawMap;
 
     console.log("BoardTokens: ", json.boardTokens)
 
     return {
-        name: json.name,
-        id: json.id,
-        rows: json.rows,
-        cols: json.cols,
-        img: json.img,
-        mapObjs: json.mapObjs,
-        boardTokens: json.boardTokens.map((j: any) => TokenInstaceMapper(j, cards, items)),
-        campaignId: json.campaignId
+        name: String(json.name ?? ""),
+        id: String(json.id ?? ""),
+        rows: Number(json.rows ?? 25),
+        cols: Number(json.cols ?? 25),
+        img: typeof json.img === "string" ? json.img : "",
+        mapObjs: Array.isArray(json.mapObjs)
+            ? json.mapObjs.map((object: unknown) => MapObjectMapper(object, items))
+            : [],
+        boardTokens: Array.isArray(json.boardTokens)
+            ? json.boardTokens.map((token: unknown) => TokenInstaceMapper(token, cards, items))
+            : [],
+        campaignId: String(json.campaignId ?? "")
     }
 }
 
-export function JsonMapMapper(mapa: Mapa): any {
+export function JsonMapMapper(mapa: Mapa) {
     return {
         id: mapa.id,
         img: mapa.img,
@@ -34,13 +51,6 @@ export function JsonMapMapper(mapa: Mapa): any {
                 id: mapa.campaignId
             }
         },
-        boardTokens: {
-            connect: mapa.boardTokens.map(token => ({
-                id: token.id,
-            })),
-        },
-
-        mapObjs: mapa.mapObjs,   
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
     }

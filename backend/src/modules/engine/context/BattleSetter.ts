@@ -123,6 +123,7 @@ export class BattleSetter {
         return this.appendBattleHistory(battleStateId, {
             historyKind: historyKind ?? inferredKind,
             type: wasCertainty ? `${choice.type} | DADO CERTO` : choice.type,
+            wasCertainty,
             rollResult: displayRoll,
             attackerId: tokenId,
             ...(choice.attribute ? { attribute: choice.attribute } : {}),

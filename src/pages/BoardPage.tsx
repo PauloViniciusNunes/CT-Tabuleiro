@@ -10,13 +10,15 @@ import ReactionPrompt from "../components/ui/ReactionPrompt";
 import CinematicDisplayNameUI from "../components/ui/Introduction";
 import MapSelect from "../components/ui/MapSelect";
 import PresentItem from "../components/ui/PresentItem";
-import GenerateMaze from "../components/ui/GenerateMaze";
 import DefenseResolutionForm from "../components/ui/DefenseResolutionForm";
 import CardForm from "../components/ui/CardForm";
 import OffensiveCardResolution from "../components/ui/OffensiveCardResolution";
 import InventoryUI from "../components/ui/Inventory";
 import SkillPanel from "../components/ui/SkillPannel";
-import CreateMapObject from "../components/ui/CreateMapObject";
+import MapObjectEditorPanel, {
+  type MapObjectBrush,
+  type MapObjectEditorMode,
+} from "../components/ui/MapObjectEditorPanel";
 import BoardToolbox from "../components/ui/BoardToolbox";
 import ActiveMechanicsTooltip from "../components/ui/ActiveMechanicsTooltip";
 import SpecialResponseForm from "../components/ui/SpecialResponseForm";
@@ -30,13 +32,23 @@ import { CardAPI, useCards } from "../api/modules/cards";
 import { TokenInstanceAPI } from "../api/modules/tokenInstances";
 import { useBattleState } from "../api/modules/battleStates";
 import { TokenInstaceMapper } from "../api/mappers/tokenInstanceMapper";
+import {
+  MapObjectAPI,
+  type MapObjectWriteCommand,
+  type RawMapObjectMutation,
+} from "../api/modules/mapObjects";
+import { MapObjectMapper } from "../api/mappers/mapObjectMapper";
 
 /* WEB SOCKET */
 import { socket } from "../api/socket/socket";
+import { SocketEvent } from "../api/socket/events";
 
 /* SOCKET LISTENERS */
 import { TokenInstanceSocketListener } from "../api/listeners/TokenInstanceSocketListener";
-import { BattleSocketListener } from "../api/listeners/BattleSocketListener";
+import {
+  BattleSocketListener,
+  type BattleEndedPayload,
+} from "../api/listeners/BattleSocketListener";
 import { PendingSocketListener } from "../api/listeners/PendingSocketListener";
 import { FrontendSocketListener } from "../api/listeners/FrontendSocketListener";
 
@@ -45,6 +57,8 @@ import {
   isInAttackRange,
   xpProgressionByLevel,
 } from "../utils/battleCalculations";
+import { resolveMechanicResourceBars } from "../utils/mechanicResourceBars";
+import { isValidMapObjectImageLink } from "../utils/mapObjectImageUrl";
 
 /* COMBAT SYSTEMS */
 import { formatRechargeCardRecordReturn } from "../combat/combatRecharge";
@@ -52,12 +66,6 @@ import { formatPrevisionAttackKey } from "../combat/combatPrevisions";
 
 /* GEOMETRY */
 import { cellToPosition } from "../geometry/position";
-
-/* INVENTORY LOGIC */
-import { haveSpaceInInventory, addItemToInventory } from "../inventory/inventoryCapacity";
-
-/* ENTITIES */
-import { generatePairDoor } from "../entities/entitiesPorts";
 
 /* EFFECTS LOGIC */
 
@@ -90,7 +98,6 @@ import { CampaignAPI } from "../api/modules/campaigns";
 import type { Campaign, CampaignMapRouting, User } from "../types/campaign";
 import { getLoggedUserId } from "../utils/getLoggedUser";
 import { BattleViewRules } from "../api/view/BattleViewRules";
-import { generateUUID } from "../utils/generateUUID";
 import { formatCellDistance, measureCells } from "../tools/ruler";
 import type {
   BoardToolId,
@@ -166,11 +173,30 @@ const BoardPage: React.FC = () => {
 
   const [userId, setUserId] = useState<string | null>(null)
   const [campaign, setCampaign] = useState<Campaign | null>(null)
+  const isGameMaster = campaign?.ownerId === userId;
   const [mapRouting, setMapRouting] = useState<CampaignMapRouting | null>(null)
   const [pendingSpecialResponse, setPendingSpecialResponse] = useState<PendingSpecialResponse | null>(null);
   const [pendingTransformation, setPendingTransformation] =
     useState<PendingTransformationResolution | null>(null);
   const selectedMapIdRef = useRef<string | undefined>(undefined);
+  const winnerDisplayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [winnerTokenIds, setWinnerTokenIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
+  const showBattleWinners = useCallback((payload: BattleEndedPayload) => {
+    if (payload.mapId !== selectedMapIdRef.current) return;
+
+    if (winnerDisplayTimeoutRef.current) {
+      clearTimeout(winnerDisplayTimeoutRef.current);
+    }
+
+    setWinnerTokenIds(new Set(payload.winnerTokenIds));
+    winnerDisplayTimeoutRef.current = setTimeout(() => {
+      setWinnerTokenIds(new Set());
+      winnerDisplayTimeoutRef.current = null;
+    }, 1500);
+  }, []);
 
   const [boardTokens, setBoardTokens] = useState<Token[]>([]);
   const boardTokensRef = useRef<Token[]>([]);
@@ -590,7 +616,11 @@ const BoardPage: React.FC = () => {
   useEffect(() => {
 
     const tokenInstanceListener = new TokenInstanceSocketListener(socket, boardTokensRef, setBoardTokens, cardsRef, itemsRef)
-    const battleStateListener = new BattleSocketListener(socket, setBattleState)
+    const battleStateListener = new BattleSocketListener(
+      socket,
+      setBattleState,
+      showBattleWinners,
+    )
     const pendingListener = new PendingSocketListener(
       socket,
       setPendingAttack,
@@ -634,13 +664,16 @@ const BoardPage: React.FC = () => {
       battleStateListener.unregister()
       pendingListener.unregister()
       frontendListener.unregister()
+      if (winnerDisplayTimeoutRef.current) {
+        clearTimeout(winnerDisplayTimeoutRef.current);
+        winnerDisplayTimeoutRef.current = null;
+      }
     };
 
-  }, []);
+  }, [showBattleWinners]);
 
   const [selectedMapa, setSelectedMapa] = useState<Mapa | undefined>(undefined);
   const [isMapSelectOpen, setIsMapSelectOpen] = useState(false);
-  const [generateMazeOpen, setGenerateMazeOpen] = useState(false);
 
   const handleSelectMapa = (mapa: Mapa) => {
     setSelectedMapa(mapa);
@@ -781,6 +814,10 @@ const BoardPage: React.FC = () => {
 
   useEffect(() => {
     const mapId = selectedMapa?.id;
+    if (winnerDisplayTimeoutRef.current) {
+      clearTimeout(winnerDisplayTimeoutRef.current);
+      winnerDisplayTimeoutRef.current = null;
+    }
     setPendingAttack(null);
     setPendingEsquivaRoll(null);
     setPendingFreeResponse(null);
@@ -800,6 +837,7 @@ const BoardPage: React.FC = () => {
     setPreviewCells(new Set());
     setSelectedTarget(null);
     setInTargetSelection(false);
+    setWinnerTokenIds(new Set());
     selectedMapIdRef.current = mapId;
     if (!mapId) return;
 
@@ -822,12 +860,9 @@ const BoardPage: React.FC = () => {
     };
   }, [selectedMapa?.id]);
 
-  const handleCreateMapa = (mapName: string) => {
-
-    const newId = generateUUID();
-
+  const handleCreateMapa = async (mapName: string) => {
     const newMapa: Mapa = {
-      id: newId,
+      id: "",
       name: mapName,
       rows: 25,
       cols: 25,
@@ -837,9 +872,16 @@ const BoardPage: React.FC = () => {
       campaignId: ""
     };
 
-    setMapas(prev => [...prev, newMapa]);
-
-    setSelectedMapa(newMapa);
+    const persistedMap = await MapaAPI.createMaps(
+      newMapa,
+      createdCards,
+      createdItems,
+    );
+    setMapas((currentMaps) => [
+      ...currentMaps.filter((map) => map.id !== persistedMap.id),
+      persistedMap,
+    ]);
+    setSelectedMapa(persistedMap);
 
     // reset configs
     setRows(25);
@@ -851,8 +893,6 @@ const BoardPage: React.FC = () => {
 
     setBoardTokens([]);
 
-    setIsMapSelectOpen(false);
-    MapaAPI.createMaps(newMapa)
   };
 
   useEffect(() => {
@@ -886,6 +926,277 @@ const BoardPage: React.FC = () => {
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [boardMapObjects, setBoardMapObjects] = useState<MapObject[]>([]);
+  const [mapObjectEditorOpen, setMapObjectEditorOpen] = useState(false);
+  const [mapObjectEditorMode, setMapObjectEditorMode] =
+    useState<MapObjectEditorMode>("paint");
+  const [mapObjectBrush, setMapObjectBrush] = useState<MapObjectBrush>({
+    type: "wall",
+    imgUrl: "",
+    itemRelativeId: null,
+    linkedMapId: null,
+  });
+  const [pendingPaintCells, setPendingPaintCells] = useState<Set<string>>(new Set());
+  const [isSavingMapObjectPaint, setIsSavingMapObjectPaint] = useState(false);
+  const [pendingEraseCells, setPendingEraseCells] = useState<Set<string>>(new Set());
+  const [isSavingMapObjectErase, setIsSavingMapObjectErase] = useState(false);
+  const [mapObjectPaintError, setMapObjectPaintError] = useState<string | null>(null);
+  const pendingPaintCommandsRef = useRef<Map<string, MapObjectWriteCommand>>(new Map());
+  const pendingErasePositionsRef = useRef<Map<string, { col: number; row: number }>>(new Map());
+  const paintFlushTimerRef = useRef<number | null>(null);
+  const eraseFlushTimerRef = useRef<number | null>(null);
+  const paintRequestPendingRef = useRef(false);
+  const eraseRequestPendingRef = useRef(false);
+  const isPaintingMapObjectsRef = useRef(false);
+
+  const applyMapObjectMutation = useCallback((mutation: RawMapObjectMutation) => {
+    const updates = new Map(mutation.maps.map(({ mapId, mapObjects }) => [
+      mapId,
+      mapObjects.map((object) => MapObjectMapper(object, itemsRef.current)),
+    ]));
+    setMapas((currentMaps) => currentMaps.map((map) => {
+      const mapObjects = updates.get(map.id);
+      return mapObjects ? { ...map, mapObjs: mapObjects } : map;
+    }));
+    setSelectedMapa((currentMap) => {
+      if (!currentMap) return currentMap;
+      const mapObjects = updates.get(currentMap.id);
+      return mapObjects ? { ...currentMap, mapObjs: mapObjects } : currentMap;
+    });
+    const currentObjects = selectedMapIdRef.current
+      ? updates.get(selectedMapIdRef.current)
+      : undefined;
+    if (currentObjects) setBoardMapObjects(currentObjects);
+  }, []);
+
+  const flushMapObjectPaint = useCallback(async () => {
+    if (paintRequestPendingRef.current) return;
+    const mapId = selectedMapIdRef.current;
+    const entries = [...pendingPaintCommandsRef.current.entries()];
+    if (!mapId || entries.length === 0) {
+      setIsSavingMapObjectPaint(false);
+      return;
+    }
+
+    entries.forEach(([key]) => pendingPaintCommandsRef.current.delete(key));
+    paintRequestPendingRef.current = true;
+    setIsSavingMapObjectPaint(true);
+    setMapObjectPaintError(null);
+    try {
+      applyMapObjectMutation(
+        await MapObjectAPI.paint(mapId, entries.map(([, command]) => command)),
+      );
+    } catch (error) {
+      setMapObjectPaintError(error instanceof Error
+        ? error.message
+        : "Não foi possível salvar a pintura.");
+    } finally {
+      paintRequestPendingRef.current = false;
+      setPendingPaintCells((current) => {
+        const next = new Set(current);
+        entries.forEach(([key]) => next.delete(key));
+        return next;
+      });
+      if (pendingPaintCommandsRef.current.size > 0) {
+        paintFlushTimerRef.current = window.setTimeout(() => {
+          paintFlushTimerRef.current = null;
+          void flushMapObjectPaint();
+        }, 0);
+      } else {
+        setIsSavingMapObjectPaint(false);
+      }
+    }
+  }, [applyMapObjectMutation]);
+
+  const scheduleMapObjectPaintFlush = useCallback(() => {
+    if (paintFlushTimerRef.current !== null) return;
+    paintFlushTimerRef.current = window.setTimeout(() => {
+      paintFlushTimerRef.current = null;
+      void flushMapObjectPaint();
+    }, 100);
+  }, [flushMapObjectPaint]);
+
+  const queueMapObjectPaint = useCallback((position: { col: number; row: number }) => {
+    if (
+      !mapObjectEditorOpen ||
+      mapObjectEditorMode !== "paint" ||
+      !isGameMaster ||
+      !selectedMapa ||
+      !isValidMapObjectImageLink(mapObjectBrush.imgUrl) ||
+      (mapObjectBrush.type === "chest" && !mapObjectBrush.itemRelativeId) ||
+      (mapObjectBrush.type === "door" && !mapObjectBrush.linkedMapId)
+    ) {
+      return;
+    }
+
+    const key = `${position.col}:${position.row}`;
+    if (
+      pendingPaintCommandsRef.current.has(key) ||
+      boardMapObjects.some((object) =>
+        object.position.col === position.col && object.position.row === position.row,
+      )
+    ) {
+      return;
+    }
+
+    pendingPaintCommandsRef.current.set(key, {
+      type: mapObjectBrush.type,
+      col: position.col,
+      row: position.row,
+      imgUrl: mapObjectBrush.imgUrl.trim(),
+      itemRelativeId: mapObjectBrush.type === "chest"
+        ? mapObjectBrush.itemRelativeId
+        : null,
+      linkedMapId: mapObjectBrush.type === "door"
+        ? mapObjectBrush.linkedMapId
+        : null,
+    });
+    setPendingPaintCells((current) => new Set(current).add(key));
+    setIsSavingMapObjectPaint(true);
+    setMapObjectPaintError(null);
+    scheduleMapObjectPaintFlush();
+  }, [
+    boardMapObjects,
+    isGameMaster,
+    mapObjectBrush,
+    mapObjectEditorMode,
+    mapObjectEditorOpen,
+    scheduleMapObjectPaintFlush,
+    selectedMapa,
+  ]);
+
+  const finishMapObjectPainting = useCallback(() => {
+    isPaintingMapObjectsRef.current = false;
+    if (paintFlushTimerRef.current !== null) {
+      window.clearTimeout(paintFlushTimerRef.current);
+      paintFlushTimerRef.current = null;
+    }
+    void flushMapObjectPaint();
+  }, [flushMapObjectPaint]);
+
+  const flushMapObjectErase = useCallback(async () => {
+    if (eraseRequestPendingRef.current) return;
+    const mapId = selectedMapIdRef.current;
+    const entries = [...pendingErasePositionsRef.current.entries()];
+    if (!mapId || entries.length === 0) {
+      setIsSavingMapObjectErase(false);
+      return;
+    }
+
+    entries.forEach(([key]) => pendingErasePositionsRef.current.delete(key));
+    eraseRequestPendingRef.current = true;
+    setIsSavingMapObjectErase(true);
+    setMapObjectPaintError(null);
+    try {
+      applyMapObjectMutation(
+        await MapObjectAPI.erase(mapId, entries.map(([, position]) => position)),
+      );
+    } catch (error) {
+      setMapObjectPaintError(error instanceof Error
+        ? error.message
+        : "Não foi possível apagar os objetos.");
+    } finally {
+      eraseRequestPendingRef.current = false;
+      setPendingEraseCells((current) => {
+        const next = new Set(current);
+        entries.forEach(([key]) => next.delete(key));
+        return next;
+      });
+      if (pendingErasePositionsRef.current.size > 0) {
+        eraseFlushTimerRef.current = window.setTimeout(() => {
+          eraseFlushTimerRef.current = null;
+          void flushMapObjectErase();
+        }, 0);
+      } else {
+        setIsSavingMapObjectErase(false);
+      }
+    }
+  }, [applyMapObjectMutation]);
+
+  const scheduleMapObjectEraseFlush = useCallback(() => {
+    if (eraseFlushTimerRef.current !== null) return;
+    eraseFlushTimerRef.current = window.setTimeout(() => {
+      eraseFlushTimerRef.current = null;
+      void flushMapObjectErase();
+    }, 100);
+  }, [flushMapObjectErase]);
+
+  const queueMapObjectErase = useCallback((position: { col: number; row: number }) => {
+    if (
+      !mapObjectEditorOpen ||
+      mapObjectEditorMode !== "erase" ||
+      !isGameMaster ||
+      !selectedMapa
+    ) {
+      return;
+    }
+
+    const key = `${position.col}:${position.row}`;
+    const hasMapObject = boardMapObjects.some((object) =>
+      object.position.col === position.col && object.position.row === position.row,
+    );
+    if (!hasMapObject || pendingErasePositionsRef.current.has(key)) return;
+
+    pendingErasePositionsRef.current.set(key, position);
+    setPendingEraseCells((current) => new Set(current).add(key));
+    setIsSavingMapObjectErase(true);
+    setMapObjectPaintError(null);
+    scheduleMapObjectEraseFlush();
+  }, [
+    boardMapObjects,
+    isGameMaster,
+    mapObjectEditorMode,
+    mapObjectEditorOpen,
+    scheduleMapObjectEraseFlush,
+    selectedMapa,
+  ]);
+
+  const finishMapObjectErasing = useCallback(() => {
+    if (eraseFlushTimerRef.current !== null) {
+      window.clearTimeout(eraseFlushTimerRef.current);
+      eraseFlushTimerRef.current = null;
+    }
+    void flushMapObjectErase();
+  }, [flushMapObjectErase]);
+
+  const finishMapObjectEditing = useCallback(() => {
+    isPaintingMapObjectsRef.current = false;
+    finishMapObjectPainting();
+    finishMapObjectErasing();
+  }, [finishMapObjectErasing, finishMapObjectPainting]);
+
+  useEffect(() => {
+    window.addEventListener("mouseup", finishMapObjectEditing);
+    return () => window.removeEventListener("mouseup", finishMapObjectEditing);
+  }, [finishMapObjectEditing]);
+
+  useEffect(() => {
+    isPaintingMapObjectsRef.current = false;
+    pendingPaintCommandsRef.current.clear();
+    pendingErasePositionsRef.current.clear();
+    setPendingPaintCells(new Set());
+    setPendingEraseCells(new Set());
+    setMapObjectPaintError(null);
+    setMapObjectBrush((current) => current.linkedMapId === selectedMapa?.id
+      ? { ...current, linkedMapId: null }
+      : current);
+  }, [selectedMapa?.id]);
+
+  useEffect(() => {
+    const handleMapUpdated = (payload: unknown) => {
+      if (!payload || typeof payload !== "object") return;
+      const value = payload as { id?: unknown; mapObjs?: unknown };
+      if (typeof value.id !== "string" || !Array.isArray(value.mapObjs)) return;
+      applyMapObjectMutation({
+        mapObject: null,
+        maps: [{
+          mapId: value.id,
+          mapObjects: value.mapObjs as Array<Record<string, unknown>>,
+        }],
+      });
+    };
+    socket.on(SocketEvent.MAP_UPDATED, handleMapUpdated);
+    return () => { socket.off(SocketEvent.MAP_UPDATED, handleMapUpdated); };
+  }, [applyMapObjectMutation]);
 
   useEffect(() => {
     if (!selectedMapa) return;
@@ -898,8 +1209,8 @@ const BoardPage: React.FC = () => {
             rows,
             cols,
             img: (backgroundImage ?? ""),
-            mapObjs: boardMapObjects,
-            boardTokens: boardTokens,
+            mapObjs: m.mapObjs,
+            boardTokens: m.boardTokens,
           }
           : m
       )
@@ -911,13 +1222,13 @@ const BoardPage: React.FC = () => {
       rows: rows,
       cols: cols,
       img: backgroundImage ?? "",
-      mapObjs: boardMapObjects,
-      boardTokens: boardTokens,
+      mapObjs: [],
+      boardTokens: [],
       campaignId: ""
     }
 
     MapaAPI.updateMaps(newMapa)
-  }, [rows, cols, backgroundImage, boardMapObjects, boardTokens]);
+  }, [rows, cols, backgroundImage, selectedMapa?.id, selectedMapa?.name]);
 
   const [sidebarWidth, setSidebarWidth] = useState<number>(320); // inicial
 
@@ -995,19 +1306,45 @@ const BoardPage: React.FC = () => {
     }
     setBoardBoss(null);
   }, [boardTokens])
-  const [mapObjectCreateForm, setMapObjectCreateForm] = useState<boolean>(false);
+  useEffect(() => {
+    const handleMapObjectEditorShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.isContentEditable ||
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.tagName === "SELECT"
+      ) {
+        return;
+      }
+      if (event.key === "Escape" && mapObjectEditorOpen) {
+        finishMapObjectEditing();
+        setMapObjectEditorOpen(false);
+        return;
+      }
+      if (
+        !event.repeat &&
+        (event.key === "C" || event.key === "c") &&
+        isGameMaster &&
+        selectedMapa
+      ) {
+        event.preventDefault();
+        if (mapObjectEditorOpen) finishMapObjectEditing();
+        setMapObjectEditorOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", handleMapObjectEditorShortcut);
+    return () => window.removeEventListener("keydown", handleMapObjectEditorShortcut);
+  }, [
+    finishMapObjectEditing,
+    isGameMaster,
+    mapObjectEditorOpen,
+    selectedMapa,
+  ]);
 
   useEffect(() => {
-    // Open Create Map Object Form
-    const handleOpenCMOBJ = (e: KeyboardEvent) => {
-      if (!selectedCell) return;
-
-      if (e.key === "C" || e.key === "c") {
-        setMapObjectCreateForm(true);
-      }
-    }
-    window.addEventListener("keydown", handleOpenCMOBJ);
-  }, [selectedCell]);
+    if (!isGameMaster) setMapObjectEditorOpen(false);
+  }, [isGameMaster]);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -1513,18 +1850,38 @@ const BoardPage: React.FC = () => {
         });
       } else if (
         (e.key === "Delete" || e.key === "Backspace") &&
-        selectedTokenId &&
         campaign?.ownerId === userId
       ) {
         e.preventDefault();
-        TokenInstanceAPI.deleteTokenInstance(selectedTokenId)
+        if (selectedTokenId) {
+          void TokenInstanceAPI.deleteTokenInstance(selectedTokenId);
+        } else if (selectedCell && selectedMapa?.id) {
+          const position = cellToPosition(selectedCell);
+          const mapObject = boardMapObjects.find((object) =>
+            object.position.col === position.col && object.position.row === position.row,
+          );
+          if (mapObject) {
+            void MapObjectAPI.delete(selectedMapa.id, mapObject.id)
+              .then(applyMapObjectMutation)
+              .catch((error) => console.error("Não foi possível remover MapObj:", error));
+          }
+        }
         setSelectedTokenId(null);
         setSelectedCell(null);
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [selectedTokenId, campaign?.ownerId, userId, clampPanToViewport]);
+  }, [
+    selectedTokenId,
+    selectedCell,
+    selectedMapa?.id,
+    boardMapObjects,
+    campaign?.ownerId,
+    userId,
+    clampPanToViewport,
+    applyMapObjectMutation,
+  ]);
 
   // Movement keys when Not in Battle
 
@@ -1535,59 +1892,6 @@ const BoardPage: React.FC = () => {
     console.log("SELECTED:", selectedTokenId);
     console.log("TOKENS:", boardTokens.map(t => t.id));
   }, [selectedTokenId])
-
-  function replaceTokenInAnotherMap( //RETIRADA
-    tokenId: string,
-    door: MapObject,
-    mapas: Mapa[]
-  ) {
-    const token = boardTokens.find((t) => t.id === tokenId);
-
-    if (!token) return;
-    if (!selectedMapa) return;
-    if (!door.linkedMapId) return;
-    if (!door.linkedDoorId) return;
-
-    // 🔥 encontra mapa destino
-    const targetMap = mapas.find(
-      (m) => m.id === door.linkedMapId
-    );
-
-    if (!targetMap) return;
-
-    // 🔥 encontra a porta correspondente
-    const targetDoor = targetMap.mapObjs.find(
-      (obj) =>
-        obj.type === "door" &&
-        obj.id === door.linkedDoorId
-    );
-
-    if (!targetDoor) return;
-
-    // 🔥 remove token do mapa atual
-    TokenInstanceAPI.deleteTokenInstance(tokenId)
-
-    // 🔥 cria token movido
-    const movedToken = {
-      ...token,
-      position: {
-        col: targetDoor.position.col,
-        row: targetDoor.position.row,
-      },
-    };
-
-    // 🔥 adiciona no mapa destino
-    setMapas((prev) =>
-      prev.map((m) => {
-        if (m.id !== door.linkedMapId) return m;
-
-        return {
-          ...m,
-          boardTokens: [...m.boardTokens, movedToken],
-        };
-      })
-    );
-  }
 
   useEffect(() => {
     console.debug("TOKEN AMBIENT: ", tokenInAmbientPivotSelection)
@@ -1639,54 +1943,7 @@ const BoardPage: React.FC = () => {
       // Limite do mapa
       if (newCol < 1 || newCol > cols || newRow < 1 || newRow > rows) return;
 
-      // 🚫 BLOQUEIO POR WALL
-      const hasWall = boardMapObjects.some(
-        (obj) =>
-          obj.type === "wall" &&
-          obj.position.col === newCol &&
-          obj.position.row === newRow
-      );
-
-      const chest = boardMapObjects.find(
-        (obj) =>
-          obj.type === "chest" &&
-          obj.position.col === newCol &&
-          obj.position.row === newRow
-      );
-
-      const door = boardMapObjects.find(
-        (obj) =>
-          obj.type === "door" &&
-          obj.position.col === newCol &&
-          obj.position.row === newRow
-      )
-
-      if (hasWall) return;
-
-      if (chest && haveSpaceInInventory(boardTokens, selectedTokenId)) {
-        const item = chest.itemRelative;
-
-
-        if (item) {
-          setPresentedItem(item);
-
-          addItemToInventory(
-            setBoardTokens,
-            selectedTokenId,
-            item,
-          );
-
-          setBoardMapObjects(prev =>
-            prev.filter(obj => obj !== chest)
-          );
-        }
-      }
-
-      moveTokenOnBoard(selectedTokenId, newCol, newRow);
-
-      if (door) {
-        replaceTokenInAnotherMap(selectedTokenId, door, mapas);
-      }
+      void moveTokenOnBoard(selectedTokenId, newCol, newRow);
 
       setLastMoveTime(now);
       setIsCooling(true);
@@ -1700,7 +1957,6 @@ const BoardPage: React.FC = () => {
     selectedTokenId,
     lastMoveTime,
     boardTokens,
-    boardMapObjects,
     cols,
     rows
   ]);
@@ -1816,6 +2072,9 @@ const BoardPage: React.FC = () => {
     if (!isInBattle && !selectedMapa) return;
     movementPendingRef.current = true;
     let resolvedPosition = { col, row };
+    let transferredToAnotherMap = false;
+    let destinationMapId: string | null = null;
+    let resolvedToken: Token | null = null;
     try {
       if (isInBattle) {
         const movement = await BattleEngineAPI.moveToken({
@@ -1826,10 +2085,33 @@ const BoardPage: React.FC = () => {
 
         if (movement.cancelled) return;
         resolvedPosition = movement.to;
+        if (movement.collectedItemId) {
+          setPresentedItem(
+            itemsRef.current.find((item) => item.id === movement.collectedItemId) ?? null,
+          );
+        }
       } else {
-        await TokenInstanceAPI.updateTokenInstance(
+        const response = await TokenInstanceAPI.updateTokenInstance(
           { ...movingToken, position: resolvedPosition },
           selectedMapa!.id,
+        );
+        if (response.movement) {
+          resolvedPosition = response.movement.position;
+          destinationMapId = response.movement.destinationMapId;
+          transferredToAnotherMap =
+            response.movement.destinationMapId !== selectedMapa!.id;
+          if (response.movement.collectedItemId) {
+            setPresentedItem(
+              itemsRef.current.find(
+                (item) => item.id === response.movement?.collectedItemId,
+              ) ?? null,
+            );
+          }
+        }
+        resolvedToken = TokenInstaceMapper(
+          response,
+          cardsRef.current,
+          itemsRef.current,
         );
       }
     } catch (error) {
@@ -1839,9 +2121,40 @@ const BoardPage: React.FC = () => {
       movementPendingRef.current = false;
     }
 
-    setBoardTokens(prev => prev.map(token => token.id === id
-      ? { ...token, position: resolvedPosition }
-      : token));
+    setBoardTokens((previousTokens) => transferredToAnotherMap
+      ? previousTokens.filter((token) => token.id !== id)
+      : previousTokens.map((token) => token.id === id
+        ? resolvedToken ?? { ...token, position: resolvedPosition }
+        : token));
+    setMapas((currentMaps) => currentMaps.map((map) => {
+      if (transferredToAnotherMap && map.id === selectedMapa?.id) {
+        return {
+          ...map,
+          boardTokens: map.boardTokens.filter((token) => token.id !== id),
+        };
+      }
+      if (transferredToAnotherMap && destinationMapId && map.id === destinationMapId) {
+        return {
+          ...map,
+          boardTokens: resolvedToken
+            ? [...map.boardTokens.filter((token) => token.id !== id), resolvedToken]
+            : map.boardTokens,
+        };
+      }
+      if (!transferredToAnotherMap && map.id === selectedMapa?.id) {
+        return {
+          ...map,
+          boardTokens: map.boardTokens.map((token) => token.id === id
+            ? resolvedToken ?? { ...token, position: resolvedPosition }
+            : token),
+        };
+      }
+      return map;
+    }));
+    if (transferredToAnotherMap) {
+      setSelectedTokenId(null);
+      setSelectedCell(null);
+    }
     if (isInBattle) {
       setBattleState(prev => ({
         ...prev,
@@ -2083,9 +2396,12 @@ const BoardPage: React.FC = () => {
     !isAmbientPivotSelection &&
     BattleViewRules.showForm(campaign, battleState, userId)
   );
-  const isGameMaster = campaign?.ownerId === userId;
+  const transformationToken = pendingTransformation
+    ? boardTokens.find((token) => token.id === pendingTransformation.tokenId)
+    : undefined;
   const canAnswerTransformation = Boolean(
     pendingTransformation &&
+    transformationToken?.type === "player" &&
     BattleViewRules.showTransformationForm(
       campaign,
       userId,
@@ -2096,10 +2412,14 @@ const BoardPage: React.FC = () => {
   const canAnswerAmbientPivot = Boolean(
     isAmbientPivotSelection &&
     ambientPivotToken &&
+    ambientPivotToken.type === "player" &&
     BattleViewRules.showTokenResponseForm(campaign, userId, ambientPivotToken.ownerId),
   );
   const canAnswerSpecialResponse = Boolean(
     pendingSpecialResponse &&
+    boardTokens.find((token) =>
+      token.id === pendingSpecialResponse.responderTokenId
+    )?.type === "player" &&
     pendingSpecialResponse.responderUserId === userId,
   );
   const handleSubmitTransformation = async (templateId: string) => {
@@ -2174,7 +2494,6 @@ const BoardPage: React.FC = () => {
               onChangeRows={(v) => setRows(Number(v))}
               onChangeCols={(v) => setCols(Number(v))}
               onChangeBackgroundImage={setBackgroundImage}
-              onGenerateMazeOpen={(v) => setGenerateMazeOpen(v)}
               onMapSelect={(b) => setIsMapSelectOpen(b)}
             />
 
@@ -2295,6 +2614,12 @@ const BoardPage: React.FC = () => {
                       const mapObj = boardMapObjects.find(
                         (m) => m.position.col === colIndex && m.position.row === row + 1
                       )
+                      const isPendingMapObject = pendingPaintCells.has(
+                        `${colIndex}:${row + 1}`,
+                      );
+                      const isPendingMapObjectErase = pendingEraseCells.has(
+                        `${colIndex}:${row + 1}`,
+                      );
 
                       const inB = battleState.status === "In Battle";
 
@@ -2316,11 +2641,21 @@ const BoardPage: React.FC = () => {
                       const isTokSel = tok?.id === selectedTokenId;
 
                       const isDead = (tok?.currentLife ?? 1) <= 0;
+                      const tokenMechanics = tok
+                        ? activeMechanicsForToken(tok.id)
+                        : [];
+                      const additionalResourceBars = resolveMechanicResourceBars(
+                        tokenMechanics,
+                      );
 
                       return (
                         <div
                           key={coord}
                           onClick={(event) => {
+                            if (mapObjectEditorOpen) {
+                              event.preventDefault();
+                              return;
+                            }
                             if (activeBoardTool === "ruler") {
                               event.preventDefault();
                               return;
@@ -2328,12 +2663,45 @@ const BoardPage: React.FC = () => {
 
                             handleCellClick(l, row + 1, tok);
                           }}
-                          onMouseDown={(event) =>
+                          onMouseDown={(event) => {
+                            if (
+                              mapObjectEditorOpen &&
+                              (mapObjectEditorMode === "paint" ||
+                                mapObjectEditorMode === "erase") &&
+                              event.button === 0
+                            ) {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              isPaintingMapObjectsRef.current = true;
+                              const position = { col: colIndex, row: row + 1 };
+                              if (mapObjectEditorMode === "paint") {
+                                queueMapObjectPaint(position);
+                              } else {
+                                queueMapObjectErase(position);
+                              }
+                              return;
+                            }
                             handleRulerMouseDown(event, {
                               col: colIndex,
                               row: row + 1,
-                            })
-                          }
+                            });
+                          }}
+                          onMouseEnter={(event) => {
+                            if (
+                              mapObjectEditorOpen &&
+                              (mapObjectEditorMode === "paint" ||
+                                mapObjectEditorMode === "erase") &&
+                              isPaintingMapObjectsRef.current &&
+                              (event.buttons & 1) === 1
+                            ) {
+                              const position = { col: colIndex, row: row + 1 };
+                              if (mapObjectEditorMode === "paint") {
+                                queueMapObjectPaint(position);
+                              } else {
+                                queueMapObjectErase(position);
+                              }
+                            }
+                          }}
                           onMouseMove={() =>
                             handleRulerMouseMove({
                               col: colIndex,
@@ -2347,6 +2715,16 @@ const BoardPage: React.FC = () => {
                               ? "border-green-400 shadow-[0_0_10px_2px_rgba(34,197,94,0.7)]"
                               : "hover:bg-gray-800",
                             previewCells.has(`${colIndex}-${row + 1}`)
+                              ? "bg-red-500/30 border-red-400"
+                              : "",
+                            mapObjectEditorOpen &&
+                              (mapObjectEditorMode === "paint" || mapObjectEditorMode === "erase")
+                              ? "cursor-crosshair"
+                              : "",
+                            isPendingMapObject
+                              ? "bg-purple-500/25"
+                              : "",
+                            isPendingMapObjectErase
                               ? "bg-red-500/30 border-red-400"
                               : "",
                           ].join(" ")}
@@ -2388,10 +2766,9 @@ const BoardPage: React.FC = () => {
                               className="relative w-full h-full flex items-center justify-center"
                               onMouseEnter={(event) => {
                                 if (!inB) return;
-                                const mechanics = activeMechanicsForToken(tok.id);
-                                if (mechanics.length === 0) return;
+                                if (tokenMechanics.length === 0) return;
 
-                                setHoveredTokenMechanics({ token: tok, mechanics });
+                                setHoveredTokenMechanics({ token: tok, mechanics: tokenMechanics });
                                 setMechanicsTooltipPosition({ x: event.clientX, y: event.clientY });
                               }}
                               onMouseMove={(event) => {
@@ -2400,6 +2777,16 @@ const BoardPage: React.FC = () => {
                               }}
                               onMouseLeave={() => setHoveredTokenMechanics(null)}
                             >
+                              {winnerTokenIds.has(tok.id) && (
+                                <div
+                                  role="status"
+                                  aria-label={`${tok.name} venceu a batalha`}
+                                  className="winner-token-label pointer-events-none absolute bottom-full z-50 mb-1 whitespace-nowrap text-xs font-black tracking-wider"
+                                >
+                                  WINNER
+                                </div>
+                              )}
+
                               {inB &&
                                 tok.currentLife !== undefined &&
                                 tok.maxLife !== undefined &&
@@ -2411,6 +2798,7 @@ const BoardPage: React.FC = () => {
                                     currentMana={tok.currentMana}
                                     maxMana={tok.maxMana}
                                     teamColor={tok.team}
+                                    additionalBars={additionalResourceBars}
                                   />
                                 )}
 
@@ -2545,9 +2933,18 @@ const BoardPage: React.FC = () => {
                             </div>
                           )}
 
-                          {mapObj && (
-                            <div className="absolute w-full h-full flex items-center justify-center">
-                              <img src={mapObj.imgUrl} alt="Map Object" className="absolute rounded object-cover transition-filter duration-200" />
+                          {(mapObj || isPendingMapObject) && !isPendingMapObjectErase && (
+                            <div className="pointer-events-none absolute flex h-full w-full items-center justify-center">
+                              <img
+                                src={mapObj?.imgUrl ?? mapObjectBrush.imgUrl}
+                                alt="Map Object"
+                                className="absolute h-full w-full rounded object-cover transition-filter duration-200"
+                              />
+                            </div>
+                          )}
+                          {isPendingMapObjectErase && (
+                            <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-red-950/50 text-2xl font-black text-red-300">
+                              ×
                             </div>
                           )}
 
@@ -2894,6 +3291,7 @@ const BoardPage: React.FC = () => {
         battleState.tokensInOffensiveCard.slice(0, 1).map((queuedDefender) => {
           const defenderToken = boardTokens.find((token) => token.id === queuedDefender.id);
           if (!defenderToken) return null;
+          if (defenderToken.type !== "player") return null;
           if (!BattleViewRules.showTokenResponseForm(campaign, userId, defenderToken.ownerId)) return null;
 
           return (
@@ -3052,29 +3450,39 @@ const BoardPage: React.FC = () => {
         />
       )}
 
-      {mapObjectCreateForm && (
-        <CreateMapObject
-          position={cellToPosition(selectedCell ?? "A1")}
-          createdMapas={mapas}
-          selectedMapa={selectedMapa}
-          createdItems={createdItems}
-          onClose={() => setMapObjectCreateForm(false)}
-          generatePairDoor={(door) => {
-            setMapas((currentMaps) =>
-              generatePairDoor(currentMaps, selectedMapa?.id, door),
-            );
-          }}
-          setBoardMapObjects={setBoardMapObjects}
-        />
-      )
-      }
-
-      {generateMazeOpen && (
-        <GenerateMaze
+      {isGameMaster && mapObjectEditorOpen && selectedMapa && (
+        <MapObjectEditorPanel
+          mode={mapObjectEditorMode}
+          brush={mapObjectBrush}
           rows={rows}
           cols={cols}
-          setBoardMapObjects={setBoardMapObjects}
-          onClose={() => setGenerateMazeOpen(false)}
+          selectedMap={selectedMapa}
+          maps={mapas}
+          items={createdItems}
+          isSaving={isSavingMapObjectPaint || isSavingMapObjectErase}
+          paintError={mapObjectPaintError}
+          onModeChange={(mode) => {
+            finishMapObjectEditing();
+            setMapObjectEditorMode(mode);
+          }}
+          onBrushChange={(brush) => {
+            finishMapObjectEditing();
+            setMapObjectBrush(brush);
+          }}
+          onGenerateMaze={async (walls) => {
+            applyMapObjectMutation(
+              await MapObjectAPI.createWalls(selectedMapa.id, walls),
+            );
+          }}
+          onClear={async () => {
+            applyMapObjectMutation(
+              await MapObjectAPI.clear(selectedMapa.id),
+            );
+          }}
+          onClose={() => {
+            finishMapObjectEditing();
+            setMapObjectEditorOpen(false);
+          }}
         />
       )}
 

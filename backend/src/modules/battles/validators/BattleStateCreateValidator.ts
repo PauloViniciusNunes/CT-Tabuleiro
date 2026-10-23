@@ -29,6 +29,7 @@ export const ActionChoiceSchema = z.object({
   rollResult: RollResultSchema.optional(),
   historyId: z.string().optional(),
   historyKind: z.enum(["action", "reaction", "card"]).optional(),
+  wasCertainty: z.boolean().optional(),
   card: z.object({
     id: z.string(),
     name: z.string(),

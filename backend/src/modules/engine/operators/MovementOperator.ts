@@ -8,6 +8,8 @@ import type { InterceptableData } from "../mechanic/interceptors/Interceptor";
 import { InterceptorType } from "../mechanic/interceptors/InterceptorType";
 import { Operator, type OperatorRuntime } from "./Operator";
 import type { OperationContext, OperationIntent } from "./OperationContext";
+import { assertWallPathIsClear } from "@/modules/map-objects/utils/mapObjectPath";
+import { emitMapObjectsUpdated } from "@/modules/map-objects/utils/emitMapObjectsUpdated";
 
 export interface GridPosition {
     readonly col: number;
@@ -24,6 +26,8 @@ export interface MovementData extends OperationContext, InterceptableData {
     readonly mapId: string;
     readonly from: GridPosition;
     readonly to: GridPosition;
+    readonly collectedItemId?: string | null;
+    readonly consumedMapObjectId?: string | null;
 }
 
 export type MovementInput = MovementIntent & {
@@ -35,7 +39,7 @@ function assertPosition(position: GridPosition, maxCols: number, maxRows: number
         throw new Error("A posição de destino precisa usar coordenadas inteiras.");
     }
 
-    if (position.col < 0 || position.row < 0 || position.col >= maxCols || position.row >= maxRows) {
+    if (position.col < 1 || position.row < 1 || position.col > maxCols || position.row > maxRows) {
         throw new Error("A posição de destino está fora dos limites do mapa.");
     }
 }
@@ -77,6 +81,7 @@ export class MovementOperator extends Operator<MovementInput, MovementData> {
         assertPosition(input.to, map.cols, map.rows);
 
         const from = Object.freeze({ col: token.col, row: token.row });
+        assertWallPathIsClear(from, input.to, map.mapObjs);
         const movement = await this.runtime.intercept(InterceptorType.MOVEMENT, {
             ...input,
             operationId: input.operationId ?? crypto.randomUUID(),
@@ -91,6 +96,7 @@ export class MovementOperator extends Operator<MovementInput, MovementData> {
         }
 
         assertPosition(movement.to, map.cols, map.rows);
+        assertWallPathIsClear(from, movement.to, map.mapObjs);
         if (battleState.status === "In Battle") {
             assertNaturalMovement(from, movement.to, token.naturalMovement);
         }
@@ -107,8 +113,22 @@ export class MovementOperator extends Operator<MovementInput, MovementData> {
             return resolved;
         }
 
+        let completed: MovementData = resolved;
         if (battleState.status === "In Battle") {
-            await this.tokenRepository.moveOnceInBattle(resolved.battleId, resolved.tokenId, resolved.to);
+            const persisted = await this.tokenRepository.moveOnceInBattle(
+                resolved.battleId,
+                resolved.tokenId,
+                resolved.to,
+            );
+            completed = {
+                ...resolved,
+                to: persisted.position,
+                collectedItemId: persisted.collectedItemId,
+                consumedMapObjectId: persisted.consumedMapObjectId,
+            };
+            if (persisted.consumedMapObjectId) {
+                await emitMapObjectsUpdated([persisted.sourceMapId]);
+            }
         } else {
             await this.tokenRepository.update(resolved.tokenId, {
                 col: resolved.to.col,
@@ -117,15 +137,15 @@ export class MovementOperator extends Operator<MovementInput, MovementData> {
         }
 
         await this.runtime.dispatchEvent(
-            resolved.battleId,
-            new TokenMovedEvent(resolved),
-            { movement: resolved },
+            completed.battleId,
+            new TokenMovedEvent(completed),
+            { movement: completed },
         );
 
         if (battleState.status === "In Battle") {
-            await syncBattleState(resolved.battleId);
+            await syncBattleState(completed.battleId);
         }
 
-        return resolved;
+        return completed;
     }
 }

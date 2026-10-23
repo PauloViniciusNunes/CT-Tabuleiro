@@ -3,6 +3,7 @@ import { PendingQueueRepository } from "@/modules/battles/repositories/PendingQu
 import { CardRepository } from "@/modules/cards/repositories/CardRepository";
 import { PendingGetter } from "../context/PendingGetter";
 import { toPublicPendingSpecialResponse } from "../special-response/types";
+import { TokenTemplateRepository } from "@/modules/asset-library/tokens/repositories/TokenTemplateRepository";
 
 /**
  * Builds the single authoritative snapshot used to render combat forms.
@@ -14,6 +15,7 @@ export async function getBattleFormState(battleId: string) {
     const pendingQueueRepository = new PendingQueueRepository();
     const pendingGetter = new PendingGetter(pendingQueueRepository);
     const cardRepository = new CardRepository();
+    const tokenRepository = new TokenTemplateRepository();
 
     const battle = await battleRepository.findById(battleId);
     if (!battle) {
@@ -44,6 +46,7 @@ export async function getBattleFormState(battleId: string) {
         offensive,
         special,
         transformation,
+        boardTokens,
     ] = await Promise.all([
         pendingGetter.getPendingAttack(pendingQueue.id),
         pendingGetter.getPendingEsquivaRoll(pendingQueue.id),
@@ -52,7 +55,26 @@ export async function getBattleFormState(battleId: string) {
         pendingGetter.getPendingOffensiveCard(pendingQueue.id),
         pendingGetter.getPendingSpecialResponse(pendingQueue.id),
         pendingGetter.getPendingTransformationResolution(pendingQueue.id),
+        tokenRepository.listByMapId(battle.mapId),
     ]);
+
+    const aiTokenIds = new Set(
+        boardTokens.filter((token) => token.type === "ia").map((token) => token.id),
+    );
+    const attackResponderId = pendingAttack
+        ? pendingEsquivaRoll
+            ? pendingAttack.attackerId
+            : pendingAttack.targetId
+        : null;
+    const attackIsDirectedToAi = attackResponderId
+        ? aiTokenIds.has(attackResponderId)
+        : false;
+    const offensiveQueue = Array.isArray(battle.tokensInOffensiveCard)
+        ? battle.tokensInOffensiveCard as Array<{ id?: unknown }>
+        : [];
+    const offensiveResponderId = offensiveQueue[0]?.id;
+    const offensiveIsDirectedToAi = typeof offensiveResponderId === "string" &&
+        aiTokenIds.has(offensiveResponderId);
 
     const offensiveCard = offensive
         ? await cardRepository.findCardById(offensive.cardId)
@@ -70,11 +92,17 @@ export async function getBattleFormState(battleId: string) {
     return {
         mapId: battle.mapId,
         battleId,
-        pendingAttack,
-        pendingEsquivaRoll,
-        pendingFreeResponse,
-        pendingCardResolution,
-        pendingOffensiveCard: offensive && offensiveCard
+        pendingAttack: attackIsDirectedToAi ? null : pendingAttack,
+        pendingEsquivaRoll: attackIsDirectedToAi ? null : pendingEsquivaRoll,
+        pendingFreeResponse: pendingFreeResponse && aiTokenIds.has(pendingFreeResponse.responderId)
+            ? null
+            : pendingFreeResponse,
+        pendingCardResolution: pendingCardResolution &&
+            typeof pendingCardResolution.id === "string" &&
+            aiTokenIds.has(pendingCardResolution.id)
+            ? null
+            : pendingCardResolution,
+        pendingOffensiveCard: offensive && offensiveCard && !offensiveIsDirectedToAi
             ? {
                 requestId: offensive.resolutionId,
                 card: offensiveCard,
@@ -83,11 +111,13 @@ export async function getBattleFormState(battleId: string) {
                 testScore: offensive.rawTestResult,
             }
             : null,
-        pendingSpecialResponse: special
+        pendingSpecialResponse: special && !aiTokenIds.has(special.responderTokenId)
             ? toPublicPendingSpecialResponse(special)
             : null,
-        pendingTransformationResolution: transformation,
-        ambientPivot: armedCard && ambientTokenId
+        pendingTransformationResolution: transformation && !aiTokenIds.has(transformation.tokenId)
+            ? transformation
+            : null,
+        ambientPivot: armedCard && ambientTokenId && !aiTokenIds.has(ambientTokenId)
             ? {
                 tokenId: ambientTokenId,
                 armedCard,

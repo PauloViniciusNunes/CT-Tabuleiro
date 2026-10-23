@@ -1,10 +1,10 @@
 import React, { useState } from "react";
-import type { MapObject } from "../../types/mapObject";
-
 interface GenerateMazeProps {
   rows: number;
   cols: number;
-  setBoardMapObjects: React.Dispatch<React.SetStateAction<MapObject[]>>;
+  onGenerate: (
+    walls: readonly { row: number; col: number; imgUrl: string }[],
+  ) => Promise<void>;
   onClose: () => void;
 }
 
@@ -13,15 +13,15 @@ type Cell = {
   row: number;
 };
 
-const generateId = (): string => Math.random().toString(36).slice(2, 11);
-
 const GenerateMaze: React.FC<GenerateMazeProps> = ({
   rows,
   cols,
-  setBoardMapObjects,
+  onGenerate,
   onClose,
 }) => {
   const [wallImg, setWallImg] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -38,7 +38,7 @@ const GenerateMaze: React.FC<GenerateMazeProps> = ({
   };
 
   // 🔥 GERADOR DE LABIRINTO (DFS)
-  const generateMaze = () => {
+  const generateMaze = async () => {
     const visited = new Set<string>();
     const pathCells = new Set<string>();
 
@@ -86,7 +86,7 @@ const GenerateMaze: React.FC<GenerateMazeProps> = ({
     dfs({ col: 1, row: 1 });
 
     // 🔥 gerar walls
-    const walls: MapObject[] = [];
+    const walls: Array<{ row: number; col: number; imgUrl: string }> = [];
 
     for (let col = 1; col <= cols; col++) {
       for (let row = 1; row <= rows; row++) {
@@ -94,18 +94,26 @@ const GenerateMaze: React.FC<GenerateMazeProps> = ({
 
         if (!pathCells.has(k)) {
           walls.push({
-            id: generateId(),
-            type: "wall",
-            position: { col, row },
+            col,
+            row,
             imgUrl: wallImg,
-            itemRelative: null,
           });
         }
       }
     }
 
-    setBoardMapObjects(walls);
-    onClose();
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await onGenerate(walls);
+      onClose();
+    } catch (generationError) {
+      setError(generationError instanceof Error
+        ? generationError.message
+        : "Não foi possível gerar o labirinto.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -136,6 +144,7 @@ const GenerateMaze: React.FC<GenerateMazeProps> = ({
         </div>
 
         {/* ACTIONS */}
+        {error && <p className="text-sm text-red-300">{error}</p>}
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-600">
           <button
             onClick={onClose}
@@ -144,10 +153,11 @@ const GenerateMaze: React.FC<GenerateMazeProps> = ({
             Cancelar
           </button>
           <button
-            onClick={generateMaze}
-            className="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded"
+            onClick={() => void generateMaze()}
+            disabled={isSubmitting}
+            className="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded disabled:opacity-50"
           >
-            Gerar
+            {isSubmitting ? "Gerando..." : "Gerar"}
           </button>
         </div>
       </div>

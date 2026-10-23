@@ -1,14 +1,20 @@
 import { Prisma, type TokenInstance } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { assertNaturalMovement } from "@/modules/engine/utils/naturalMovement";
+import { MapObjectMovementRepository } from "@/modules/map-objects/repositories/MapObjectMovementRepository";
 
 export interface TokenInstanceDeletionResult {
     token: TokenInstance;
-    endedBattle: { id: string; mapId: string } | null;
+    endedBattle: {
+        id: string;
+        mapId: string;
+        winnerTeam: string | null;
+        winnerTokenIds: string[];
+    } | null;
 }
 
 export class TokenTemplateRepository {
+    private readonly mapObjectMovementRepository = new MapObjectMovementRepository();
 
     async create(data: Prisma.TokenInstanceCreateInput) {
         return prisma.tokenInstance.create({
@@ -91,48 +97,12 @@ export class TokenTemplateRepository {
         to: { col: number; row: number },
         otherUpdates: Prisma.TokenInstanceUpdateInput = {},
     ) {
-        return prisma.$transaction(async (transaction) => {
-            const [battle, token] = await Promise.all([
-                transaction.battleState.findUnique({ where: { id: battleId } }),
-                transaction.tokenInstance.findUnique({ where: { id: tokenId } }),
-            ]);
-            if (!battle || battle.status !== "In Battle") {
-                throw new Error("O movimento exige uma batalha em andamento.");
-            }
-            if (!token || token.mapId !== battle.mapId) {
-                throw new Error("O token não pertence ao mapa da batalha.");
-            }
-            const from = { col: token.col, row: token.row };
-            if (from.col === to.col && from.row === to.row) {
-                return Object.keys(otherUpdates).length > 0
-                    ? transaction.tokenInstance.update({
-                        where: { id: tokenId },
-                        data: otherUpdates,
-                    })
-                    : token;
-            }
-            if (battle.currentActorId !== tokenId) {
-                throw new Error("Apenas o token do turno atual pode se mover.");
-            }
-            assertNaturalMovement(from, to, token.naturalMovement);
-
-            const moved = battle.movedThisTurn && typeof battle.movedThisTurn === "object" &&
-                !Array.isArray(battle.movedThisTurn)
-                ? battle.movedThisTurn as Record<string, unknown>
-                : {};
-            if (moved[tokenId] === true) {
-                throw new Error("O token já se moveu neste turno.");
-            }
-
-            await transaction.battleState.update({
-                where: { id: battle.id },
-                data: { movedThisTurn: { ...moved, [tokenId]: true } as Prisma.InputJsonValue },
-            });
-            return transaction.tokenInstance.update({
-                where: { id: tokenId },
-                data: { ...otherUpdates, col: to.col, row: to.row },
-            });
-        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+        return this.mapObjectMovementRepository.moveInBattle(
+            battleId,
+            tokenId,
+            to,
+            otherUpdates,
+        );
     }
 
     async delete(id: string) {
@@ -163,12 +133,13 @@ export class TokenTemplateRepository {
             });
             const mapTokens = await transaction.tokenInstance.findMany({
                 where: { mapId: token.mapId },
-                select: { id: true, team: true },
+                select: { id: true, team: true, currentLife: true },
             });
+            const remainingTokens = mapTokens.filter(
+                (mapToken) => mapToken.id !== id,
+            );
             const remainingTeams = new Set(
-                mapTokens
-                    .filter((mapToken) => mapToken.id !== id)
-                    .map((mapToken) => mapToken.team),
+                remainingTokens.map((mapToken) => mapToken.team),
             );
 
             if (battle?.status === "In Battle" && remainingTeams.size > 1) {
@@ -195,9 +166,27 @@ export class TokenTemplateRepository {
                 where: { id: battle.pendingQueueId },
             });
 
+            const livingTeams = new Set(
+                remainingTokens
+                    .filter((mapToken) => mapToken.currentLife > 0)
+                    .map((mapToken) => mapToken.team),
+            );
+            const winnerTeam = livingTeams.size === 1
+                ? [...livingTeams][0]
+                : null;
+
             return {
                 token: deletedToken,
-                endedBattle: { id: battle.id, mapId: battle.mapId },
+                endedBattle: {
+                    id: battle.id,
+                    mapId: battle.mapId,
+                    winnerTeam,
+                    winnerTokenIds: winnerTeam
+                        ? remainingTokens
+                            .filter((mapToken) => mapToken.team === winnerTeam)
+                            .map((mapToken) => mapToken.id)
+                        : [],
+                },
             };
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     }

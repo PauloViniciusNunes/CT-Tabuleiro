@@ -10,10 +10,6 @@ import { CampaignRepository } from "@/modules/campaigns/repositories/CampaignRep
 import { MapRepository } from "@/modules/maps/repositories/MapRepository";
 import { CampaignMemberRepository } from "@/modules/asset-library/members/repositories/CampaignMembersServices";
 import { UserRepository } from "@/modules/auth/repositories/UserRepository";
-import { CardRepository } from "@/modules/cards/repositories/CardRepository";
-import { PendingQueueRepository } from "@/modules/battles/repositories/PendingQueueRepository";
-import { PendingGetter } from "@/modules/engine/context/PendingGetter";
-import { toPublicPendingSpecialResponse } from "@/modules/engine/special-response/types";
 import { isAllowedFrontendOrigin } from "@/shared/cors/origin";
 
 interface CampaignPresenceUser {
@@ -42,14 +38,11 @@ export class SocketServer {
 
     private readonly io: Server;
     private readonly battleStateRepository = new BattleStateRepository();
-    private readonly pendingQueueRepository = new PendingQueueRepository();
-    private readonly pendingGetter = new PendingGetter(this.pendingQueueRepository);
     private readonly jwtService = new JWTService();
     private readonly campaignRepository = new CampaignRepository();
     private readonly mapRepository = new MapRepository();
     private readonly campaignMemberRepository = new CampaignMemberRepository();
     private readonly userRepository = new UserRepository();
-    private readonly cardRepository = new CardRepository();
 
     /** Campaign -> user -> all tabs/connections currently present. */
     private readonly campaignPresence = new Map<string, Map<string, CampaignPresenceEntry>>();
@@ -318,102 +311,9 @@ export class SocketServer {
                 }
             });
 
-            socket.on(SocketEvent.PENDING_ATTACK, (attack) => { //prototipo
-
-                this.io
-                    .emit(SocketEvent.PENDING_ATTACK, attack);
-
-            });
-
-            socket.on(SocketEvent.PENDING_ESQUIVA_ROLL, (attack) => { //prototipo
-
-                this.io
-                    .emit(SocketEvent.PENDING_ESQUIVA_ROLL, attack);
-
-            });
-
-            socket.on(SocketEvent.PENDING_FREE_RESPONSE, (attack) => { //prototipo
-
-                this.io
-                    .emit(SocketEvent.PENDING_FREE_RESPONSE, attack);
-
-            });
-
-            socket.on(SocketEvent.PENDING_SPECIAL_RESPONSE, async (payload: unknown) => {
-                if (!payload || typeof payload !== "object") return;
-                const mapId = (payload as { mapId?: unknown }).mapId;
-                if (typeof mapId !== "string" || !mapId) return;
-
-                try {
-                    const battle = await this.battleStateRepository.findByMapId(mapId);
-                    const pendingQueue = battle
-                        ? await this.pendingQueueRepository.findByBattleStateId(battle.id)
-                        : null;
-                    const pending = pendingQueue
-                        ? await this.pendingGetter.getPendingSpecialResponse(pendingQueue.id)
-                        : null;
-
-                    // Nunca retransmite a definição recebida do cliente. O banco é
-                    // a fonte autoritativa do formulário montado pelo backend.
-                    this.io
-                        .to(Rooms.map(mapId))
-                        .emit(SocketEvent.PENDING_SPECIAL_RESPONSE, {
-                            mapId,
-                            pending: pending
-                                ? toPublicPendingSpecialResponse(pending)
-                                : null,
-                        });
-                } catch (error) {
-                    console.error("Não foi possível sincronizar a resposta especial:", error);
-                }
-            });
-
-            socket.on(SocketEvent.PENDING_CARD_RESOLUTION, (token) => {
-                this.io.emit(SocketEvent.PENDING_CARD_RESOLUTION, token)
-            })
-
-            socket.on(SocketEvent.PENDING_OFFENSIVE_CARD, async (payload: unknown) => {
-                if (!payload || typeof payload !== "object") return;
-                const mapId = (payload as { mapId?: unknown }).mapId;
-                if (typeof mapId !== "string" || !mapId) return;
-
-                try {
-                    const battle = await this.battleStateRepository.findByMapId(mapId);
-                    const pendingQueue = battle
-                        ? await this.pendingQueueRepository.findByBattleStateId(battle.id)
-                        : null;
-                    const pending = pendingQueue
-                        ? await this.pendingGetter.getPendingOffensiveCard(pendingQueue.id)
-                        : null;
-                    const card = pending
-                        ? await this.cardRepository.findCardById(pending.cardId)
-                        : null;
-
-                    this.io
-                        .to(Rooms.map(mapId))
-                        .emit(SocketEvent.PENDING_OFFENSIVE_CARD, {
-                            mapId,
-                            card,
-                            attackerId: card && pending ? pending.attackerId : null,
-                        });
-                } catch (error) {
-                    console.error("Não foi possível sincronizar o card ofensivo:", error);
-                }
-            });
-
-            socket.on(SocketEvent.FRONTEND_CARD_SELECTION, (value) => { //prototipo
-
-                this.io
-                    .emit(SocketEvent.FRONTEND_CARD_SELECTION, value);
-
-            });
-
-            socket.on(SocketEvent.FRONTEND_IN_DEFENSE_RESOLUTION, (value) => { //prototipo
-
-                this.io
-                    .emit(SocketEvent.FRONTEND_IN_DEFENSE_RESOLUTION, value);
-
-            });
+            // Formulários de batalha são publicados exclusivamente pelo snapshot
+            // autoritativo acima. Não retransmitir os eventos incrementais antigos
+            // evita expor payloads privados enquanto uma IA resolve a pendência.
 
             socket.on(SocketEvent.FRONTEND_ADD_PREVIEW_CELLS, (payload) => {
                 if (!payload || typeof payload.mapId !== "string") return;
@@ -433,20 +333,6 @@ export class SocketServer {
 
                 this.io
                     .emit(SocketEvent.FRONTEND_SELECTED_TARGET, value);
-
-            });
-
-            socket.on(SocketEvent.FRONTEND_OFFENSIVE_CARD_SCORE, (value) => { //prototipo
-
-                this.io
-                    .emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_SCORE, value);
-
-            });
-
-            socket.on(SocketEvent.FRONTEND_OFFENSIVE_CARD_TEST_SCORE, (value) => { //prototipo
-
-                this.io
-                    .emit(SocketEvent.FRONTEND_OFFENSIVE_CARD_TEST_SCORE, value);
 
             });
 

@@ -49,6 +49,8 @@ function DiceRollSummary({ action }: { action: BattleHistoryEntry }) {
   const roll = action.rollResult;
   if (!roll || roll.rawRolls.length === 0) return null;
 
+  const wasCertainty = action.wasCertainty === true ||
+    normalizeSearch(action.type).includes("dado certo");
   const rawTotal = roll.rawRolls.reduce((total, value) => total + value, 0);
   const modifier = roll.total - rawTotal;
   const firstDice = roll.rawRolls[0];
@@ -63,9 +65,17 @@ function DiceRollSummary({ action }: { action: BattleHistoryEntry }) {
   return (
     <div
       className="mt-2 flex items-center justify-center gap-1.5 text-sm"
-      aria-label={"Resultado do dado: " + rawTotal + " " + modifierOperator + " " + modifierValue + " igual a " + roll.total}
+      aria-label={
+        (wasCertainty ? "Resultado do Dado Certo: " : "Resultado do dado: ") +
+        rawTotal + " " + modifierOperator + " " + modifierValue + " igual a " + roll.total
+      }
     >
-      <Dices aria-hidden="true" className="h-4 w-4 text-cyan-300" />
+      <Dices
+        aria-hidden="true"
+        className={wasCertainty
+          ? "h-4 w-4 text-purple-400 drop-shadow-[0_0_6px_rgba(192,132,252,0.9)]"
+          : "h-4 w-4 text-cyan-300"}
+      />
       <span className={diceStyle}>{rawTotal}</span>
       <span className="text-gray-400">{modifierOperator}</span>
       <span className="text-cyan-100">{modifierValue}</span>

@@ -59,6 +59,8 @@ export type MoveTokenResolution = {
     from: { col: number; row: number };
     to: { col: number; row: number };
     cancelled: boolean;
+    collectedItemId?: string | null;
+    consumedMapObjectId?: string | null;
 };
 
 export class BattleEngineAPI {

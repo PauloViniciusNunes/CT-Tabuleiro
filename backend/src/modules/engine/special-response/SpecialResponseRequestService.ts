@@ -13,6 +13,7 @@ import type {
     PendingSpecialResponse,
     RequestSpecialResponseInput,
 } from "./types";
+import { syncBattleState } from "../utils/syncBattleState";
 
 function jsonRecord(
     value: Readonly<Record<string, unknown>> | undefined,
@@ -79,7 +80,12 @@ export class SpecialResponseRequestService {
         }) as PendingSpecialResponse;
 
         await this.pendingSetter.setPendingSpecialResponse(pendingQueue.id, pending);
-        emitPendingSpecialResponse(battle.mapId, pending);
+        if (responder.type === "ia") {
+            emitPendingSpecialResponse(battle.mapId, null);
+        } else {
+            emitPendingSpecialResponse(battle.mapId, pending);
+        }
+        await syncBattleState(battle.id);
         return pending;
     }
 }

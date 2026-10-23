@@ -4,6 +4,7 @@ export const SocketEvent = {
     TOKEN_DELETED: "token.deleted",
     TOKEN_IN_OFFENSIVE_CARD: "token.offensive.card",
     TOKEN_IN_AMBIENT_PIVOT_SELECTION: "token.ambient.pivot.selection",
+    MAP_UPDATED: "map.updated",
     BATTLE_STARTED: "combat.battle.started",
     BATTLE_UPDATED: "combat.battle.updated",
     BATTLE_ENDED: "combat.battle.ended",

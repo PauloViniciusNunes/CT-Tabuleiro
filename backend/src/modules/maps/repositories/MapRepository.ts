@@ -12,6 +12,10 @@ export class MapRepository {
 
         return prisma.map.create({
             data,
+            include: {
+                boardTokens: true,
+                mapObjs: true,
+            },
         });
 
     }

@@ -4,8 +4,41 @@ import { syncBattleState } from "../utils/syncBattleState";
 import { BattleEngineService } from "./BattleEngineService";
 import { emitPendingSpecialResponse } from "../special-response/emitSpecialResponse";
 import { BattleEngineTransformService } from "./BattleEngineTransformService";
+import type { TokenInstance } from "@prisma/client";
 
-export function emitBattleRuntimeCleanup(battle: { id: string; mapId: string }): void {
+export interface BattleEndedPayload {
+    id: string;
+    mapId: string;
+    winnerTeam: string | null;
+    winnerTokenIds: string[];
+}
+
+function resolveBattleWinner(
+    tokens: readonly Pick<TokenInstance, "id" | "team" | "currentLife">[],
+): Pick<BattleEndedPayload, "winnerTeam" | "winnerTokenIds"> {
+    const livingTeams = new Set(
+        tokens
+            .filter((token) => token.currentLife > 0)
+            .map((token) => token.team),
+    );
+
+    if (livingTeams.size !== 1) {
+        return { winnerTeam: null, winnerTokenIds: [] };
+    }
+
+    const winnerTeam = [...livingTeams][0];
+    return {
+        winnerTeam,
+        winnerTokenIds: tokens
+            .filter((token) => token.team === winnerTeam)
+            .map((token) => token.id),
+    };
+}
+
+export function emitBattleRuntimeCleanup(
+    battle: Pick<BattleEndedPayload, "id" | "mapId"> &
+        Partial<Pick<BattleEndedPayload, "winnerTeam" | "winnerTokenIds">>,
+): void {
     const { mapId } = battle;
 
     runtime.emit(SocketEvent.PENDING_ATTACK, null);
@@ -25,7 +58,11 @@ export function emitBattleRuntimeCleanup(battle: { id: string; mapId: string }):
     runtime.emit(SocketEvent.FRONTEND_SELECTED_TARGET, null);
     runtime.emit(SocketEvent.TOKEN_IN_AMBIENT_PIVOT_SELECTION, "");
     emitPendingSpecialResponse(mapId, null);
-    runtime.emit(SocketEvent.BATTLE_ENDED, battle);
+    runtime.emit(SocketEvent.BATTLE_ENDED, {
+        ...battle,
+        winnerTeam: battle.winnerTeam ?? null,
+        winnerTokenIds: battle.winnerTokenIds ?? [],
+    } satisfies BattleEndedPayload);
 }
 
 
@@ -46,6 +83,7 @@ export class BattleEngineEndBattleService extends BattleEngineService {
 
         await this.transformService.restoreAllBeforeBattleEnd(battleId)
         const boardTokens = await this.tokenInstanceRepository.listByMapId(battleState.mapId)
+        const winner = resolveBattleWinner(boardTokens);
 
         const mapId = battleState.mapId;
 
@@ -64,7 +102,7 @@ export class BattleEngineEndBattleService extends BattleEngineService {
         await this.battleStateRepository.delete(battleId)
 
         // 3. Limpa todos os estados auxiliares do frontend via socket.
-        emitBattleRuntimeCleanup({ id: battleState.id, mapId });
+        emitBattleRuntimeCleanup({ id: battleState.id, mapId, ...winner });
 
         // 4. QUARTO: Emite o encerramento limpo para o frontend (com status adequado ou null)
         const closedBattleState = {

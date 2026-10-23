@@ -45,7 +45,9 @@ function snapshotData(
         transformationDurationRounds: target.transformationDurationRounds,
         transformationRecharge: target.transformationRecharge,
         name: target.name,
-        type: target.type,
+        // Transformation changes the sheet, not who controls the instance.
+        // In particular, an autonomous token must remain autonomous afterward.
+        type: source.type,
         imageUrl: target.imageUrl,
         inventoryDimensionsCols: target.inventoryDimensionsCols,
         inventoryDimensionsRows: target.inventoryDimensionsRows,

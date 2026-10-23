@@ -16,12 +16,16 @@ export class MapaAPI {
             throw new Error("ID da campanha não foi fornecido na URL.");
         }
 
-        const json = await api<any[]>(`/maps/list/${campaignId}`);
+        const json = await api<unknown[]>(`/maps/list/${campaignId}`);
         return json.map((j) => MapMapper(j, cards, items));
     }
 
     // ===== CRIAR MAPA =====
-    static async createMaps(map: Mapa): Promise<Mapa> {
+    static async createMaps(
+        map: Mapa,
+        cards: Card[],
+        items: Item[],
+    ): Promise<Mapa> {
         const modifiedMapa = { ...map }; // Evita mutar o objeto original diretamente
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -35,10 +39,11 @@ export class MapaAPI {
 
         console.info("Enviando para criação de mapa:", json);
 
-        return api<Mapa>("/maps/create", {
+        const persistedMap = await api<unknown>("/maps/create", {
             method: "POST",
             body: JSON.stringify(json),
         });
+        return MapMapper(persistedMap, cards, items);
     }
 
     // ===== ATUALIZAR MAPA =====

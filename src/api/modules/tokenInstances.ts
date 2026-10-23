@@ -38,7 +38,20 @@ export class TokenInstanceAPI {
     }
 
     // ===== ATUALIZAR INSTÂNCIA DE TOKEN =====
-    static async updateTokenInstance(newToken: Token, mapId: string): Promise<Token> {
+    static async updateTokenInstance(newToken: Token, mapId: string): Promise<{
+        [key: string]: unknown;
+        mapId?: string;
+        col?: number;
+        row?: number;
+        movement?: null | {
+            sourceMapId: string;
+            destinationMapId: string;
+            position: { col: number; row: number };
+            collectedItemId: string | null;
+            consumedMapObjectId: string | null;
+            usedDoorId: string | null;
+        };
+    }> {
         try {
             const id = newToken.id;
             const modifiedToken = { ...newToken }; // Evita mutar o objeto original diretamente
@@ -49,7 +62,20 @@ export class TokenInstanceAPI {
 
             const json = JsonTokenIntanceMapper(modifiedToken, mapId);
             console.debug("Então isso chega até aqui?")
-            return api<Token>(`/asset-library/tokens/${id}`, {
+            return api<{
+                [key: string]: unknown;
+                mapId?: string;
+                col?: number;
+                row?: number;
+                movement?: null | {
+                    sourceMapId: string;
+                    destinationMapId: string;
+                    position: { col: number; row: number };
+                    collectedItemId: string | null;
+                    consumedMapObjectId: string | null;
+                    usedDoorId: string | null;
+                };
+            }>(`/asset-library/tokens/${id}`, {
                 method: "PATCH",
                 body: JSON.stringify(json)
             });

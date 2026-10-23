@@ -78,6 +78,7 @@ export interface BattleHistoryEntry {
   rollResult?: RollResult;
   historyId?: string;
   historyKind?: BattleHistoryKind;
+  wasCertainty?: boolean;
   card?: BattleHistoryCard;
 }
 

@@ -13,6 +13,8 @@ import { runtime } from "@/runtime";
 import { SocketEvent } from "@/runtime/Events";
 import { ItemRepository } from "@/modules/items/repositories/ItemRepository";
 import { hydrateTokenInventoryItems } from "@/modules/tokens/utils/hydrateTokenInventoryItems";
+import { MapObjectMovementRepository } from "@/modules/map-objects/repositories/MapObjectMovementRepository";
+import { emitMapObjectsUpdated } from "@/modules/map-objects/utils/emitMapObjectsUpdated";
 
 export class UpdateTokenTemplateService {
 
@@ -21,6 +23,7 @@ export class UpdateTokenTemplateService {
         private readonly mapRepository = new MapRepository(),
         private readonly campaignRepository = new CampaignRepository(),
         private readonly itemRepository = new ItemRepository(),
+        private readonly movementRepository = new MapObjectMovementRepository(),
     ) {}
 
     async execute(
@@ -67,21 +70,56 @@ export class UpdateTokenTemplateService {
             );
         }
 
-        const updated = await this.repository.update(id, input);
+        const { col, row, ...nonPositionUpdates } = input;
+        const movement = changesPosition
+            ? await this.movementRepository.moveOutsideBattle(
+                id,
+                { col, row },
+                nonPositionUpdates,
+            )
+            : null;
+        const updated = movement?.token ?? await this.repository.update(
+            id,
+            nonPositionUpdates,
+        );
         const [hydratedToken] = await hydrateTokenInventoryItems(
             [updated],
             this.itemRepository,
         );
 
         console.log("[QUAL é esse objeto target?]: ", updated.cards)
+        if (movement?.consumedMapObjectId) {
+            await emitMapObjectsUpdated([movement.sourceMapId]);
+        }
         if (battle?.status === "In Battle") {
             await syncBattleState(battle.id);
+        } else if (
+            movement &&
+            movement.sourceMapId !== movement.destinationMapId
+        ) {
+            runtime.emit(SocketEvent.TOKEN_DELETED, {
+                ...tokenTemplate,
+                mapId: movement.sourceMapId,
+            });
+            runtime.emit(SocketEvent.TOKEN_CREATED, hydratedToken);
         } else {
             runtime.emit(SocketEvent.TOKEN_UPDATED, hydratedToken);
         }
 
 
-        return hydratedToken
+        return {
+            ...hydratedToken,
+            movement: movement
+                ? {
+                    sourceMapId: movement.sourceMapId,
+                    destinationMapId: movement.destinationMapId,
+                    position: movement.position,
+                    collectedItemId: movement.collectedItemId,
+                    consumedMapObjectId: movement.consumedMapObjectId,
+                    usedDoorId: movement.usedDoorId,
+                }
+                : null,
+        }
 
     }
 

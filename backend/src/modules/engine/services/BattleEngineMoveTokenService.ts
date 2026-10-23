@@ -33,7 +33,11 @@ function hasPendingMovementBlockingResolution(pendingQueue: {
  * synchronization.
  */
 export class BattleEngineMoveTokenService extends BattleEngineService {
-    async execute(userId: string, data: unknown) {
+    async execute(
+        userId: string,
+        data: unknown,
+        options: { readonly autonomous?: boolean } = {},
+    ) {
         const input = MoveTokenValidator.parse(data);
         const battle = await this.battleStateRepository.findById(input.battleId);
 
@@ -54,8 +58,9 @@ export class BattleEngineMoveTokenService extends BattleEngineService {
             token.mapId,
         );
 
-        if (token.type !== "player" || battle.currentActorId !== token.id) {
-            throw new Error("Apenas o token jogador do turno atual pode se mover.");
+        const isAutonomousAi = options.autonomous === true && token.type === "ia";
+        if ((!isAutonomousAi && token.type !== "player") || battle.currentActorId !== token.id) {
+            throw new Error("Apenas o token do turno atual pode se mover.");
         }
 
         if (!isGameMaster && battle.currentActorUserId !== userId) {

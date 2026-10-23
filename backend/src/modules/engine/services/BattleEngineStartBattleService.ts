@@ -13,6 +13,7 @@ import { reconcileTokenPassives } from "../utils/tokenPassiveMechanics";
 import type { MechanicInstance } from "../mechanic/mechanics/MechanicInstance";
 import type { VisualOverlay } from "../mechanic/types/visualOverlays";
 import { reconcileMechanicVisualOverlays } from "../mechanic/utils/reconcileMechanicVisualOverlays";
+import { scheduleBattleAi } from "../ai/scheduleBattleAi";
 
 interface InitiativeData {
     tokenId: string;
@@ -183,6 +184,7 @@ export class BattleEngineStartBattleService extends BattleEngineService {
 
         await this.battleSetter.setDidActThisTurn(mountBattleState.id, didActObj)
         await this.battleSetter.setMovedThisTurn(mountBattleState.id, movedObj)
+        scheduleBattleAi(createdBattleState.id)
         /*if (boardBoss) {
             this.context.setIntroductionAnimation(true);
         } */

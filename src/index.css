@@ -32,6 +32,21 @@ html, body, #root {
   animation: white-blink 0.9s ease-in-out infinite;
 }
 
+@keyframes winner-green-blink {
+  0%, 100% {
+    color: #86efac;
+    text-shadow: 0 0 4px #4ade80, 0 0 9px #22c55e, 0 1px 2px #052e16;
+  }
+  50% {
+    color: #14532d;
+    text-shadow: 0 0 3px #166534, 0 0 7px #052e16, 0 1px 2px #000;
+  }
+}
+
+.winner-token-label {
+  animation: winner-green-blink 0.3s steps(1, end) infinite;
+}
+
 /* --- QUEIMANDO (FIRE) --- */
 @keyframes fire-glow {
   0% { filter: brightness(1) drop-shadow(0 0 4px #ff6b00); }

@@ -1,30 +1,25 @@
 import React, { useEffect, useState } from "react";
-import type { MapObject } from "../../types/mapObject";
 import type { Item } from "../../types/item";
 import type { Mapa } from "../../types/mapas";
+import type { MapObjectWriteCommand } from "../../api/modules/mapObjects";
 
-type MapObjectType = "wall" | "chest" | "article" | "item" | "door";
+type MapObjectType = "wall" | "chest" | "article" | "door";
 
 interface CreateMapObjectProps {
   position: { col: number; row: number };
   createdItems: Item[];
   selectedMapa: Mapa | undefined;
   createdMapas: Mapa[]; 
-  setBoardMapObjects: React.Dispatch<React.SetStateAction<MapObject[]>>;
-  generatePairDoor: (d: MapObject) => void;
+  onCreate: (command: MapObjectWriteCommand) => Promise<void>;
   onClose: () => void;
 }
-
-const generateId = (): string =>
-  Math.random().toString(36).slice(2, 11);
 
 const CreateMapObject: React.FC<CreateMapObjectProps> = ({
   position,
   createdItems,
   selectedMapa,
   createdMapas,
-  setBoardMapObjects,
-  generatePairDoor,
+  onCreate,
   onClose,
 }) => {
   const [type, setType] = useState<MapObjectType>("wall");
@@ -41,6 +36,8 @@ const CreateMapObject: React.FC<CreateMapObjectProps> = ({
 
   // 🔥 Door
   const [linkedMapId, setLinkedMapId] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setIsChest(type === "chest");
@@ -74,24 +71,27 @@ const CreateMapObject: React.FC<CreateMapObjectProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleCreate = () => {
-    const newObj: MapObject = {
-      id: generateId(),
+  const handleCreate = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await onCreate({
       type,
-      position,
+      col: position.col,
+      row: position.row,
       imgUrl,
-      itemRelative: selectedItem,
-
-      // 🔥 Door linkage
-      linkedMapId: isDoor ? linkedMapId : undefined,
-      linkedDoorId: isDoor ? generateId() : undefined,
-    };
-
-    setBoardMapObjects((prev) => [...prev, newObj]);
-
-    if(type === 'door') generatePairDoor(newObj);
-
-    onClose();
+      itemRelativeId: isChest ? selectedItem?.id ?? null : null,
+      linkedMapId: isDoor ? linkedMapId : null,
+      });
+      onClose();
+    } catch (submissionError) {
+      setError(submissionError instanceof Error
+        ? submissionError.message
+        : "Não foi possível criar o objeto.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -118,7 +118,6 @@ const CreateMapObject: React.FC<CreateMapObjectProps> = ({
             <option value="wall">Wall</option>
             <option value="chest">Chest</option>
             <option value="article">Article</option>
-            <option value="item">Item</option>
             <option value="door">Door</option>
           </select>
         </div>
@@ -258,6 +257,7 @@ const CreateMapObject: React.FC<CreateMapObjectProps> = ({
         )}
 
         {/* Ações */}
+        {error && <p className="text-sm text-red-300">{error}</p>}
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-600">
 
           <button
@@ -269,17 +269,17 @@ const CreateMapObject: React.FC<CreateMapObjectProps> = ({
 
           <button
             onClick={handleCreate}
-            disabled={isDoor && linkedMapId === ""}
+            disabled={isSubmitting || (isDoor && linkedMapId === "") || (isChest && !selectedItem)}
             className={`
               px-4 py-2 rounded
               ${
-                isDoor && linkedMapId === ""
+                isSubmitting || (isDoor && linkedMapId === "") || (isChest && !selectedItem)
                   ? "bg-gray-600 cursor-not-allowed"
                   : "bg-purple-600 hover:bg-purple-500"
               }
             `}
           >
-            Criar
+            {isSubmitting ? "Criando..." : "Criar"}
           </button>
 
         </div>

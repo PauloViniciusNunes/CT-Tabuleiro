@@ -1,6 +1,6 @@
 import type { Item } from "./item";
 
-type MapObjectType = "wall" | "chest" | "article" | "item" | "door";
+type MapObjectType = "wall" | "chest" | "article" | "door";
 type MapObjectPosition =
   {
     col: number;
@@ -13,6 +13,7 @@ export type MapObject = {
   position: MapObjectPosition;
   imgUrl: string;
   itemRelative: Item | null;
+  itemRelativeId?: string | null;
   linkedMapId?: string;
   linkedDoorId?: string;
 }

@@ -6,7 +6,7 @@ interface MapSelectProps {
   mapas: Mapa[];
   selectedMapa?: Mapa;
   onChoice: (mapa: Mapa) => void;
-  onCreateNew: (mapName: string) => void;
+  onCreateNew: (mapName: string) => Promise<void>;
   onClose: () => void;
   members?: CampaignMapRoutingMember[];
   onDirectMembers?: (mapId: string, userIds: string[]) => Promise<void>;
@@ -27,14 +27,26 @@ const MapSelect: React.FC<MapSelectProps> = ({
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [routingMapId, setRoutingMapId] = useState<string | null>(null);
   const [routingError, setRoutingError] = useState<string | null>(null);
+  const [isCreatingMap, setIsCreatingMap] = useState(false);
+  const [creationError, setCreationError] = useState<string | null>(null);
 
-  const handleCreate = () => {
-    if (!newMapName.trim()) return;
+  const handleCreate = async () => {
+    const mapName = newMapName.trim();
+    if (mapName.length < 3 || isCreatingMap) return;
 
-    onCreateNew(newMapName);
-
-    setNewMapName("");
-    setCreatingNewMap(false);
+    setIsCreatingMap(true);
+    setCreationError(null);
+    try {
+      await onCreateNew(mapName);
+      setNewMapName("");
+      setCreatingNewMap(false);
+    } catch (error) {
+      setCreationError(error instanceof Error
+        ? error.message
+        : "Não foi possível criar o mapa.");
+    } finally {
+      setIsCreatingMap(false);
+    }
   };
 
   const toggleMember = (userId: string) => {
@@ -244,8 +256,8 @@ const MapSelect: React.FC<MapSelectProps> = ({
                 </button>
 
                 <button
-                  onClick={handleCreate}
-                  disabled={!newMapName.trim()}
+                  onClick={() => void handleCreate()}
+                  disabled={newMapName.trim().length < 3 || isCreatingMap}
                   className="
                     flex-1
                     bg-purple-600
@@ -256,10 +268,14 @@ const MapSelect: React.FC<MapSelectProps> = ({
                     font-semibold
                   "
                 >
-                  Criar
+                  {isCreatingMap ? "Criando..." : "Criar"}
                 </button>
 
               </div>
+
+              {creationError && (
+                <p className="text-sm text-red-300">{creationError}</p>
+              )}
 
             </div>
           )}

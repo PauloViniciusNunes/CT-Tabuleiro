@@ -84,10 +84,11 @@ model Map {
 
   campaignId String
 
-  campaign       Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  boardTokens    TokenInstance[]
-  mapObjs        MapObject[]
-  currentViewers CampaignMember[] @relation("CampaignMemberCurrentMap")
+  campaign         Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  boardTokens      TokenInstance[]
+  mapObjs          MapObject[]      @relation("MapObjects")
+  destinationDoors MapObject[]      @relation("MapObjectDestination")
+  currentViewers   CampaignMember[] @relation("CampaignMemberCurrentMap")
 }
 
 enum MapObjectType {
@@ -106,11 +107,18 @@ model MapObject {
 
   imgUrl String
 
-  itemRelativeId String
+  itemRelativeId String?
 
-  linkedMapId  String
-  linkedMap    Map     @relation(fields: [linkedMapId], references: [id], onDelete: Cascade)
+  mapId String
+  map   Map    @relation("MapObjects", fields: [mapId], references: [id], onDelete: Cascade)
+
+  linkedMapId  String?
+  linkedMap    Map?    @relation("MapObjectDestination", fields: [linkedMapId], references: [id], onDelete: SetNull)
   linkedDoorId String?
+
+  @@index([mapId])
+  @@index([linkedMapId])
+  @@index([itemRelativeId])
 }
 
 enum TokenStatus {

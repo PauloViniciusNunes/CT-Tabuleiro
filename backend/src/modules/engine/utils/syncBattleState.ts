@@ -14,6 +14,7 @@ import type { MechanicInstance } from "../mechanic/mechanics/MechanicInstance";
 import type { VisualOverlay } from "../mechanic/types/visualOverlays";
 import { reconcileMechanicVisualOverlays } from "../mechanic/utils/reconcileMechanicVisualOverlays";
 import { getBattleFormState } from "./getBattleFormState";
+import { scheduleBattleAi } from "../ai/scheduleBattleAi";
 
 export async function syncBattleState(battleId: string) {
 
@@ -74,10 +75,21 @@ export async function syncBattleState(battleId: string) {
     )
 
     const pendingQueue = await pendingQueueRepository.findByBattleStateId(battleId)
-    if (!pendingQueue) return
+    if (!pendingQueue) {
+        scheduleBattleAi(battleId)
+        return
+    }
 
     const pendingOffensiveCard = await pendingGetter.getPendingOffensiveCard(pendingQueue.id)
-    if (pendingOffensiveCard) {
+    const offensiveQueue = Array.isArray(battleState.tokensInOffensiveCard)
+        ? battleState.tokensInOffensiveCard as Array<{ id?: unknown }>
+        : [];
+    const offensiveResponderId = offensiveQueue[0]?.id;
+    const offensiveResponderIsAi = typeof offensiveResponderId === "string" &&
+        boardTokens.some((token) =>
+            token.id === offensiveResponderId && token.type === "ia",
+        );
+    if (pendingOffensiveCard && !offensiveResponderIsAi) {
         const card = await cardRepository.findCardById(pendingOffensiveCard.cardId)
         if (card) {
             runtime.emit(SocketEvent.PENDING_OFFENSIVE_CARD, {
@@ -97,6 +109,16 @@ export async function syncBattleState(battleId: string) {
     }
 
     const pendingSpecialResponse = await pendingGetter.getPendingSpecialResponse(pendingQueue.id)
-    emitPendingSpecialResponse(battleState.mapId, pendingSpecialResponse)
+    const specialResponderIsAi = pendingSpecialResponse
+        ? boardTokens.some((token) =>
+            token.id === pendingSpecialResponse.responderTokenId && token.type === "ia",
+        )
+        : false;
+    emitPendingSpecialResponse(
+        battleState.mapId,
+        specialResponderIsAi ? null : pendingSpecialResponse,
+    )
+
+    scheduleBattleAi(battleId)
 
 }
